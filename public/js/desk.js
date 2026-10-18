@@ -69,7 +69,7 @@ function tabHTML(tab){
   <div class="cols">${[1,2,3,4].map(i => `<section class="group ref"><h3><span class="refh">Reference ${i}</span><span class="badge" id="refBadge${i}"></span></h3><div class="ios">${[
       F.text(`refs.r${i}.name`,"Name","Full name"),
       `<div class="row"><span class="lbl">Reference received<small id="refRcv${i}">—</small></span><button class="btn small" type="button" data-refrcv="${i}" id="refBtn${i}">Mark received</button></div>`,
-      F.text(`refs.r${i}.phone`,"Phone","","tel"),F.date(`refs.r${i}.contacted`,"Date contacted"),
+      F.text(`refs.r${i}.email`,"Email","name@example.com","email"),F.date(`refs.r${i}.contacted`,"Date contacted"),
       F.seg(`refs.r${i}.method`,"Method",[["Phone","Phone"],["Email","Email"],["Text","Text"]]),F.date(`refs.r${i}.returned`,"Date received"),F.init(`refs.r${i}.init`)].join("")}</div></section>`).join("")}
   </div>`;
   if (tab === "iv") return `<div class="cols">
@@ -413,7 +413,7 @@ function syncRefs(a){
   if (sum) {
     sum.className = "refsum " + (!refs.length ? "" : waiting ? "warn" : "ok");
     sum.innerHTML = `<b>${!refs.length ? "No references entered yet" : waiting ? `${got} of ${refs.length} references received · waiting on ${waiting}` : `All ${refs.length} references received`}</b>
-      <span>All references must be in before the application goes to the board. The applicant sees each name with Received or Waiting in their portal; phone numbers, dates and initials stay private.</span>`;
+      <span>All references must be in before the application goes to the board. The applicant sees each name with Received or Waiting in their portal; email addresses, dates and initials stay private.</span>`;
   }
   for (const i of [1,2,3,4]) {
     const badge = $("#refBadge" + i); if (!badge) continue;
