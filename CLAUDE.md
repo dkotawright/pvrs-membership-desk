@@ -50,6 +50,7 @@ Read this first. It's the full context from the original build conversation (Oct
 - [x] Version history: local git repo (Oct 18). `migration/` is git-ignored because it holds real applicant data. No GitHub remote yet.
 - [x] Firestore backups: daily (14-day retention, created Oct 18) + weekly Sunday (98-day retention, pre-existing).
 - [x] **Oct 18 feature batch + liquid-glass look: deployed Oct 18**: change history (applicants/{id}/history, append-only, admin-read), auto sign-out (settings.idleMinutes, default 30, shared across tabs), .ics calendar files (staff + applicant portal; interview.bookedAt), printable board packet, admin activity feed (collectionGroup files), Add to Dock manifest/icons, no-cache HTML.
+- [x] Oct 18 (later): password sign-in, owner-only editing (rules deployed), page sign-offs, references tab, tuck-away list, compact tab bar: all deployed. Dkota still needs to set his password via the key button.
 - [ ] Email alerts for uploads/bookings: needs a Cloud Function + an SMTP sender (decision pending with Dkota).
 - Testing: rules are tested in the emulator with @firebase/rules-unit-testing (needs a JDK; none is installed system-wide, so use a portable one). UI is tested with Playwright against an in-memory Firebase mock.
 - [ ] Optional: GitHub repo `pvrs-membership-desk` (private) + GitHub Actions auto-deploy with a service-account key, so Claude can update the app on demand.
