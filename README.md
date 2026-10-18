@@ -4,9 +4,9 @@ The Membership Desk is a web app hosted on Firebase. It has three kinds of acces
 
 | Who | Signs in with | Sees |
 |---|---|---|
-| **You** (dkota@pvrs.org, owner) | Google | Everything, including Settings (PIN 0508), Team, backups and import |
-| **Admins** (you choose) | Google or an emailed sign-in link | Everything except Settings |
-| **Members** (you choose) | Google or an emailed sign-in link | The Application and Interview tabs only |
+| **You** (dkota@pvrs.org, owner) | Email + password (Google as backup) | Everything, including Settings, Team, backups and import. Only you can edit. |
+| **Admins** (you choose) | Email + password, Google, or an emailed sign-in link | View every tab except Settings; can only fill in the interview questionnaire |
+| **Members** (you choose) | Email + password, Google, or an emailed sign-in link | View the Application and Interview tabs; can only fill in the interview questionnaire |
 | **Applicants** | An emailed sign-in link | Their own portal: status, document uploads and interview booking |
 
 Firebase's servers enforce these permissions (`firestore.rules`, `storage.rules`). Nobody can get around them by editing the page.
@@ -54,7 +54,7 @@ When it finishes, it prints your web address, for example **https://pvrs-members
 
 ### 6. First sign-in and moving your data over
 1. Open the web address and click **Sign in with Google** as dkota@pvrs.org.
-2. Open **Settings**, enter PIN **0508**, then **Backups → Import records** and choose **`migration/artifact-export.json`**. This brings over Georgia Thurmond's record from the Claude version.
+2. Open **Settings**, then **Backups → Import records** and choose **`migration/artifact-export.json`**. This brings over Georgia Thurmond's record from the Claude version.
 3. Fill in your **email signature** and **default interview location**, then click **Save**.
 4. Under **Team**, add each member's email. Use their pvrs.org address if they have one. Everyone starts as a **Member**; switch someone to **Admin** if they should see screening, the board and onboarding.
 
@@ -86,7 +86,6 @@ MVR results, license details, reference answers, Sterling results, board votes, 
 
 | Change | Where |
 |---|---|
-| Settings PIN | `public/js/config.js` → `PIN_HASH`. Run `printf 'pvrs-desk:1234' \| shasum -a 256` with your new PIN and paste the result, then `firebase deploy --only hosting` |
 | Owner email | `public/js/config.js`, `firestore.rules` and `storage.rules` (all three), then `firebase deploy` |
 | Logo | Replace `public/img/logo.png`, then `firebase deploy --only hosting` |
 | Custom address (e.g. members.pvrs.org) | **Hosting → Add custom domain**. Then add the domain under **Authentication → Settings → Authorized domains** |
@@ -102,7 +101,7 @@ In the Firebase console go to **Firestore → Rules → Rules Playground**. Simu
 ```
 public/index.html        app shell
 public/app.css           look and feel
-public/js/config.js      your Firebase keys, owner email, PIN
+public/js/config.js      your Firebase keys, owner email
 public/js/main.js        sign-in and routing (owner / admin / member / applicant)
 public/js/desk.js        the Membership Desk
 public/js/portal.js      the applicant portal

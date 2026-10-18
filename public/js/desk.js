@@ -6,7 +6,7 @@ import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysS
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
   progress, inBoardQueue, nextReview, onProbation, applicantSteps, checkSVG, icsFile, refList } from "./shared.js";
 import { portalHTML } from "./portal.js";
-import { OWNER_EMAIL, CONTACT_EMAIL, PIN_HASH } from "./config.js";
+import { OWNER_EMAIL, CONTACT_EMAIL } from "./config.js";
 
 /* ---------- form builders ---------- */
 const fid = k => "f-" + k.replace(/\./g, "-");
@@ -163,7 +163,7 @@ function tabHTML(tab){
 
 /* ---------- state ---------- */
 const S = { shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[], hist:[], feedFiles:[],
-  sel:null, tab:"app", filter:"all", q:"", admin:false, owner:false, me:"", settings:{}, unlocked:false, ready:false };
+  sel:null, tab:"app", filter:"all", q:"", admin:false, owner:false, me:"", settings:{}, ready:false };
 const pending = {}, inflight = {}, timers = {};
 let filesUnsub = null;
 
@@ -804,38 +804,8 @@ function openPreview(id){
   M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); };
 }
 
-/* ---------- settings (owner, PIN) ---------- */
-let pinFails = 0, pinLockUntil = 0;
-async function hashPin(p){ if (!(window.crypto && crypto.subtle)) { toast("Open the Desk over https to unlock Settings."); return ""; } const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("pvrs-desk:" + p)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2,"0")).join(""); }
-function gateSettings(){
-  if (!S.owner) return;
-  if (S.unlocked) return openSettings();
-  let entry = "";
-  const M = openModal(`<h3 style="text-align:center">Enter PIN</h3><p class="help" style="text-align:center">Settings and backups are locked.</p>
-    <div class="pin" id="pinDots" aria-live="polite">${"<span></span>".repeat(4)}</div>
-    <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-n="${n}">${n}</button>`).join("")}<button type="button" class="ghost" data-n="x">Cancel</button><button type="button" data-n="0">0</button><button type="button" class="ghost" data-n="del">Delete</button></div>`);
-  const dots = () => $("#pinDots").querySelectorAll("span").forEach((d,i) => d.classList.toggle("f", i < entry.length));
-  const press = async k => {
-    if (k === "x") { document.removeEventListener("keydown", onKey); return closeModal(); }
-    if (k === "del") { entry = entry.slice(0,-1); return dots(); }
-    if (Date.now() < pinLockUntil) return toast(`Too many tries. Wait ${Math.ceil((pinLockUntil-Date.now())/1000)}s.`);
-    if (entry.length >= 4) return;
-    entry += k; dots();
-    if (entry.length === 4) {
-      if (await hashPin(entry) === PIN_HASH) { S.unlocked = true; pinFails = 0; document.removeEventListener("keydown", onKey); closeModal(); openSettings(); }
-      else { pinFails++; if (pinFails >= 5) { pinLockUntil = Date.now() + 30000; pinFails = 0; }
-        const d = $("#pinDots"); d.classList.remove("err"); void d.offsetWidth; d.classList.add("err"); entry = ""; setTimeout(dots, 250); toast("Incorrect PIN"); }
-    }
-  };
-  const onKey = e => {
-    if (!$("#pinDots")) return document.removeEventListener("keydown", onKey);
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (/^\d$/.test(e.key)) { e.preventDefault(); press(e.key); } else if (e.key === "Backspace") { e.preventDefault(); press("del"); }
-  };
-  document.addEventListener("keydown", onKey);
-  M._cleanup = () => document.removeEventListener("keydown", onKey);
-  M.onclick = e => { const b = e.target.closest("[data-n]"); if (b) press(b.dataset.n); };
-}
+/* ---------- settings (owner only; the button is hidden for everyone else and the rules block their writes) ---------- */
+function gateSettings(){ if (S.owner) openSettings(); }
 function teamHTML(){
   const rows = [...S.staff.entries()].sort((x,y) => x[0].localeCompare(y[0])).map(([email, s]) => `<div class="row"><span class="lbl">${esc(s.name || email)}<small>${esc(email)}</small></span>
     <div class="seg" role="group" aria-label="Role">${[["member","Member"],["admin","Admin"]].map(([v,l]) => `<button type="button" class="${s.role===v?"on":""}" data-role="${esc(email)}" data-v="${v}">${l}</button>`).join("")}</div>
@@ -849,7 +819,7 @@ function openSettings(){
   const s = S.settings;
   const M = openModal(`<h3>Settings</h3>
     <div class="group"><h3><span>Team</span></h3><div class="ios" id="teamList">${teamHTML()}</div>
-      <p class="help" style="margin:4px 4px 0"><b>Members</b> see the Application and Interview tabs. <b>Admins</b> see everything except Settings. They sign in with Google or an email link using this address.</p></div>
+      <p class="help" style="margin:4px 4px 0"><b>Members</b> can view the Application and Interview tabs. <b>Admins</b> can view every tab except Settings. Both can only fill in and complete the interview questionnaire; everything else is yours to change. They sign in on the PVRS staff tab with this address.</p></div>
     <div class="group"><h3><span>Emails</span></h3><div class="ios">
       <label class="row stack"><span class="lbl">Email signature<small>Printed at the end of every email</small></span><textarea id="sSig" rows="4" placeholder="Name, credentials">${esc(s.signature||"")}</textarea></label>
       <label class="row stack"><span class="lbl">Documents and questions go to</span><input type="text" id="sDocs" placeholder="${esc(CONTACT_EMAIL)}" value="${esc(s.docsEmail||"")}"></label>
@@ -862,12 +832,11 @@ function openSettings(){
       <div class="row"><span class="lbl">Full export<small>Every field for every applicant. Save one to the PVRS Drive monthly.</small></span><button class="btn small" type="button" id="sFull">Export</button></div>
       <div class="row"><span class="lbl">Summary CSV<small>Dates, results and board votes only</small></span><button class="btn small" type="button" id="sSummary">Export</button></div>
       <div class="row"><span class="lbl">Import records<small>The migration file from the old Claude version</small></span><label class="btn small" for="sImport">Choose file</label><input type="file" id="sImport" accept="application/json,.json" hidden></div></div></div>
-    <div class="acts"><button class="btn" type="button" id="sLock">Lock</button><button class="btn" type="button" id="sCancel">Cancel</button><button class="btn primary" type="button" id="sSave">Save</button></div>`, true);
+    <div class="acts"><button class="btn" type="button" id="sCancel">Cancel</button><button class="btn primary" type="button" id="sSave">Save</button></div>`, true);
   $("#sImport").addEventListener("change", e => importFile(e.target.files && e.target.files[0]));
   M.onclick = async e => {
     const id = e.target.id;
     if (id === "sCancel") closeModal();
-    if (id === "sLock") { S.unlocked = false; closeModal(); toast("Settings locked"); }
     if (id === "sPreview") openPreview(S.sel);
     if (id === "sFull") exportFull();
     if (id === "sSummary") exportSummary();
@@ -1312,7 +1281,6 @@ function startIdleLock(){
   setInterval(async () => {
     last = Math.max(last, +prefs.get("active") || 0);
     const mins = Math.min(240, Math.max(5, +S.settings.idleMinutes || 30)), idle = Date.now() - last;
-    if (S.unlocked && idle > 10*6e4) S.unlocked = false;   // Settings PIN re-locks after 10 idle minutes
     if (idle > mins*6e4) {
       flushAll(); await new Promise(res => setTimeout(res, 1200));
       try { sessionStorage.setItem("pvrsIdle", String(mins)); } catch {}

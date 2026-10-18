@@ -13,7 +13,3 @@ export const OWNER_EMAIL = "dkota@pvrs.org";
 
 // Where applicants are told to send questions.
 export const CONTACT_EMAIL = "membership@pvrs.org";
-
-// Settings PIN (SHA-256 of "pvrs-desk:" + PIN). Current PIN: 0508.
-// To change it: run  printf 'pvrs-desk:NEWPIN' | shasum -a 256  and paste the result here.
-export const PIN_HASH = "a47047cfe40c34e02ec231be91e5290a716a34b8c926beacf09dcb763f54ed2e";

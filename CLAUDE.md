@@ -15,7 +15,7 @@ Read this first. It's the full context from the original build conversation (Oct
 
 ## Files
 - `public/js/main.js`: sign-in and routing (owner → admin desk; staff doc → desk; portal match → applicant portal; else "No application found").
-- `public/js/desk.js`: the staff Desk (roster, tabs: Application, Screening, Interview, Board, Onboard, Notes; interview slots manager; document requests; portal invite/sync; settings, team, exports, import, PIN gate).
+- `public/js/desk.js`: the staff Desk (roster, tabs: Application, Screening, Interview, Board, Onboard, Notes; interview slots manager; document requests; portal invite/sync; settings, team, exports, import, owner-only).
 - `public/js/portal.js`: applicant portal (status timeline, document uploads to Storage, interview booking via batch writes) + `portalHTML()` reused for the admin preview.
 - `public/js/shared.js`: helpers, `MILESTONES` (14-step checklist), `STAGES`, `applicantSteps()` (6 applicant-safe steps), `SECURE` field roots.
 - `firestore.rules` / `storage.rules`: all access control. Keep the owner email in sync across the 3 files.
@@ -54,10 +54,9 @@ Read this first. It's the full context from the original build conversation (Oct
 - [ ] Email alerts for uploads/bookings: needs a Cloud Function + an SMTP sender (decision pending with Dkota).
 - Testing: rules are tested in the emulator with @firebase/rules-unit-testing (needs a JDK; none is installed system-wide, so use a portable one). UI is tested with Playwright against an in-memory Firebase mock.
 - [ ] Optional: GitHub repo `pvrs-membership-desk` (private) + GitHub Actions auto-deploy with a service-account key, so Claude can update the app on demand.
-- [ ] After deploy: sign in at https://pvrs-membership.web.app as dkota@pvrs.org (Google), Settings (PIN 0508) → Import records → `migration/artifact-export.json`; set signature + default interview location; add team members.
+- [ ] After deploy: sign in at https://pvrs-membership.web.app as dkota@pvrs.org (Google), Settings → Import records → `migration/artifact-export.json`; set signature + default interview location; add team members.
 - [ ] Test end to end with a personal email as a fake applicant (invite, upload, book), then delete it.
 - [ ] Later: add dkota@pvrs.org as project Owner (Project settings → Users and permissions); get board/chief OK before real applicant data.
 
 ## Testing notes
 - The UI was tested in headless Chromium against an in-memory Firebase mock (owner, applicant, member, unknown-user flows all passed). Rules were not run in the emulator, so verify with the console Rules Playground or `firebase emulators:start` if you change them.
-- PIN hashing uses `crypto.subtle`, so it needs https or localhost.
