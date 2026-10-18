@@ -62,8 +62,6 @@ function tabHTML(tab){
       F.date("dl.date","Date verified"),F.text("dl.state","Issuing state","NY"),F.text("dl.class","Class","D"),F.date("dl.expires","Expiration date"),
       F.yn("dl.valid","Valid and unrestricted?",true),F.init("dl.init","Verified by (initials)")])}
     ${group("License issue",[F.area("dl.issue","What's the issue?","Restriction, suspension, expired…")],"dlBad")}
-    ${group("Background check · Sterling Volunteers",[F.note("Sterling Volunteers runs the full background check."),F.date("bg.sterReq","Date requested"),F.date("bg.sterDone","Date completed"),
-      F.seg("bg.sterResult","Result",[["clear","Clear","good"],["review","Needs review","bad"]],true),F.init("bg.sterInit")])}
   </div>`;
   if (tab === "refs") return `<div class="refsum" id="refSummary"></div>
   <div class="cols">${[1,2,3,4].map(i => `<section class="group ref"><h3><span class="refh">Reference ${i}</span><span class="badge" id="refBadge${i}"></span></h3><div class="ios">${[
@@ -123,7 +121,7 @@ function tabHTML(tab){
       F.area("iv.more","34. Anything else you'd like to share, or any questions?")])}
     ${group("Membership requirements",[F.note("Read to the applicant:<br>• Complete orientation, including required medical documentation and online education, in a timely manner<br>• Duty crew: self-schedule at least 4 shifts per month<br>• Attend monthly membership meetings (in person or Zoom) on the 2nd Tuesday unless excused in advance<br>• Monthly training is offered and all members are encouraged to participate"),
       F.yn("iv.understands","35. Do you understand these requirements?",true),F.yn("iv.ableToMeet","36. Do you feel you are able to meet them?",true)])}
-    ${group("Next steps",[F.note("Tell the applicant:<br>• Their application goes to the board. Tell them when the next board meeting is.<br>• They'll hear whether they're accepted within about 1 week of the board meeting.<br>• If accepted, they start on probation. It's reviewed every 3 months and ends when the board approves them as a full member.<br>• Turning in orientation paperwork on time and attending meetings and duty crews helps them pass probation.<br>• The background check is done through Sterling Volunteers."),
+    ${group("Next steps",[F.note("Tell the applicant:<br>• Their application goes to the next board meeting once their references and other prerequisites are complete. Tell them when the next board meeting is.<br>• They'll hear whether they're accepted within about 1 week of the board meeting.<br>• If accepted, they start on probation. It's reviewed every 3 months and ends when the board approves them as a full member.<br>• Turning in orientation paperwork on time and attending meetings and duty crews helps them pass probation.<br>• If the board approves them, the next step is a background check through Sterling Volunteers."),
       F.yn("iv.nextStepsReviewed","Next steps reviewed with applicant")])}
     ${admin?group("Committee decision",[F.yn("appr.committee","Committee approval",true)]):""}
   </div>`;
@@ -140,6 +138,8 @@ function tabHTML(tab){
     ${group("Board packet",[`<div class="row"><span class="lbl">Print this applicant's page<small>Checks, interview summary, committee decision and a blank vote record</small></span><button class="btn small" type="button" data-act="packet">Print</button></div>`])}
   </div>`;
   if (tab === "onb") return `<div class="cols">
+    ${group("Background check · Sterling Volunteers",[F.note("Run after the board approves the applicant. Sterling Volunteers runs the full background check."),F.date("bg.sterReq","Date requested"),F.date("bg.sterDone","Date completed"),
+      F.seg("bg.sterResult","Result",[["clear","Clear","good"],["review","Needs review","bad"]],true),F.init("bg.sterInit")])}
     ${group("Notifications",[F.date("notify.applicant","Applicant notified"),F.init("notify.applicantInit"),F.date("notify.orientation","Orientation chair notified")])}
     ${group("Duty crew",[`<div class="row"><span class="lbl">Applicant phone<small id="phoneEcho">—</small></span><button class="copy" type="button" data-copy="phone">Copy</button></div>`,F.date("notify.chief","Chief notified"),F.init("notify.chiefInit")])}
     ${group("Probation",[F.note("Reviewed every 3 months. Probation ends when the board approves full membership."),F.date("notify.probStart","Probation start"),
@@ -322,7 +322,7 @@ function renderOverview(){
 
 /* ---------- detail ---------- */
 // Which tab holds each MILESTONES step, so clicking the progress bar jumps there.
-const STEP_TAB = ["app","app","screen","screen","refs","screen","iv","iv","board","board","onb","onb","onb","onb"];
+const STEP_TAB = ["app","app","screen","screen","refs","iv","iv","board","board","onb","onb","onb","onb","onb"];
 const ICON = {
   mail:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 4l6 4.5L14 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
   cal:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 6.5h13M5 1v3M11 1v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
@@ -1122,7 +1122,6 @@ function packetPage(a){
         ${row("Driving record (MVR)", g("mvr.completed") ? `Completed ${d8(g("mvr.completed"))} · violations: ${yn(g("mvr.violations"))}` : "Not completed", g("mvr.violations") === "yesbad")}
         ${row("Driver's license", g("dl.date") ? `Verified ${d8(g("dl.date"))} · valid and unrestricted: ${yn(g("dl.valid"))}` : "Not verified", g("dl.valid") === "no")}
         ${row("References", refs.length ? `${refs.filter(x => x.returned).length} of ${refs.length} received` + (refs.some(x => !x.returned) ? " · NOT ALL IN" : "") : "None entered", !refs.length || refs.some(x => !x.returned))}
-        ${row("Background check (Sterling)", g("bg.sterDone") ? `Completed ${d8(g("bg.sterDone"))} · ${g("bg.sterResult") === "clear" ? "Clear" : g("bg.sterResult") === "review" ? "Needs review" : "Result not entered"}` : "Not completed", g("bg.sterResult") === "review")}
       </table></div>
       <div><h2>Interview and committee</h2><table>
         ${row("Interview", g("sched.completed") ? "Completed " + d8(g("sched.completed")) + (g("sched.completedInit") ? " · " + esc(g("sched.completedInit")) : "") : iv ? "Scheduled " + esc(iv) : "Not scheduled")}

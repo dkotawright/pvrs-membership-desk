@@ -30,7 +30,8 @@ Read this first. It's the full context from the original build conversation (Oct
 - `settings/main`: signature, docsEmail, defaultLocation. `staff/{email}`: role, name.
 
 ## PVRS process decisions (from Dkota)
-- Background check is **Sterling Volunteers only** (no separate NYS registry step).
+- Background check is **Sterling Volunteers only** (no separate NYS registry step), and it is run **only after board approval** (milestone after "Board approval"; fields on the Onboard tab; not in the board packet).
+- Applications go to the board only once references and all other prerequisites are complete. References: names + received status are shown to the applicant; reference contact is email (no phone numbers collected).
 - Driver's license check is a required step (never store the license number).
 - Probation starts after board approval, is **reviewed every 3 months**, and ends when the board approves full membership.
 - Board: committee approval → board vote (motion/second/for/against/abstain, Approved/Tabled/Denied); "Board queue" filter + copy agenda.
