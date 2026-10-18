@@ -57,7 +57,7 @@ export function portalHTML({ pd, files = [], slots = [], preview = false, pick =
       <p class="info" style="margin:0">PDF or photo, up to 15 MB each. Trouble uploading? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></section>
 
     <section class="card glass"><h2>What to expect</h2><div class="info">
-      <ul><li>After your interview, your application goes to the board. You'll hear back within about a week of the board meeting.</li>
+      <ul><li>Your application goes to the next board meeting once your references and all other prerequisites (interview, background check and driving record) are complete. You'll hear back within about a week of that meeting.</li>
       <li>If accepted, you start on probation. It's reviewed every 3 months and ends when the board approves full membership.</li>
       <li>Members complete orientation (including required medical documentation and online education), self-schedule at least 4 duty crew shifts a month, and attend the monthly membership meeting on the 2nd Tuesday unless excused in advance.</li>
       <li>Monthly training is offered and all members are encouraged to take part.</li></ul>
