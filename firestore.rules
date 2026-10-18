@@ -17,6 +17,8 @@ service cloud.firestore {
     function isAdmin()   { return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'admin'); }
     function portalOf(id)      { return get(/databases/$(database)/documents/portal/$(id)); }
     function ownsPortal(id)    { return verified() && exists(/databases/$(database)/documents/portal/$(id)) && portalOf(id).data.email == myEmail(); }
+    // Invited applicants: the owner's desk keeps portalEmails/{email} in sync with the portal docs.
+    function isInvitedApplicant() { return verified() && exists(/databases/$(database)/documents/portalEmails/$(myEmail())); }
     function onlyChanged(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
     function nowMs()     { return request.time.toMillis(); }
     function DAY()       { return 86400000; }
@@ -45,6 +47,12 @@ service cloud.firestore {
         && request.resource.data.get('note', '') is string && request.resource.data.get('note', '').size() <= 300;
       allow update: if isOwner();
       allow delete: if isOwner() || (verified() && email == myEmail() && resource.data.status != 'denied');
+    }
+
+    // Which email addresses have an applicant portal (lets the rules recognise invited applicants).
+    match /portalEmails/{email} {
+      allow read: if isOwner() || (verified() && email == myEmail());
+      allow write: if isOwner();
     }
 
     // Team roster. Everyone can read their own entry (so the app knows their role).
@@ -152,7 +160,7 @@ service cloud.firestore {
 
     // Interview times you post. Applicants can only claim or release a slot for themselves, 24h+ ahead.
     match /slots/{slotId} {
-      allow read: if verified();
+      allow read: if isStaff() || isInvitedApplicant();
       allow create, delete: if isOwner();
       allow update: if isOwner() || (
         verified() && onlyChanged(['bookedBy']) && resource.data.start > nowMs() + DAY()

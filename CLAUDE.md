@@ -28,6 +28,7 @@ Read this first. It's the full context from the original build conversation (Oct
 - `portal/{id}`: what the applicant sees (email lowercase, name, firstName, type, steps[], docs[], bookingOpen, interview{slotId,start,duration,location}). Written by admin clients (`syncPortal`); applicant may only change `interview`.
 - `applicants/{id}/records/{recordId}` + Storage `records/{id}/…`: staff-only records the owner uploads (PDF/image ≤25 MB, labelled). Admins (e.g. the squad administrator) can open/print; members and applicants cannot see them.
 - `portal/{id}/files/{fileId}` + Storage `uploads/{id}/…`: applicant uploads (PDF/image ≤15 MB).
+- `portalEmails/{email}` → {id}: kept in sync with `portal` docs by the owner's desk; lets rules recognise invited applicants. `slots` are readable only by staff and invited applicants.
 - `slots/{id}`: interview times {start ms, duration, location, bookedBy}. Applicants book/cancel ≥24 h ahead only if `bookingOpen`.
 - `settings/main`: signature, docsEmail, defaultLocation. `staff/{email}`: role, name.
 
@@ -55,6 +56,7 @@ Read this first. It's the full context from the original build conversation (Oct
 - [x] Firestore backups: daily (14-day retention, created Oct 18) + weekly Sunday (98-day retention, pre-existing).
 - [x] **Oct 18 feature batch + liquid-glass look: deployed Oct 18**: change history (applicants/{id}/history, append-only, admin-read), auto sign-out (settings.idleMinutes, default 30, shared across tabs), .ics calendar files (staff + applicant portal; interview.bookedAt), printable board packet, admin activity feed (collectionGroup files), Add to Dock manifest/icons, no-cache HTML.
 - [x] Oct 18 (later): password sign-in, owner-only editing (rules deployed), page sign-offs, references tab, tuck-away list, compact tab bar: all deployed. Dkota still needs to set his password via the key button.
+- [x] Oct 18 (evening): access requests, staff records, messaging, hidden declines, sign-in redesign, interview-times lockdown: deployed. After deploy the owner must open the desk once so portalEmails backfills for already-invited applicants.
 - [ ] Email alerts for uploads/bookings: needs a Cloud Function + an SMTP sender (decision pending with Dkota).
 - Testing: rules are tested in the emulator with @firebase/rules-unit-testing (needs a JDK; none is installed system-wide, so use a portable one). UI is tested with Playwright against an in-memory Firebase mock.
 - [ ] Optional: GitHub repo `pvrs-membership-desk` (private) + GitHub Actions auto-deploy with a service-account key, so Claude can update the app on demand.

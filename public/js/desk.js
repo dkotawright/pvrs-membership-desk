@@ -624,7 +624,7 @@ async function syncPortal(id, force = false){
   if (!force && (!get(a,"portal.invited") || !a.email)) return;
   const next = portalPayload(a), cur = S.portal.get(id);
   if (!force && cur && portalKey(cur) === portalKey(next)) return;
-  try { await setDoc(doc(db, "portal", id), { ...next, updatedAt: Date.now() }, { merge: true }); }
+  try { await setDoc(doc(db, "portal", id), { ...next, updatedAt: Date.now() }, { merge: true }); if (next.email) await setDoc(doc(db, "portalEmails", next.email), { id, at: Date.now() }); }
   catch (e) { console.error(e); }
 }
 // Others can complete interviews but can't write the stage, so the owner's desk keeps the shared stage current.
@@ -632,6 +632,14 @@ let mirrorT;
 function mirrorStages(){ clearTimeout(mirrorT); mirrorT = setTimeout(() => {
   for (const [id, a] of S.apps) { const st = progress(a).stage, sh = S.shared.get(id); if (sh && sh.stage !== st) { sh.stage = st; queue("pub", id, { stage: st }); } }
 }, 2000); }
+// Owner only: keep portalEmails/{email} matching the portal docs, so the rules can tell invited applicants
+// (who may see interview times) from anyone else who signs in.
+let peKnown = null, peT;
+function reconcilePortalEmails(){ if (!S.canEdit || !peKnown) return; clearTimeout(peT); peT = setTimeout(async () => {
+  const want = new Map(); for (const [id, pd] of S.portal) if (pd && pd.email) want.set(lower(pd.email), id);
+  for (const [email, id] of want) if (peKnown.get(email) !== id) await setDoc(doc(db, "portalEmails", email), { id, at: Date.now() }).catch(e => console.error(e));
+  for (const email of peKnown.keys()) if (!want.has(email)) await deleteDoc(doc(db, "portalEmails", email)).catch(e => console.error(e));
+}, 1200); }
 let syncAllT;
 const syncAllPortals = () => { clearTimeout(syncAllT); syncAllT = setTimeout(() => { for (const id of S.apps.keys()) schedulePortal(id, 50); }, 2500); };
 
@@ -1084,6 +1092,7 @@ async function deleteApplicant(id){
     if (a && a._booked) await releaseFor(id).catch(() => {});
     const files = await getDocs(collection(db, "portal", id, "files")).catch(() => null);
     if (files) for (const f of files.docs) { await deleteObject(ref(storage, f.data().path)).catch(() => {}); await deleteDoc(f.ref).catch(() => {}); }
+    const pe = S.portal.get(id)?.email; if (pe) await deleteDoc(doc(db, "portalEmails", pe)).catch(() => {});
     await deleteDoc(doc(db, "portal", id)).catch(() => {});
     delete logBuf[id]; clearTimeout(logTimers[id]);
     const ms = await getDocs(collection(db, "portal", id, "messages")).catch(() => null);
@@ -1498,11 +1507,13 @@ export function startDesk({ email, role, owner, name }){
       snap.docs.forEach(d => { if (d.id !== "main") return; const id = d.ref.parent.parent.id; const data = d.data(); merge(data, clone(inflight["sec|"+id] || {})); merge(data, clone(pending["sec|"+id] || {})); next.set(id, data); });
       S.secure = next; rebuildAll(); renderList(); if (S.sel) syncDetail(); if (S.canEdit) { syncAllPortals(); mirrorStages(); }
     }, e => console.error(e));
+    if (S.canEdit) onSnapshot(collection(db, "portalEmails"), snap => { peKnown = new Map(snap.docs.map(d => [d.id, d.data().id])); reconcilePortalEmails(); }, e => console.error(e));
     onSnapshot(collection(db, "portal"), snap => {
       const before = S.portal; S.portal = new Map(snap.docs.map(d => [d.id, d.data()]));
       if (before.size) for (const [id, pd] of S.portal) { const iv = pd.interview, old = before.get(id)?.interview;
         if (iv && iv.bookedAt && iv.bookedAt !== old?.bookedAt && Date.now() - iv.bookedAt < 6e4 && S.apps.get(id) && S._selfBooked !== id) toast(`${S.apps.get(id).name} booked ${slotLong(iv.start)}`); }
       if (!S.sel) renderOverview();
+      reconcilePortalEmails();
     }, () => {});
     watchActivity();
     watchMessages();
