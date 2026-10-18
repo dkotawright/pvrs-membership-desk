@@ -1,4 +1,4 @@
-import { auth, db, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, sendSignInLinkToEmail,
+import { auth, db, onAuthStateChanged, setDoc, deleteDoc, onSnapshot, signOut, GoogleAuthProvider, signInWithPopup, sendSignInLinkToEmail,
   isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, sendPasswordResetEmail, doc, getDoc, getDocs, collection, query, where, limit } from "./fb.js";
 import { $, lower, toast } from "./shared.js";
 import { OWNER_EMAIL, CONTACT_EMAIL } from "./config.js";
@@ -73,6 +73,43 @@ $("#pwForgot").addEventListener("click", async () => {
   try { await sendPasswordResetEmail(auth, email); } catch {}
   toast(`If ${email} has a password, a reset link is on its way.`);
 });
+// Not on the team, not an applicant: offer to request team access (the owner approves in Settings → Team).
+let wantsAccess = false;
+$("#reqAccessBtn").addEventListener("click", () => { wantsAccess = true; $("#googleBtn").click(); });
+function showNoAccess(user, email, req){
+  const T = $("#noaccessTitle"), M = $("#noaccessMsg"), B = $("#accessBox");
+  B.innerHTML = "";
+  if (req && req.status === "pending") {
+    T.textContent = "Access requested";
+    M.textContent = `Thanks${req.name ? ", " + req.name.split(" ")[0] : ""}. Dkota will review your request for ${email}. This page opens the desk automatically once you're approved.`;
+    B.innerHTML = `<button class="copy" type="button" id="reqWithdraw">Withdraw request</button>`;
+    $("#reqWithdraw").onclick = async () => { try { await deleteDoc(doc(db, "accessRequests", email)); showNoAccess(user, email, null); } catch { toast("Couldn't withdraw. Try again."); } };
+    onSnapshot(doc(db, "staff", email), s => { if (s.exists()) location.reload(); }, () => {});
+  } else if (req && req.status === "denied") {
+    T.textContent = "Access not approved";
+    M.textContent = `Your request for ${email} wasn't approved. If you think that's a mistake, contact ${CONTACT_EMAIL}.`;
+  } else {
+    T.textContent = wantsAccess ? "Request team access" : "No application or team access found";
+    M.textContent = wantsAccess ? `Dkota approves every request. You're signed in as ${email}.`
+      : `Applicants: sign in with the email address on your application, or contact ${CONTACT_EMAIL}. PVRS team members: request access below.`;
+    B.innerHTML = `<form id="reqForm" class="field" novalidate>
+        <label for="reqName">Your name</label><input id="reqName" type="text" maxlength="100" autocomplete="name" required>
+        <label for="reqNote">Your role at PVRS <span style="font-weight:400;color:var(--fg3)">(optional)</span></label><input id="reqNote" type="text" maxlength="300" placeholder="e.g. Membership committee">
+        <button class="btn primary block" type="submit">Request team access</button></form>`;
+    $("#reqName").value = user.displayName || "";
+    $("#reqForm").onsubmit = async e => {
+      e.preventDefault();
+      const name = $("#reqName").value.trim(); if (!name) { $("#reqName").focus(); return toast("Enter your name."); }
+      const data = { email, name: name.slice(0, 100), note: $("#reqNote").value.trim().slice(0, 300), requestedAt: Date.now(), status: "pending" };
+      try {
+        if (req) await deleteDoc(doc(db, "accessRequests", email)).catch(() => {});   // an old approved request from before they were removed
+        await setDoc(doc(db, "accessRequests", email), data);
+        showNoAccess(user, email, data); toast("Request sent to Dkota.");
+      } catch (err) { console.error(err); toast("Couldn't send the request. Try again."); }
+    };
+  }
+  show("noaccess");
+}
 $("#googleBtn").addEventListener("click", async () => {
   try { await signInWithPopup(auth, new GoogleAuthProvider()); }
   catch (e) { if (e && e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") toast("Google sign-in didn't finish. Try again."); }
@@ -96,8 +133,8 @@ onAuthStateChanged(auth, async user => {
     if (staff.exists()) { show("app"); return startDesk({ email, role: staff.data().role === "admin" ? "admin" : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
     const p = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1)));
     if (!p.empty) { show("portal"); return startPortal(p.docs[0].id, email); }
-    $("#noaccessMsg").textContent = `We couldn't find an application for ${email}. Sign in with the email address you applied with, or contact ${CONTACT_EMAIL}.`;
-    show("noaccess");
+    const req = await getDoc(doc(db, "accessRequests", email));
+    showNoAccess(user, email, req.exists() ? req.data() : null);
   } catch (err) {
     console.error(err);
     $("#noaccessMsg").textContent = `Something went wrong loading your account. Try again, or contact ${CONTACT_EMAIL}.`;

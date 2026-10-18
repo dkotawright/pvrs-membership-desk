@@ -32,6 +32,21 @@ service cloud.firestore {
         && request.resource.data.updatedBy == myEmail();
     }
 
+    // Requests to join the team. Anyone signed in with a verified email may file one request for their own address;
+    // only the owner can read them all and approve or deny. The requester can see and withdraw their own.
+    match /accessRequests/{email} {
+      allow read: if isOwner() || (verified() && email == myEmail());
+      allow create: if verified() && email == myEmail()
+        && request.resource.data.keys().hasOnly(['email', 'name', 'note', 'requestedAt', 'status'])
+        && request.resource.data.email == myEmail()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.requestedAt is int
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 100
+        && request.resource.data.get('note', '') is string && request.resource.data.get('note', '').size() <= 300;
+      allow update: if isOwner();
+      allow delete: if isOwner() || (verified() && email == myEmail() && resource.data.status != 'denied');
+    }
+
     // Team roster. Everyone can read their own entry (so the app knows their role).
     match /staff/{email} {
       allow read: if isAdmin() || (verified() && email == myEmail());

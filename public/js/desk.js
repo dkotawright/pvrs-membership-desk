@@ -162,7 +162,7 @@ function tabHTML(tab){
 }
 
 /* ---------- state ---------- */
-const S = { shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[], hist:[], feedFiles:[],
+const S = { requests:[], shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[], hist:[], feedFiles:[],
   sel:null, tab:"app", filter:"all", q:"", admin:false, owner:false, me:"", settings:{}, ready:false };
 const pending = {}, inflight = {}, timers = {};
 let filesUnsub = null;
@@ -312,6 +312,7 @@ function renderOverview(){
     <div class="ovgrid cols">
       <section class="ovcard"><h3>Upcoming interviews${S.canEdit?`<button class="btn small" type="button" data-cmd="slots">Interview times</button>`:""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>
       <section class="ovcard"><h3>Waiting longest<small>in process</small></h3><div class="olist">${waiting || `<div class="oempty">Nobody in process.</div>`}</div></section>
+      ${S.owner && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="settings">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}
       ${activityCard()}
       ${S.admin ? `<section class="ovcard"><h3>Probation reviews<small>every 3 months</small></h3><div class="olist">${revList || `<div class="oempty">Nobody on probation.</div>`}</div></section>` : ""}
     </div>
@@ -806,6 +807,24 @@ function openPreview(id){
 
 /* ---------- settings (owner only; the button is hidden for everyone else and the rules block their writes) ---------- */
 function gateSettings(){ if (S.owner) openSettings(); }
+function requestsHTML(){
+  if (!S.requests.length) return "";
+  return `<div class="note warn"><b>${S.requests.length} access request${S.requests.length===1?"":"s"}</b> waiting for you</div>` + S.requests.map(q => `<div class="row reqrow" style="flex-wrap:wrap">
+    <span class="lbl">${esc(q.name || q.email)}<small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""} · requested ${esc(ago(q.requestedAt))}</small></span>
+    <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small primary" type="button" data-approve="${esc(q.email)}" data-v="member">Approve as member</button>
+      <button class="btn small" type="button" data-approve="${esc(q.email)}" data-v="admin">Approve as admin</button>
+      <button class="btn small danger" type="button" data-deny="${esc(q.email)}">Deny</button></span></div>`).join("");
+}
+async function decideRequest(email, role){
+  const q = S.requests.find(x => x.email === email); if (!q) return;
+  try {
+    const b = writeBatch(db);
+    if (role) b.set(doc(db, "staff", email), { role, name: q.name || "", addedAt: Date.now(), addedBy: S.me, via: "request" });
+    b.update(doc(db, "accessRequests", email), { status: role ? "approved" : "denied", decidedAt: Date.now(), decidedBy: S.me });
+    await b.commit();
+    toast(role ? `${q.name || email} approved as ${role}. They can sign in now.` : `Request from ${q.name || email} denied.`);
+  } catch (e) { console.error(e); toast("Couldn't save that. Try again."); }
+}
 function teamHTML(){
   const rows = [...S.staff.entries()].sort((x,y) => x[0].localeCompare(y[0])).map(([email, s]) => `<div class="row"><span class="lbl">${esc(s.name || email)}<small>${esc(email)}</small></span>
     <div class="seg" role="group" aria-label="Role">${[["member","Member"],["admin","Admin"]].map(([v,l]) => `<button type="button" class="${s.role===v?"on":""}" data-role="${esc(email)}" data-v="${v}">${l}</button>`).join("")}</div>
@@ -818,7 +837,7 @@ function teamHTML(){
 function openSettings(){
   const s = S.settings;
   const M = openModal(`<h3>Settings</h3>
-    <div class="group"><h3><span>Team</span></h3><div class="ios" id="teamList">${teamHTML()}</div>
+    <div class="group"><h3><span>Team</span></h3><div class="ios" id="reqList">${requestsHTML()}</div><div class="ios" id="teamList">${teamHTML()}</div>
       <p class="help" style="margin:4px 4px 0"><b>Members</b> can view the Application and Interview tabs. <b>Admins</b> can view every tab except Settings. Both can only fill in and complete the interview questionnaire; everything else is yours to change. They sign in on the PVRS staff tab with this address.</p></div>
     <div class="group"><h3><span>Emails</span></h3><div class="ios">
       <label class="row stack"><span class="lbl">Email signature<small>Printed at the end of every email</small></span><textarea id="sSig" rows="4" placeholder="Name, credentials">${esc(s.signature||"")}</textarea></label>
@@ -846,6 +865,8 @@ function openSettings(){
       if (email === lower(OWNER_EMAIL)) return toast("That's the owner account.");
       try { await setDoc(doc(db, "staff", email), { role: "member", name, addedAt: Date.now(), addedBy: S.me }); toast(`Added ${email} as a member`); } catch { toast("Couldn't add that member."); }
     }
+    const ap = e.target.closest("[data-approve]"); if (ap) { ap.disabled = true; return decideRequest(ap.dataset.approve, ap.dataset.v); }
+    const dn = e.target.closest("[data-deny]"); if (dn) { if (dn.dataset.confirm !== "1") { dn.dataset.confirm = "1"; dn.textContent = "Confirm deny"; return; } dn.disabled = true; return decideRequest(dn.dataset.deny, null); }
     const rb = e.target.closest("[data-role]"); if (rb) { try { await setDoc(doc(db, "staff", rb.dataset.role), { role: rb.dataset.v }, { merge: true }); } catch { toast("Couldn't change the role."); } }
     const rm = e.target.closest("[data-rmstaff]"); if (rm) {
       if (rm.dataset.confirm !== "1") { rm.dataset.confirm = "1"; rm.textContent = "Confirm remove"; return; }
@@ -856,7 +877,8 @@ function openSettings(){
       try { await setDoc(doc(db, "settings", "main"), next, { merge: true }); closeModal(); toast("Settings saved"); } catch { toast("Couldn't save settings."); }
     }
   };
-  S._teamPaint = () => { const el = $("#teamList"); if (el) el.innerHTML = teamHTML(); };
+  S._teamPaint = () => { const el = $("#teamList"); if (el) el.innerHTML = teamHTML(); const rq = $("#reqList"); if (rq) { rq.innerHTML = requestsHTML(); rq.hidden = !S.requests.length; } };
+  $("#reqList").hidden = !S.requests.length;
   M._cleanup = () => { S._teamPaint = null; };
 }
 
@@ -1045,7 +1067,7 @@ function bindEvents(){
     if (tab) { switchTab(tab.dataset.tab); return; }
     const op = t.closest("[data-open]"); if (op) return select(op.dataset.open);
     const fl0 = t.closest("[data-filter]"); if (fl0) return setFilter(fl0.dataset.filter, true);
-    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "slots") openSlots(); return; }
+    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); return; }
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
     if (!S.canEdit && t.closest(OWNER_ONLY)) return ownerOnlyToast();
@@ -1334,6 +1356,21 @@ export function startDesk({ email, role, owner, name }){
       if (!S.sel) renderOverview();
     }, () => {});
     watchActivity();
+    if (S.owner) {
+      let primed = false;
+      onSnapshot(collection(db, "accessRequests"), snap => {
+        const before = new Set(S.requests.map(q => q.email));
+        S.requests = snap.docs.map(d => d.data()).filter(q => q.status === "pending").sort((x,y) => (x.requestedAt||0) - (y.requestedAt||0));
+        const fresh = S.requests.filter(q => !before.has(q.email));
+        if (primed && fresh.length) toast(`${fresh[0].name || fresh[0].email} asked for team access. Review it in Settings.`);
+        primed = true;
+        const n = S.requests.length, sb = $("#settingsBtn");
+        let badge = sb.querySelector(".navbadge"); if (!badge) { badge = document.createElement("b"); badge.className = "navbadge"; sb.appendChild(badge); }
+        badge.textContent = n || ""; badge.hidden = !n; sb.title = n ? `Settings · ${n} access request${n===1?"":"s"}` : "Settings";
+        if (S._teamPaint && !$("#modal").hidden) S._teamPaint();
+        if (!S.sel) renderOverview();
+      }, e => console.error(e));
+    }
     onSnapshot(doc(db, "settings", "main"), s => { S.settings = s.exists() ? s.data() : {}; }, () => {});
     onSnapshot(collection(db, "staff"), snap => { S.staff = new Map(snap.docs.map(d => [d.id, d.data()])); if (S._teamPaint && !$("#modal").hidden) S._teamPaint(); if (S.sel) syncDetail(); }, () => {});
   }

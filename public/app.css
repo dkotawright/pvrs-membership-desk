@@ -717,3 +717,12 @@ body{background:
   .app.open:not(.pinned) .detail{grid-column:1}
 }
 @media (prefers-reduced-motion:reduce){ .app.open .roster,.app.open .rhandle,.app.open .roster .top,.app.open .roster .list{transition:none!important} }
+
+/* team access requests */
+.navbadge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--red-fill);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
+.navbadge[hidden]{display:none}
+@media (max-width:1180px){ .nav-i{position:relative} .navbadge{position:absolute;top:2px;right:2px;min-width:16px;height:16px;font-size:10px} }
+#reqList{margin-bottom:10px}
+#reqList[hidden]{display:none}
+.reqacc{font-size:12.5px;text-align:center;margin:0}
+#accessBox:empty{display:none}
