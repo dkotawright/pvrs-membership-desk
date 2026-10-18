@@ -1,12 +1,18 @@
 // Applicant portal: status, document uploads, interview booking.
-import { db, storage, doc, collection, onSnapshot, writeBatch, addDoc, ref, uploadBytes } from "./fb.js";
+import { db, storage, doc, collection, onSnapshot, writeBatch, addDoc, updateDoc, ref, uploadBytes } from "./fb.js";
 import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download } from "./shared.js";
 import { CONTACT_EMAIL } from "./config.js";
 
 const DAY = 864e5, MAX = 15 * 1024 * 1024;
 const okType = f => /^image\//.test(f.type) || f.type === "application/pdf";
 
-export function portalHTML({ pd, files = [], slots = [], preview = false, pick = null, busy = false }){
+const msgTime = ms => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+export function threadHTML(msgs, mine){
+  if (!msgs.length) return `<p class="info thread-empty">No messages yet.</p>`;
+  return msgs.map(m => `<div class="msg ${m.from === mine ? "me" : "them"}"><div class="bub">${esc(m.text)}</div>
+    <small>${m.from === "staff" ? (mine === "staff" ? esc(m.name || "PVRS") : "PVRS Membership") : (mine === "applicant" ? "You" : esc(m.name || "Applicant"))} · ${esc(msgTime(m.at))}${mine === "staff" && m.from === "staff" && m.seenAt ? " · Seen" : ""}</small></div>`).join("");
+}
+export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false }){
   const now = Date.now();
   const docs = pd.docs || [];
   const byKey = k => files.filter(f => f.docKey === k);
@@ -46,6 +52,12 @@ export function portalHTML({ pd, files = [], slots = [], preview = false, pick =
 
     <section class="card glass"><h2>Your application</h2>${timelineHTML(pd.steps || [])}</section>
 
+    <section class="card glass" id="msgCard"><div class="ptop"><h2>Messages</h2>${msgs.some(m => m.from === "staff" && !m.seenAt) ? `<span class="badge wait">New reply</span>` : ""}</div>
+      <p class="info" style="margin:0">Questions about your application? Send them here. We'll reply in this space, usually within a few days.</p>
+      <div class="thread" id="thread">${threadHTML(msgs, "applicant")}</div>
+      <div class="composer"><textarea id="msgText" rows="2" maxlength="2000" placeholder="Type your question…" aria-label="Your message" ${dis}></textarea>
+        <button class="btn primary" type="button" data-send ${dis}>Send</button></div></section>
+
     <section class="card glass" id="ivCard"><h2>Interview</h2>${ivBody}</section>
 
     <section class="card glass" id="refCard"><h2>References</h2>${refsBody(pd.refs || [])}</section>
@@ -79,16 +91,38 @@ function slotPicker(days, pick, dis, busy){
 }
 
 export function startPortal(id, email){
-  const P = { pd: null, files: [], slots: [], pick: null, busy: false, changing: false };
+  const P = { pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false };
+  const seen = new Set();
   const root = $("#portal");
   const render = () => {
     if (!P.pd) { root.innerHTML = `<div class="wrap"><div class="empty"><h3>Loading your application…</h3></div></div>`; return; }
     const pd = P.changing ? { ...P.pd, interview: null } : P.pd;
-    root.innerHTML = portalHTML({ pd, files: P.files, slots: P.slots, pick: P.pick, busy: P.busy });
+    // Snapshots re-render the page; keep a half-typed message, its caret and the page scroll intact.
+    const ta = $("#msgText"), focused = !!ta && document.activeElement === ta, caret = ta ? ta.selectionStart : 0, scroll = root.scrollTop;
+    if (ta) P.draft = ta.value;
+    root.innerHTML = portalHTML({ pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy });
+    const t2 = $("#msgText"); if (t2) { t2.value = P.draft; if (focused) { t2.focus({ preventScroll: true }); t2.setSelectionRange(caret, caret); } }
+    const th = $("#thread"); if (th) th.scrollTop = th.scrollHeight;
+    root.scrollTop = scroll;
+    // Mark the squad's replies as seen once they've been shown.
+    for (const m of P.msgs) if (m.from === "staff" && !m.seenAt && !seen.has(m.id)) { seen.add(m.id); updateDoc(doc(db, "portal", id, "messages", m.id), { seenAt: Date.now() }).catch(() => seen.delete(m.id)); }
     if (P.changing) $("#ivCard").insertAdjacentHTML("beforeend", `<div><button class="btn small" type="button" data-keep>Keep my current time</button></div>`);
   };
   render();
   onSnapshot(doc(db, "portal", id), s => { P.pd = s.exists() ? s.data() : { steps: [] }; render(); }, () => toast("Couldn't load your application. Reload the page."));
+  onSnapshot(collection(db, "portal", id, "messages"), s => { P.msgs = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x,y) => (x.at||0) - (y.at||0)); render(); }, () => {});
+  const send = async () => {
+    const ta = $("#msgText"); const text = (ta ? ta.value : "").trim();
+    if (!text || P.sending) return;
+    if (text.length > 2000) return toast("Messages can be up to 2,000 characters.");
+    P.sending = true;
+    try { await addDoc(collection(db, "portal", id, "messages"), { text, from: "applicant", by: email, name: (P.pd && P.pd.name) || "", at: Date.now() });
+      P.draft = ""; const t = $("#msgText"); if (t) t.value = ""; toast("Message sent. We'll reply here."); }
+    catch (err) { console.error(err); toast(`Couldn't send. Try again, or email ${CONTACT_EMAIL}.`); }
+    finally { P.sending = false; }
+  };
+  root.addEventListener("input", e => { if (e.target.id === "msgText") P.draft = e.target.value; });
+  root.addEventListener("keydown", e => { if (e.target.id === "msgText" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } });
   onSnapshot(collection(db, "portal", id, "files"), s => { P.files = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
   onSnapshot(collection(db, "slots"), s => { P.slots = s.docs.map(d => ({ id: d.id, ...d.data() })); if (P.pick && !P.slots.some(x => x.id === P.pick && !x.bookedBy)) P.pick = null; render(); }, () => {});
 
@@ -112,6 +146,7 @@ export function startPortal(id, email){
 
   root.addEventListener("click", async e => {
     const t = e.target;
+    if (t.closest("[data-send]")) return send();
     if (t.closest("[data-ics]")) {
       const iv = P.pd.interview; if (!iv) return;
       download("PVRS-interview.ics", icsFile([{ uid: "iv-" + iv.slotId, start: iv.start, duration: iv.duration || 30, title: "PVRS membership interview",

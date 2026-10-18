@@ -93,6 +93,10 @@ service cloud.firestore {
     match /{path=**}/private/{doc} {
       allow read: if isAdmin();
     }
+    // Lets admins load every conversation in one query (the Messages inbox)
+    match /{path=**}/messages/{messageId} {
+      allow read: if isAdmin();
+    }
     // Lets admins see every applicant upload in one query (the Overview activity feed)
     match /{path=**}/files/{fileId} {
       allow read: if isAdmin();
@@ -117,6 +121,22 @@ service cloud.firestore {
             && getAfter(/databases/$(database)/documents/slots/$(resource.data.interview.slotId)).data.bookedBy == null)
         )
       );
+
+      // Messages between the applicant and the squad. The applicant writes as themselves; only the owner replies.
+      // Admins can read every conversation; members can't. Applicants may only mark the squad's replies as seen.
+      match /messages/{messageId} {
+        allow read: if isAdmin() || ownsPortal(id);
+        allow create: if request.resource.data.keys().hasOnly(['text', 'from', 'by', 'name', 'at'])
+          && request.resource.data.by == myEmail()
+          && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
+          && request.resource.data.get('name', '') is string && request.resource.data.get('name', '').size() <= 100
+          && request.resource.data.at is int && request.resource.data.at > nowMs() - 300000 && request.resource.data.at < nowMs() + 300000
+          && ((request.resource.data.from == 'applicant' && ownsPortal(id))
+              || (request.resource.data.from == 'staff' && isOwner()));
+        allow update: if isOwner()
+          || (ownsPortal(id) && resource.data.from == 'staff' && onlyChanged(['seenAt']) && request.resource.data.seenAt is int);
+        allow delete: if isOwner();
+      }
 
       // Files the applicant uploaded
       match /files/{fileId} {

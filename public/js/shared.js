@@ -123,6 +123,7 @@ export function progress(a){
   else stage = cur <= 4 ? "screen" : cur <= 6 ? "int" : cur <= 8 ? "appr" : "onb";
   return { done, n, cur, stage, next: cur === -1 ? null : MILESTONES[cur][0] };
 }
+export const isDeclined = a => a.status === "declined" || get(a,"appr.committee") === "no" || get(a,"board.result") === "denied";
 export const inBoardQueue = a => get(a,"appr.committee") === "yes" && !["approved","denied"].includes(get(a,"board.result")) && !["declined","withdrawn"].includes(a.status);
 export function nextReview(a){
   const s = get(a,"notify.probStart"); if (!s || get(a,"notify.probEnd")) return null;
@@ -156,6 +157,9 @@ export function applicantSteps(a){
       detail: "Orientation, duty crew scheduling and your PVRS email account." },
   ];
   const cur = steps.findIndex(s => !s.done);
+  // A declined application is never announced in the portal (the administrator sends a letter): the current step
+  // just reads as under review, and nothing else changes.
+  if (isDeclined(a) && cur >= 0) steps[cur].detail = "Your application is with the membership committee. You'll receive a letter from the squad with next steps.";
   return steps.map((s,i) => ({ label:s.label, detail:s.detail, state: s.done ? "done" : i === cur ? "now" : "todo" }));
 }
 const CHECK = `<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.3l2.6 2.6L10 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;

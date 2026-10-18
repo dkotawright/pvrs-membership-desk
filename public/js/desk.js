@@ -1,11 +1,11 @@
 // Staff Desk: roster, applicant file, board, onboarding, interview times, settings.
-import { auth, db, storage, doc, collection, collectionGroup, setDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch,
+import { auth, db, storage, doc, collection, collectionGroup, setDoc, updateDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch,
   sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut, uploadBytes,
   GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
-  progress, inBoardQueue, nextReview, onProbation, applicantSteps, checkSVG, icsFile, refList } from "./shared.js";
-import { portalHTML } from "./portal.js";
+  progress, inBoardQueue, nextReview, onProbation, applicantSteps, checkSVG, icsFile, refList, isDeclined } from "./shared.js";
+import { portalHTML, threadHTML } from "./portal.js";
 import { OWNER_EMAIL, CONTACT_EMAIL } from "./config.js";
 
 /* ---------- form builders ---------- */
@@ -41,8 +41,8 @@ const SHOW = {
   residentOther: a => get(a,"iv.resident") === "other",
 };
 
-const TABS_ADMIN = [["app","Application"],["screen","Screening"],["refs","References"],["iv","Interview"],["board","Board"],["onb","Onboard"],["notes","Notes"]];
-const TAB_SHORT = { app:"App", screen:"Screen", refs:"Refs", iv:"Interview", board:"Board", onb:"Onboard", notes:"Notes" };
+const TABS_ADMIN = [["app","Application"],["screen","Screening"],["refs","References"],["iv","Interview"],["board","Board"],["onb","Onboard"],["notes","Notes"],["msgs","Messages"]];
+const TAB_SHORT = { app:"App", screen:"Screen", refs:"Refs", iv:"Interview", board:"Board", onb:"Onboard", notes:"Notes", msgs:"Msgs" };
 const TABS_MEMBER = [["app","Application"],["iv","Interview"]];
 
 function tabHTML(tab){
@@ -135,7 +135,7 @@ function tabHTML(tab){
         <label>Against<input type="number" min="0" inputmode="numeric" id="f-board-against" data-k="board.against" placeholder="0"></label>
         <label>Abstain<input type="number" min="0" inputmode="numeric" id="f-board-abstain" data-k="board.abstain" placeholder="0"></label></div></div>`,
       F.seg("board.result","Result",[["approved","Approved","good"],["tabled","Tabled","warn"],["denied","Denied","bad"]],true),
-      F.note("Tabled keeps the applicant in the board queue for the next meeting.")])}
+      F.note("Tabled keeps the applicant in the board queue for the next meeting. A denial is never shown in the applicant's portal: it keeps reading as under review, interview booking closes, and the administrator sends the letter.")])}
     ${group("Board notes",[F.area("board.notes","Discussion or conditions","Anything the board attached to the approval")])}
     ${group("Board packet",[`<div class="row"><span class="lbl">Print this applicant's page<small>Checks, interview summary, committee decision and a blank vote record</small></span><button class="btn small" type="button" data-act="packet">Print</button></div>`])}
   </div>`;
@@ -150,10 +150,17 @@ function tabHTML(tab){
     ${group("Email account",[`<div class="row"><span class="lbl">Applicant email<small id="emailEcho">—</small></span><button class="copy" type="button" data-copy="email">Copy</button></div>`,F.date("notify.tech","Technology chair notified"),F.init("notify.techInit")])}
   </div>
   <section class="group" style="margin-top:18px"><h3><span>Full checklist</span></h3><div class="ios" id="miles"></div></section>`;
+  if (tab === "msgs") return `<div class="msgpane">
+    <div class="ios"><div class="thread staffview" id="dThread"></div></div>
+    <p class="help" id="msgNote" style="margin:8px 4px 0"></p>
+    ${S.canEdit ? `<div class="ios composer-box"><label class="row stack"><span class="lbl">Reply</span><textarea id="replyText" rows="3" maxlength="2000" placeholder="Write a reply… (⌘↩ to send)"></textarea></label>
+      <div class="row"><label class="lbl" style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="replyMail" checked style="width:auto"> Also open an email in Mail to let them know</label>
+        <button class="btn primary" type="button" data-reply>Send reply</button></div></div>` : `<div class="viewonly"><b>View only.</b> Only the owner replies to applicants.</div>`}
+  </div>`;
   if (tab === "notes") return `<div class="cols">
     ${group("Admin notes",[`<label class="row stack"><span class="lbl">Only admins see these</span><textarea id="f-notes" data-k="notes" rows="10" placeholder="Anything about this applicant that should stay off the member view"></textarea></label>`])}
     ${group("Status",[F.seg("status","Override",[["open","In process"],["hold","On hold","warn"],["declined","Declined","bad"],["withdrawn","Withdrawn"]],true),
-      F.note("“In process” lets the checklist set the stage automatically.")])}
+      F.note("“In process” lets the checklist set the stage automatically. Declined is never shown to the applicant; their portal reads as under review until the administrator's letter arrives.")])}
     <section class="group"><h3><span>Change history</span><small id="histNote" style="font-weight:500;color:var(--fg3)">Every edit, by whom and when</small></h3><div class="ios hist" id="histList"></div></section>
     <section class="group"><h3><span>Remove</span></h3><div class="ios"><div class="row"><span class="lbl">Delete this applicant, their portal and uploads</span><button class="btn small danger" type="button" id="delBtn">Delete</button></div>
       <div class="row" id="delConfirm" hidden><span class="lbl">This can't be undone.</span><button class="btn small" type="button" id="delCancel">Cancel</button><button class="btn small danger" type="button" id="delYes">Delete permanently</button></div></div></section>
@@ -162,7 +169,7 @@ function tabHTML(tab){
 }
 
 /* ---------- state ---------- */
-const S = { records:[], requests:[], shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[], hist:[], feedFiles:[],
+const S = { msgs:[], records:[], requests:[], shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[], hist:[], feedFiles:[],
   sel:null, tab:"app", filter:"all", q:"", admin:false, owner:false, me:"", settings:{}, ready:false };
 const pending = {}, inflight = {}, timers = {};
 let filesUnsub = null;
@@ -313,6 +320,8 @@ function renderOverview(){
       <section class="ovcard"><h3>Upcoming interviews${S.canEdit?`<button class="btn small" type="button" data-cmd="slots">Interview times</button>`:""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>
       <section class="ovcard"><h3>Waiting longest<small>in process</small></h3><div class="olist">${waiting || `<div class="oempty">Nobody in process.</div>`}</div></section>
       ${S.owner && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="settings">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}
+      ${S.admin && unreadTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open inbox</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => m.from === "applicant" && !m.readAt && S.apps.has(m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
+        return `<button class="oitem" type="button" data-openmsg="${esc(id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name)}</b><small>${esc(last.text.slice(0, 80))}</small></span><span class="when"><span class="newdot"></span>${esc(ago(last.at))}</span></button>`; }).join("")}</div></section>` : ""}
       ${activityCard()}
       ${S.admin ? `<section class="ovcard"><h3>Probation reviews<small>every 3 months</small></h3><div class="olist">${revList || `<div class="oempty">Nobody on probation.</div>`}</div></section>` : ""}
     </div>
@@ -431,7 +440,8 @@ function syncDetail(){
     const cal = a._booked ? `<button class="btn small" type="button" data-act="ics" title="Add to Calendar">${ICON.cal}<span class="tl">Calendar</span></button>` : "";
     $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
-  renderDocs(a); renderHistory(); syncRefs(a);
+  renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges();
+  if (S.tab === "msgs" && !$("#dThread")?.childElementCount) renderMessages();
   syncSignoff(a);
   if (!S.canEdit) document.querySelectorAll("#detail " + OWNER_ONLY).forEach(el => { el.hidden = true; });
   const pc = $("#panelCount"); if (pc) { const n = [1,2,3,4,5].filter(i => String(get(a,`iv.panel.m${i}`) || "").trim()).length; pc.textContent = n ? `${n} recorded` : ""; }
@@ -604,7 +614,7 @@ function portalPayload(a){
   return { email: lower(a.email), name: a.name || "", firstName: first(a.name), type: a.type || "",
     steps: applicantSteps(a), docs: requestedDocs(a).map(d => ({ key: d.key, label: d.label, received: d.received })),
     refs: refList(a).map(r => ({ name: r.name, received: r.received })),
-    bookingOpen: get(a,"portal.bookingOpen") === "yes" };
+    bookingOpen: get(a,"portal.bookingOpen") === "yes" && !isDeclined(a) };
 }
 const portalKey = p => JSON.stringify([p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.bookingOpen]);
 const portalTimers = {};
@@ -747,6 +757,67 @@ async function openFile(fid){
   try { const url = await getDownloadURL(ref(storage, f.path)); if (w) w.location = url; else location.href = url; }
   catch (e) { if (w) w.close(); toast("Couldn't open that file."); }
 }
+/* ---------- messages ---------- */
+const threadOf = id => S.msgs.filter(m => m.appId === id).sort((x,y) => (x.at||0) - (y.at||0));
+const unreadOf = id => S.msgs.filter(m => m.appId === id && m.from === "applicant" && !m.readAt).length;
+const unreadTotal = () => S.msgs.filter(m => m.from === "applicant" && !m.readAt && S.apps.has(m.appId)).length;
+const markedRead = new Set();
+function renderMessages(){
+  const el = $("#dThread"), a = S.apps.get(S.sel); if (!el || !a) return;
+  el.innerHTML = threadHTML(threadOf(S.sel), "staff");
+  el.scrollTop = el.scrollHeight;
+  const note = $("#msgNote");
+  if (note) note.innerHTML = !get(a, "portal.invited") ? `${esc(first(a.name))} hasn't been invited to the portal yet, so they can't see messages. Send an invite from the Application tab first.`
+    : `${esc(first(a.name))} sees these in their applicant portal. They're signed in as ${esc(a.email || "their application email")}.`;
+  if (S.canEdit && S.tab === "msgs") for (const m of threadOf(S.sel)) if (m.from === "applicant" && !m.readAt && !markedRead.has(m.key)) {
+    markedRead.add(m.key); updateDoc(doc(db, "portal", S.sel, "messages", m.id), { readAt: Date.now() }).catch(() => markedRead.delete(m.key));
+  }
+}
+async function sendReply(){
+  if (!S.canEdit) return ownerOnlyToast();
+  const a = S.apps.get(S.sel), ta = $("#replyText"); if (!a || !ta) return;
+  const text = ta.value.trim(); if (!text) return ta.focus();
+  if (text.length > 2000) return toast("Replies can be up to 2,000 characters.");
+  try {
+    await addDoc(collection(db, "portal", S.sel, "messages"), { text, from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() });
+    ta.value = ""; toast("Reply sent");
+    if ($("#replyMail")?.checked && a.email) {
+      const body = `Hi ${first(a.name)},\n\nYou have a new message about your PVRS application:\n\n"${text}"\n\nYou can read it and reply in your applicant portal:\n${location.origin}\n\nThank you,\n${sig()}`;
+      const link = document.createElement("a"); link.href = `mailto:${encodeURIComponent(a.email)}?subject=${encodeURIComponent("New message from PVRS Membership")}&body=${encodeURIComponent(body)}`; link.click();
+    }
+  } catch (e) { console.error(e); toast("Couldn't send the reply. Try again."); }
+}
+function updateMsgBadges(){
+  const n = unreadTotal(), b = $("#msgsBtn"); if (!b) return;
+  let badge = b.querySelector(".navbadge"); if (!badge) { badge = document.createElement("b"); badge.className = "navbadge"; b.appendChild(badge); }
+  badge.textContent = n || ""; badge.hidden = !n; b.title = n ? `Messages · ${n} unread` : "Messages from applicants";
+  const tb = document.querySelector('.tabdock [data-tab="msgs"]'); if (tb && S.sel) tb.classList.toggle("unread", unreadOf(S.sel) > 0);
+}
+function openInbox(){
+  const threads = [...new Set(S.msgs.map(m => m.appId))].filter(id => S.apps.has(id))
+    .map(id => { const t = threadOf(id); return { id, last: t[t.length-1], unread: unreadOf(id) }; }).sort((x,y) => (y.last.at||0) - (x.last.at||0));
+  const M = openModal(`<h3>Messages</h3><p class="help">Conversations with applicants, newest first.${S.canEdit ? "" : " View only."}</p>
+    <div class="ios">${threads.length ? threads.map(t => { const a = S.apps.get(t.id);
+      return `<button class="oitem" type="button" data-thread="${esc(t.id)}" style="width:100%"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span>
+        <span class="ot"><b>${esc(a.name || "Applicant")}${t.unread ? ` <span class="badge wait">${t.unread} new</span>` : ""}</b><small>${t.last.from === "staff" ? "You: " : ""}${esc(t.last.text.slice(0, 90))}</small></span>
+        <span class="when">${esc(ago(t.last.at))}</span></button>`; }).join("") : `<div class="oempty">No messages yet. Applicants can send questions from their portal.</div>`}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`, true);
+  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const t = e.target.closest("[data-thread]"); if (t) { closeModal(); select(t.dataset.thread); switchTab("msgs"); } };
+}
+let msgsPrimed = false;
+function watchMessages(){
+  onSnapshot(collectionGroup(db, "messages"), snap => {
+    const before = new Set(S.msgs.map(m => m.key));
+    S.msgs = snap.docs.map(d => ({ id: d.id, key: d.ref.path, appId: d.ref.parent.parent.id, ...d.data() }));
+    const fresh = S.msgs.filter(m => !before.has(m.key) && m.from === "applicant" && S.apps.has(m.appId));
+    if (msgsPrimed && fresh.length && !(S.sel === fresh[0].appId && S.tab === "msgs")) toast(`New message from ${S.apps.get(fresh[0].appId).name}`);
+    msgsPrimed = true;
+    updateMsgBadges();
+    if (S.sel && S.tab === "msgs") renderMessages();
+    if (!S.sel) renderOverview();
+  }, e => console.error(e));
+}
+
 let recUnsub = null;
 function watchRecords(id){
   if (recUnsub) { recUnsub(); recUnsub = null; }
@@ -1015,6 +1086,8 @@ async function deleteApplicant(id){
     if (files) for (const f of files.docs) { await deleteObject(ref(storage, f.data().path)).catch(() => {}); await deleteDoc(f.ref).catch(() => {}); }
     await deleteDoc(doc(db, "portal", id)).catch(() => {});
     delete logBuf[id]; clearTimeout(logTimers[id]);
+    const ms = await getDocs(collection(db, "portal", id, "messages")).catch(() => null);
+    if (ms) for (const m of ms.docs) await deleteDoc(m.ref).catch(() => {});
     const recs = await getDocs(collection(db, "applicants", id, "records")).catch(() => null);
     if (recs) for (const r0 of recs.docs) { await deleteObject(ref(storage, r0.data().path)).catch(() => {}); await deleteDoc(r0.ref).catch(() => {}); }
     const hist = await getDocs(collection(db, "applicants", id, "history")).catch(() => null);
@@ -1130,13 +1203,15 @@ function bindEvents(){
     let v = el.value; if (el.classList.contains("init")) v = v.toUpperCase(); if (el.type === "number") v = v === "" ? "" : Math.max(0, parseInt(v,10) || 0);
     edit(S.sel, el.dataset.k, v); });
   D.addEventListener("focusout", e => { if (e.target.matches("[data-k]")) flushAll(); });
+  D.addEventListener("keydown", e => { if (e.target.id === "replyText" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendReply(); } });
   D.addEventListener("click", async e => {
     const t = e.target;
     const tab = t.closest("[data-tab]");
     if (tab) { switchTab(tab.dataset.tab); return; }
     const op = t.closest("[data-open]"); if (op) return select(op.dataset.open);
     const fl0 = t.closest("[data-filter]"); if (fl0) return setFilter(fl0.dataset.filter, true);
-    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); return; }
+    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); return; }
+    const om = t.closest("[data-openmsg]"); if (om) { select(om.dataset.openmsg); switchTab("msgs"); return; }
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
     if (!S.canEdit && t.closest(OWNER_ONLY)) return ownerOnlyToast();
@@ -1164,6 +1239,7 @@ function bindEvents(){
     const rc = t.closest("[data-docrcv]"); if (rc) { const a = S.apps.get(S.sel); const k = rc.dataset.docrcv; edit(S.sel, `docs.requested.${k}.received`, get(a,`docs.requested.${k}.received`) === "yes" ? "" : "yes"); return; }
     const rm = t.closest("[data-docrm]"); if (rm) { if (rm.dataset.confirm !== "1") { rm.dataset.confirm = "1"; rm.textContent = "Confirm"; return; } edit(S.sel, `docs.requested.${rm.dataset.docrm}.removed`, true); return; }
     const fl = t.closest("[data-file]"); if (fl) return openFile(fl.dataset.file);
+    if (t.closest("[data-reply]")) return sendReply();
     const rc0 = t.closest("[data-rec]"); if (rc0) return openRecord(rc0.dataset.rec);
     const rrm = t.closest("[data-recrm]"); if (rrm) { if (rrm.dataset.confirm !== "1") { rrm.dataset.confirm = "1"; rrm.textContent = "Confirm remove"; return; } return removeRecord(rrm.dataset.recrm); }
     const segBtn = t.closest(".seg button");
@@ -1195,6 +1271,7 @@ function bindEvents(){
   $("#newBtn").addEventListener("click", openNew);
   $("#agendaBtn").addEventListener("click", copyAgenda);
   $("#pwBtn").addEventListener("click", openPassword);
+  $("#msgsBtn").addEventListener("click", openInbox);
   $("#packetBtn").addEventListener("click", () => { flushAll(); printPacket(sorted().filter(r => inBoardQueue(r.a)).map(r => r.a)); });
 }
 function select(id){
@@ -1428,6 +1505,8 @@ export function startDesk({ email, role, owner, name }){
       if (!S.sel) renderOverview();
     }, () => {});
     watchActivity();
+    watchMessages();
+    $("#msgsBtn").hidden = false;
     if (S.owner) {
       let primed = false;
       onSnapshot(collection(db, "accessRequests"), snap => {

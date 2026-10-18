@@ -40,6 +40,8 @@ Read this first. It's the full context from the original build conversation (Oct
 - Location is Potsdam or Other (free text). Membership types: Regular, Associate, Auxiliary, Non-Operational, Driver Only, Non-Resident.
 - Contact/documents email: membership@pvrs.org. Signature:
   Dkota Wright, NREMT / NYS EMT-B / Potsdam Volunteer Rescue Squad / dkota@pvrs.org
+- Applicants must never see a rejection: when declined (status declined, committee no, or board denied) the portal's current step reads "with the membership committee… you'll receive a letter", booking closes, nothing else changes. The administrator sends letters.
+- Messages: `portal/{id}/messages` (applicant ↔ squad). Applicants write as themselves; only the owner replies; admins can read; members can't.
 - Applicants must never see check results, board votes, notes, or other applicants.
 
 ## Setup status (as of Oct 16, 2026, evening)
