@@ -320,6 +320,25 @@ function renderOverview(){
   const ov = D.querySelector(".ov"); if (ov) ov.scrollTop = keepScroll;
 }
 
+/* ---------- page sign-off ---------- */
+// Initials + "complete" at the bottom of each working tab. Tabs members can open keep it on the shared record;
+// admin-only tabs keep it in the private record.
+const SIGN_ROOT = { app:"signoff", iv:"signoff", screen:"pagesign", refs:"pagesign", board:"pagesign", onb:"pagesign" };
+const tabLabel = k => (TABS_ADMIN.find(t => t[0] === k) || [k, k])[1];
+const signPath = (k, f) => `${SIGN_ROOT[k]}.${k}.${f}`;
+const signHTML = k => !SIGN_ROOT[k] ? "" : `<section class="group signoff" id="signBox"><h3><span>Page sign-off</span></h3><div class="ios"><div class="row">
+    <span class="lbl">${esc(tabLabel(k))} page complete<small id="signNote">Initial and mark complete once everything on this page is done</small></span>
+    <input class="init" type="text" id="f-sign-${k}" data-k="${signPath(k, "init")}" maxlength="4" placeholder="Init." autocomplete="off" aria-label="${esc(tabLabel(k))} page sign-off initials">
+    <button class="btn small primary" type="button" data-sign="${k}" id="signBtn">Mark complete</button></div></div></section>`;
+function syncSignoff(a){
+  document.querySelectorAll(".tabdock [data-tab]").forEach(b => { const k = b.dataset.tab; b.classList.toggle("signed", !!(SIGN_ROOT[k] && get(a, signPath(k, "done")))); });
+  const box = $("#signBox"); if (!box) return;
+  const k = S.tab, done = get(a, signPath(k, "done")), init = String(get(a, signPath(k, "init")) || "").trim();
+  box.classList.toggle("done", !!done);
+  $("#signNote").textContent = done ? `Completed ${fmtDate(done)}${init ? " · " + init : ""}` : init ? "Click Mark complete to sign off this page" : "Initial and mark complete once everything on this page is done";
+  const b = $("#signBtn"); b.textContent = done ? "Undo" : "Mark complete"; b.classList.toggle("primary", !done); b.disabled = !done && !init;
+}
+
 /* ---------- detail ---------- */
 // Which tab holds each MILESTONES step, so clicking the progress bar jumps there.
 const STEP_TAB = ["app","app","screen","screen","refs","iv","iv","board","board","onb","onb","onb","onb","onb"];
@@ -365,7 +384,7 @@ function paintDetail(){
         </div>` : ""}</div>
       ${S.admin?`<div class="prog" id="dProg"></div>`:""}
     </div>
-    <div class="dinner" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${tabHTML(S.tab)}</div></div>
+    <div class="dinner" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${tabHTML(S.tab)}${signHTML(S.tab)}</div></div>
     <nav class="tabdock" aria-label="Applicant file sections"><div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="dpanel" data-tab="${k}" aria-selected="${S.tab===k}" title="${l} (${i+1})">${l}</button>`).join("")}</div>
       <span class="save" id="saveState" role="status"></span></nav>`;
   stackCols($("#dbody"));
@@ -398,6 +417,7 @@ function syncDetail(){
     $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
   renderDocs(a); renderHistory(); syncRefs(a);
+  syncSignoff(a);
   const pc = $("#panelCount"); if (pc) { const n = [1,2,3,4,5].filter(i => String(get(a,`iv.panel.m${i}`) || "").trim()).length; pc.textContent = n ? `${n} recorded` : ""; }
   document.querySelectorAll("#dbody [data-k]").forEach(el => {
     const k = el.dataset.k; let v = get(a, k);
@@ -523,6 +543,7 @@ function watchHistory(id){
 let LABELS = null;
 const histLabel = path => {
   if (path === "_created") return "Created file";
+  { const m = /^(signoff|pagesign)\.(\w+)\.done$/.exec(path); if (m) return `${tabLabel(m[2])} page complete`; }
   if (/^docs\.requested\.[^.]+$/.test(path)) return "Requested document";
   if (/^docs\.requested\.[^.]+\.received$/.test(path)) return "Document received";
   if (/^docs\.requested\.[^.]+\.removed$/.test(path)) return "Removed document request";
@@ -867,6 +888,7 @@ function fieldLabels(){
     if (el.getAttribute("aria-label")) t = el.getAttribute("aria-label");
     map[k] = t.trim();
   });
+  for (const k of Object.keys(SIGN_ROOT)) { map[signPath(k, "init")] = `${tabLabel(k)} page sign-off initials`; map[signPath(k, "done")] = `${tabLabel(k)} page completed`; }
   return map;
 }
 function exportFull(){
@@ -1030,6 +1052,11 @@ function bindEvents(){
       if (k === "ics") { const a = S.apps.get(S.sel); if (a && a._booked) { download(`PVRS-interview-${(a.name||"applicant").replace(/\W+/g,"-")}.ics`, icsFile([icsEvent(a, a._booked)]), "text/calendar"); toast("Calendar file downloaded. Open it to add the interview."); } return; }
       if (k === "release") { try { await releaseFor(S.sel); toast("Interview time released"); } catch { toast("Couldn't release that time."); } return; }
     }
+    const sg = t.closest("[data-sign]");
+    if (sg) { const k = sg.dataset.sign, a = S.apps.get(S.sel);
+      if (get(a, signPath(k, "done"))) { edit(S.sel, signPath(k, "done"), ""); return; }
+      if (!String(get(a, signPath(k, "init")) || "").trim()) { toast("Enter your initials first."); $("#f-sign-" + k)?.focus(); return; }
+      edit(S.sel, signPath(k, "done"), today()); toast(`${tabLabel(k)} page marked complete`); return; }
     const rr = t.closest("[data-refrcv]");
     if (rr) { const a = S.apps.get(S.sel), i = rr.dataset.refrcv; if (!String(get(a,`refs.r${i}.name`) || "").trim()) return toast("Enter the reference's name first.");
       edit(S.sel, `refs.r${i}.returned`, get(a,`refs.r${i}.returned`) ? "" : today()); return; }

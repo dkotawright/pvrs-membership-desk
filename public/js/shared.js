@@ -83,7 +83,7 @@ export const TYPE_INFO = {
   "Non-Resident":"24 hours · must already be an EMT · not required at meetings, must attend 50% of trainings · cannot vote or hold office"
 };
 // Fields under these roots live in applicants/{id}/private/main (admins only).
-export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","notes","status","docs","portal"]);
+export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","notes","status","docs","portal","pagesign"]);
 export const DOC_ITEMS = ["Copy of driver's license (front and back)","EMT certification card","CPR card","Medical documentation for orientation","Missing pages of the application","Reference contact information"];
 
 const scheduled = a => !!(get(a,"sched.scheduled") || a._booked || get(a,"sched.completed"));

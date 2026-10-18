@@ -652,3 +652,12 @@ body{background:
 .row.panel input.init{flex:0 0 5em;text-align:center;background:var(--fill);border-radius:999px}
 .row .lbl{min-width:min(10.5em,42%)}
 .row.panel .lbl{min-width:0}
+
+/* page sign-off */
+.signoff{margin-top:24px}
+.signoff .row input.init{flex:0 0 5.5em;text-align:center;background:var(--fill);border-radius:999px}
+.signoff.done .ios{border-color:color-mix(in srgb,var(--s-act) 55%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--s-act) 14%,transparent)}
+.signoff.done .lbl small{color:var(--s-act);font-weight:600}
+.tabs button.signed::before{content:"✓";color:var(--s-act);font-weight:800;margin-right:5px}
+/* keep pop-up messages above the floating tab bar */
+.app:not([hidden]) ~ .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
