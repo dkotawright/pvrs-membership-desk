@@ -921,3 +921,14 @@ body:has(.gate:not([hidden])) .ems-bg{display:block}
 }
 .homecard{background:color-mix(in srgb,var(--pane) 92%,transparent)}
 .pubnav{background:rgba(8,14,30,.86)}
+
+/* Confidential paperwork (medical / Social Security) */
+.lockline{color:var(--fg2)}
+.docbtns{display:flex;gap:8px;flex-wrap:wrap}
+.vbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.vbar input[type=search]{flex:1 1 220px;min-width:0;border:1px solid var(--sep);background:var(--fill);border-radius:10px;font:inherit;font-size:14px;color:var(--fg);padding:8px 12px;outline:none}
+.vbar input[type=search]:focus-visible{border-color:var(--accent)}
+.vfiled{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--fg2);white-space:nowrap}
+.vfiled input{width:auto}
+.vgroup+.vgroup{margin-top:10px}
+.vgroup h2{margin:6px 0 2px}

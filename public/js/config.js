@@ -13,3 +13,7 @@ export const OWNER_EMAIL = "dkota@pvrs.org";
 
 // Where applicants are told to send questions.
 export const CONTACT_EMAIL = "membership@pvrs.org";
+
+// Confidential paperwork (medical, Social Security). Only this account can open those files, not even the owner.
+// Must match firestore.rules, storage.rules and functions/index.js.
+export const PAPERWORK_EMAIL = "orientationpaperwork@pvrs.org";

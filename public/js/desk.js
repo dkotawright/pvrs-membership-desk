@@ -4,9 +4,9 @@ import { auth, db, storage, doc, collection, collectionGroup, setDoc, updateDoc,
   GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
-  progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, isDeclined } from "./shared.js";
+  progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, isDeclined, isConfidential } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
-import { OWNER_EMAIL, CONTACT_EMAIL } from "./config.js";
+import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
 
 /* ---------- form builders ---------- */
 const fid = k => "f-" + k.replace(/\./g, "-");
@@ -475,9 +475,11 @@ function requestedDocs(a){
 function renderDocs(a){
   const el = $("#docList"); if (!el) return;
   const docs = requestedDocs(a), files = S.files;
-  const fileRow = f => `<div class="row"><span class="lbl"><button class="filelink" type="button" data-file="${esc(f.id)}">${esc(f.name)}</button><small>${esc(f.label || "Other")} · ${new Date(f.uploadedAt).toLocaleDateString()} · ${Math.max(1, Math.round((f.size||0)/1024))} KB</small></span></div>`;
+  const fileRow = f => f.confidential
+    ? `<div class="row"><span class="lbl">🔒 Private document<small>${esc(f.label || "Medical / Social Security paperwork")} · ${new Date(f.uploadedAt).toLocaleDateString()} · sent to ${esc(PAPERWORK_EMAIL)}</small></span></div>`
+    : `<div class="row"><span class="lbl"><button class="filelink" type="button" data-file="${esc(f.id)}">${esc(f.name)}</button><small>${esc(f.label || "Other")} · ${new Date(f.uploadedAt).toLocaleDateString()} · ${Math.max(1, Math.round((f.size||0)/1024))} KB</small></span></div>`;
   const rows = docs.map(d => { const up = files.filter(f => f.docKey === d.key).length;
-    return `<div class="row"><span class="lbl">${esc(d.label)}<small>${d.received ? "Received" : up ? `${up} file${up>1?"s":""} uploaded · not marked received` : "Waiting on applicant"}</small></span>
+    return `<div class="row"><span class="lbl">${esc(d.label)}${isConfidential(d.label) ? " 🔒" : ""}<small>${d.received ? "Received" : up ? `${up} file${up>1?"s":""} uploaded · not marked received` : "Waiting on applicant"}${isConfidential(d.label) ? ` · goes privately to ${esc(PAPERWORK_EMAIL)}` : ""}</small></span>
       <div class="seg" role="group" aria-label="Received"><button type="button" class="${d.received?"on good":"good"}" data-docrcv="${esc(d.key)}">${d.received?"Received ✓":"Mark received"}</button></div>
       <button class="copy" type="button" data-docrm="${esc(d.key)}" aria-label="Remove ${esc(d.label)}">Remove</button></div>`; }).join("");
   const other = files.filter(f => !f.docKey || !docs.some(d => d.key === f.docKey));
@@ -490,7 +492,9 @@ function renderRecords(){
   const el = $("#recList"); if (!el) return;
   const recs = S.records;
   el.innerHTML = `<div class="note">Squad records · staff only, never shown to the applicant${recs.length ? ` · ${recs.length} file${recs.length===1?"":"s"}` : ""}</div>`
-    + (recs.length ? recs.map(r => `<div class="row"><span class="lbl"><button class="filelink" type="button" data-rec="${esc(r.id)}" title="Open (then ⌘P to print)">${esc(r.name)}</button>
+    + (recs.length ? recs.map(r => r.confidential ? `<div class="row"><span class="lbl">🔒 Private document<small>${esc(r.label || "Confidential")} · ${esc(new Date(r.uploadedAt).toLocaleDateString())} · only ${esc(PAPERWORK_EMAIL)} can open it</small></span>
+        <button class="copy" type="button" data-recrm="${esc(r.id)}" aria-label="Remove this entry">Remove</button></div>`
+      : `<div class="row"><span class="lbl"><button class="filelink" type="button" data-rec="${esc(r.id)}" title="Open (then ⌘P to print)">${esc(r.name)}</button>
         <small>${esc(r.label || "Other")} · ${esc(new Date(r.uploadedAt).toLocaleDateString())} · ${Math.max(1, Math.round((r.size||0)/1024))} KB${r.uploadedBy ? " · " + esc(personName(r.uploadedBy)) : ""}</small></span>
         <button class="btn small" type="button" data-rec="${esc(r.id)}">Open</button>
         <button class="copy" type="button" data-recrm="${esc(r.id)}" aria-label="Remove ${esc(r.name)}">Remove</button></div>`).join("")
@@ -729,7 +733,8 @@ function openRequestDocs(id){
   const a = S.apps.get(id); const have = requestedDocs(a).map(d => d.label);
   const picked = new Set(), custom = [];
   const M = openModal(`<h3>Request documents</h3><p class="help">They'll see these in their portal with an upload button.</p>
-    <div class="chips" style="flex-wrap:wrap" id="rqChips">${DOC_ITEMS.map((d,i) => `<button class="chip" type="button" data-i="${i}" aria-pressed="${have.includes(d)}" ${have.includes(d)?"disabled":""}>${have.includes(d)?"✓ ":""}${esc(d)}</button>`).join("")}</div>
+    <div class="chips" style="flex-wrap:wrap" id="rqChips">${DOC_ITEMS.map((d,i) => `<button class="chip" type="button" data-i="${i}" aria-pressed="${have.includes(d)}" ${have.includes(d)?"disabled":""}>${have.includes(d)?"✓ ":""}${esc(d)}${isConfidential(d)?" 🔒":""}</button>`).join("")}</div>
+    <p class="help">🔒 Medical and Social Security items upload privately to ${esc(PAPERWORK_EMAIL)}. You'll see that they arrived, not what's in them.</p>
     <div class="ios"><div class="row"><input id="rqCustom" class="inlinefield" type="text" placeholder="Something else…" aria-label="Another document" style="flex:1"><button class="btn small" type="button" id="rqAdd">Add</button></div><div id="rqCustomList"></div></div>
     ${!get(a,"portal.invited") ? `<p class="help">${a.email ? "They don't have portal access yet. An invite will be sent to " + esc(a.email) + "." : "Add their email on the Application tab so they can get portal access."}</p>` : ""}
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="rqSave">Request</button></div>`, true);
@@ -756,7 +761,7 @@ function openRequestDocs(id){
   };
 }
 async function openFile(fid){
-  const f = S.files.find(x => x.id === fid); if (!f) return;
+  const f = S.files.find(x => x.id === fid); if (!f || !f.path) return;
   const w = window.open("", "_blank");
   try { const url = await getDownloadURL(ref(storage, f.path)); if (w) w.location = url; else location.href = url; }
   catch (e) { if (w) w.close(); toast("Couldn't open that file."); }
@@ -833,35 +838,47 @@ function watchRecords(id){
   }, () => {});
 }
 async function openRecord(rid){
-  const r = S.records.find(x => x.id === rid); if (!r) return;
+  const r = S.records.find(x => x.id === rid); if (!r || !r.path) return;
   const w = window.open("", "_blank");
   try { const url = await getDownloadURL(ref(storage, r.path)); if (w) w.location = url; else location.href = url; }
   catch (e) { if (w) w.close(); toast("Couldn't open that file."); }
 }
-const RECORD_LABELS = ["Application","Interview intake","MVR (driving record)","Driver's license copy","Background check (Sterling)","Reference letter","EMT / CPR certification","Medical documentation","Board paperwork","Other"];
+const RECORD_LABELS = ["Application","Interview intake","MVR (driving record)","Driver's license copy","Background check (Sterling)","Reference letter","EMT / CPR certification","Medical documentation","Social Security card","Board paperwork","Other"];
 const RECORD_MAX = 25 * 1024 * 1024;
 function openUploadRecords(id){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id); if (!a) return;
   const M = openModal(`<h3>Upload records</h3><p class="help">For ${esc(a.name || "this applicant")}. Staff only: admins can open and print these; the applicant never sees them. PDFs or photos, up to 25 MB each.</p>
-    <div class="field"><label for="recLabel">What is it?</label><select id="recLabel">${RECORD_LABELS.map(l => `<option>${esc(l)}</option>`).join("")}</select></div>
+    <div class="field"><label for="recLabel">What is it?</label><select id="recLabel">${RECORD_LABELS.map(l => `<option>${esc(l)}${isConfidential(l) ? " 🔒" : ""}</option>`).join("")}</select></div>
+    <p class="help lockline" id="recConf" hidden>🔒 Private: this goes only to ${esc(PAPERWORK_EMAIL)}. Once uploaded, you won't be able to open it.</p>
     <label class="dropzone" id="recDrop" for="recFiles"><input type="file" id="recFiles" accept="application/pdf,image/*" multiple hidden>
       <b>Drop files here</b><span>or click to choose from your Mac</span></label>
     <div id="recQueue" class="ios" hidden></div>
     <div class="acts"><button class="btn" type="button" data-x>Done</button></div>`);
   const queue = $("#recQueue");
+  const recLabel = () => $("#recLabel").value.replace(/ 🔒$/, "");
+  $("#recLabel").addEventListener("change", () => { $("#recConf").hidden = !isConfidential(recLabel()); });
   const upload = async list => {
-    const label = $("#recLabel").value;
+    const label = recLabel(), conf = isConfidential(label);
     for (const f of list) {
       const row = document.createElement("div"); row.className = "row"; row.innerHTML = `<span class="lbl">${esc(f.name)}<small>Uploading…</small></span>`; queue.hidden = false; queue.appendChild(row);
       const note = row.querySelector("small");
       if (!(f.type === "application/pdf" || /^image\//.test(f.type))) { note.textContent = "Skipped: only PDFs and photos"; continue; }
       if (f.size > RECORD_MAX) { note.textContent = "Skipped: over 25 MB"; continue; }
       try {
-        const path = `records/${id}/${Date.now()}-${f.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
-        await uploadBytes(ref(storage, path), f, { contentType: f.type });
-        await addDoc(collection(db, "applicants", id, "records"), { name: f.name, label, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: S.me });
-        note.textContent = `Uploaded · ${label}`;
+        const safe = `${Date.now()}-${f.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
+        if (conf) {
+          const path = `confidential/${id}/${safe}`;
+          await uploadBytes(ref(storage, path), f, { contentType: f.type });
+          await addDoc(collection(db, "vault"), { appId: id, appName: a.name || "", label, name: f.name, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: S.me, from: "staff" });
+          await addDoc(collection(db, "applicants", id, "records"), { name: "Private document", label, path: "", size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: S.me, confidential: true });
+          note.textContent = `Sent privately to ${PAPERWORK_EMAIL}`;
+        } else {
+          const path = `records/${id}/${safe}`;
+          await uploadBytes(ref(storage, path), f, { contentType: f.type });
+          await addDoc(collection(db, "applicants", id, "records"), { name: f.name, label, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: S.me });
+          note.textContent = `Uploaded · ${label}`;
+        }
       } catch (e) { console.error(e); note.textContent = "Couldn't upload. Try again."; }
     }
   };
@@ -874,7 +891,11 @@ function openUploadRecords(id){
 }
 async function removeRecord(rid){
   const r = S.records.find(x => x.id === rid); if (!r || !S.canEdit) return;
-  try { await deleteObject(ref(storage, r.path)).catch(() => {}); await deleteDoc(doc(db, "applicants", S.sel, "records", rid)); toast("Record removed"); }
+  try {
+    if (r.path) await deleteObject(ref(storage, r.path)).catch(() => {});
+    await deleteDoc(doc(db, "applicants", S.sel, "records", rid));
+    toast(r.confidential ? `Removed from this list. The private copy stays with ${PAPERWORK_EMAIL}.` : "Record removed");
+  }
   catch (e) { console.error(e); toast("Couldn't remove that record."); }
 }
 function watchFiles(id){
@@ -1091,14 +1112,14 @@ async function deleteApplicant(id){
   try {
     if (a && a._booked) await releaseFor(id).catch(() => {});
     const files = await getDocs(collection(db, "portal", id, "files")).catch(() => null);
-    if (files) for (const f of files.docs) { await deleteObject(ref(storage, f.data().path)).catch(() => {}); await deleteDoc(f.ref).catch(() => {}); }
+    if (files) for (const f of files.docs) { if (f.data().path) await deleteObject(ref(storage, f.data().path)).catch(() => {}); await deleteDoc(f.ref).catch(() => {}); }
     const pe = S.portal.get(id)?.email; if (pe) await deleteDoc(doc(db, "portalEmails", pe)).catch(() => {});
     await deleteDoc(doc(db, "portal", id)).catch(() => {});
     delete logBuf[id]; clearTimeout(logTimers[id]);
     const ms = await getDocs(collection(db, "portal", id, "messages")).catch(() => null);
     if (ms) for (const m of ms.docs) await deleteDoc(m.ref).catch(() => {});
     const recs = await getDocs(collection(db, "applicants", id, "records")).catch(() => null);
-    if (recs) for (const r0 of recs.docs) { await deleteObject(ref(storage, r0.data().path)).catch(() => {}); await deleteDoc(r0.ref).catch(() => {}); }
+    if (recs) for (const r0 of recs.docs) { if (r0.data().path) await deleteObject(ref(storage, r0.data().path)).catch(() => {}); await deleteDoc(r0.ref).catch(() => {}); }
     const hist = await getDocs(collection(db, "applicants", id, "history")).catch(() => null);
     if (hist) for (const h of hist.docs) await deleteDoc(h.ref).catch(() => {});
     await deleteDoc(doc(db, "applicants", id, "private", "main"));
@@ -1446,7 +1467,7 @@ function watchSubmissions(){
 /* ---------- activity feed (admins): uploads and bookings from applicants ---------- */
 function activity(){
   const since = Date.now() - 14*864e5, out = [];
-  for (const f of S.feedFiles) if ((f.uploadedAt||0) > since && S.apps.has(f.appId)) out.push({ at: f.uploadedAt, id: f.appId, kind: "upload", text: `uploaded ${f.name}`, sub: f.label || "Document" });
+  for (const f of S.feedFiles) if ((f.uploadedAt||0) > since && S.apps.has(f.appId)) out.push({ at: f.uploadedAt, id: f.appId, kind: "upload", text: f.confidential ? "sent private paperwork 🔒" : `uploaded ${f.name}`, sub: f.label || "Document" });
   for (const a of S.apps.values()) if (get(a, "app.source") === "online" && (a.createdAt || 0) > since) out.push({ at: a.createdAt, id: a._id, kind: "apply", text: "applied online", sub: [a.type, loc(a)].filter(Boolean).join(" · ") || "New application" });
   for (const [id, pd] of S.portal) { const iv = pd.interview; if (iv && iv.bookedAt > since && S.apps.has(id)) out.push({ at: iv.bookedAt, id, kind: "book", text: `booked an interview`, sub: slotLong(iv.start) }); }
   return out.sort((x,y) => y.at - x.at);
@@ -1467,7 +1488,7 @@ function watchActivity(){
     S.feedFiles = snap.docs.map(d => ({ key: d.ref.path, appId: d.ref.parent.parent.id, ...d.data() }));
     if (feedPrimed) {
       const fresh = S.feedFiles.filter(f => !prev.has(f.key) && f.uploadedBy && f.uploadedBy !== S.me);
-      if (fresh.length) { const a = S.apps.get(fresh[0].appId); toast(`${a ? a.name : "An applicant"} uploaded ${fresh.length === 1 ? fresh[0].name : fresh.length + " files"}`); }
+      if (fresh.length) { const a = S.apps.get(fresh[0].appId); toast(`${a ? a.name : "An applicant"} uploaded ${fresh.length === 1 ? (fresh[0].confidential ? "private paperwork 🔒" : fresh[0].name) : fresh.length + " files"}`); }
     }
     feedPrimed = true;
     if (!S.sel) renderOverview();

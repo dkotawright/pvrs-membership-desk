@@ -5,6 +5,7 @@ rules_version = '2';
 //   Staff with role "admin": read everything; may only fill in the interview questionnaire
 //   Staff with role "member": read application + interview; may only fill in the interview questionnaire
 //   Applicants: their own portal page, their own uploads, open interview times
+//   Paperwork account (orientationpaperwork@pvrs.org): the only one who can open confidential (medical / Social Security) files
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -12,6 +13,7 @@ service cloud.firestore {
     function verified()  { return signedIn() && request.auth.token.email_verified == true && request.auth.token.email != null; }
     function myEmail()   { return request.auth.token.email.lower(); }
     function isOwner()   { return verified() && myEmail() == 'dkota@pvrs.org'; }
+    function isPaperwork() { return verified() && myEmail() == 'orientationpaperwork@pvrs.org'; }
     function staffPath() { return /databases/$(database)/documents/staff/$(myEmail()); }
     function isStaff()   { return isOwner() || (verified() && exists(staffPath())); }
     function isAdmin()   { return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'admin'); }
@@ -75,6 +77,32 @@ service cloud.firestore {
       allow read, update, delete: if isOwner();
     }
 
+    // Confidential paperwork (medical, Social Security). The file goes to Storage confidential/{appId}/…, its details
+    // here, and only the paperwork account can read either. Applicants add their own; the owner can add but not open.
+    // A placeholder with no name or link ("Private document") goes in the applicant's file list so the squad can
+    // see something arrived. A server function emails the paperwork account when a new one comes in.
+    function confidentialStub() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['docKey','label','name','path','size','contentType','uploadedAt','uploadedBy','confidential'])
+        && d.confidential == true && d.path == '' && d.name == 'Private document';
+    }
+    match /vault/{fileId} {
+      allow read, delete: if isPaperwork();
+      allow update: if isPaperwork() && onlyChanged(['filedAt']);
+      allow create: if verified()
+        && request.resource.data.keys().hasOnly(['appId','appName','label','name','path','size','contentType','uploadedAt','uploadedBy','from'])
+        && request.resource.data.appId is string
+        && request.resource.data.path.matches('confidential/' + request.resource.data.appId + '/.*')
+        && request.resource.data.uploadedBy == myEmail()
+        && request.resource.data.uploadedAt is int && request.resource.data.uploadedAt > nowMs() - 300000 && request.resource.data.uploadedAt < nowMs() + 300000
+        && request.resource.data.size is int && request.resource.data.size <= 25 * 1024 * 1024
+        && request.resource.data.label is string && request.resource.data.label.size() <= 200
+        && request.resource.data.name is string && request.resource.data.name.size() <= 300
+        && request.resource.data.appName is string && request.resource.data.appName.size() <= 200
+        && ((request.resource.data.from == 'applicant' && ownsPortal(request.resource.data.appId))
+            || (request.resource.data.from == 'staff' && isOwner()));
+    }
+
     // Which email addresses have an applicant portal (lets the rules recognise invited applicants).
     match /portalEmails/{email} {
       allow read: if isOwner() || (verified() && email == myEmail());
@@ -104,10 +132,11 @@ service cloud.firestore {
       match /records/{recordId} {
         allow read: if isAdmin();
         allow create: if isOwner()
-          && request.resource.data.keys().hasOnly(['name','label','path','size','contentType','uploadedAt','uploadedBy'])
-          && request.resource.data.path.matches('records/' + id + '/.*')
           && request.resource.data.uploadedBy == myEmail()
-          && request.resource.data.size is int && request.resource.data.size <= 25 * 1024 * 1024;
+          && request.resource.data.size is int && request.resource.data.size <= 25 * 1024 * 1024
+          && ((request.resource.data.keys().hasOnly(['name','label','path','size','contentType','uploadedAt','uploadedBy'])
+               && request.resource.data.path.matches('records/' + id + '/.*'))
+              || confidentialStub());
         allow update, delete: if isOwner();
       }
 
@@ -176,10 +205,11 @@ service cloud.firestore {
       match /files/{fileId} {
         allow read: if isAdmin() || ownsPortal(id);
         allow create: if ownsPortal(id)
-          && request.resource.data.keys().hasOnly(['docKey','label','name','path','size','contentType','uploadedAt','uploadedBy'])
           && request.resource.data.uploadedBy == myEmail()
-          && request.resource.data.path.matches('uploads/' + id + '/.*')
-          && request.resource.data.size is int && request.resource.data.size <= 15 * 1024 * 1024;
+          && request.resource.data.size is int && request.resource.data.size <= 15 * 1024 * 1024
+          && ((request.resource.data.keys().hasOnly(['docKey','label','name','path','size','contentType','uploadedAt','uploadedBy'])
+               && request.resource.data.path.matches('uploads/' + id + '/.*'))
+              || confidentialStub());
         allow update, delete: if isOwner();
       }
     }

@@ -1,9 +1,10 @@
 // Applicant portal: status, document uploads, interview booking.
 import { db, storage, doc, collection, onSnapshot, writeBatch, addDoc, updateDoc, ref, uploadBytes } from "./fb.js";
-import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download } from "./shared.js";
+import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download, isConfidential } from "./shared.js";
 import { CONTACT_EMAIL } from "./config.js";
 
 const DAY = 864e5, MAX = 15 * 1024 * 1024;
+const CONF_KEY = "_private";   // the "medical or Social Security paperwork" button (not tied to a request)
 const okType = f => /^image\//.test(f.type) || f.type === "application/pdf";
 
 const msgTime = ms => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -27,7 +28,8 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
   const docRows = docs.map(d => {
     const up = byKey(d.key);
     const badge = d.received ? `<span class="badge ok">Received</span>` : up.length ? `<span class="badge wait">Uploaded · under review</span>` : "";
-    return `<div class="doc"><div class="dt">${esc(d.label)}${up.length?`<small>${up.map(f => esc(f.name)).join(", ")}</small>`:""}</div>${badge}
+    const conf = isConfidential(d.label);
+    return `<div class="doc"><div class="dt">${esc(d.label)}${conf ? `<small class="lockline">🔒 Private: only our orientation paperwork coordinator can open it</small>` : ""}${up.length?`<small>${conf ? `${up.length} file${up.length===1?"":"s"} sent privately` : up.map(f => esc(f.name)).join(", ")}</small>`:""}</div>${badge}
       ${d.received ? "" : `<button class="btn small ${up.length?"":"primary"}" type="button" data-upload="${esc(d.key)}" ${dis}>${up.length?"Add file":"Upload"}</button>`}</div>`;
   }).join("");
 
@@ -64,8 +66,11 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
 
     <section class="card glass"><h2>Documents</h2>
       ${docs.length ? `<div>${docRows}</div>` : `<p class="info">Nothing needed right now. If we need anything from you, it will show up here.</p>`}
-      ${other.length ? `<div class="info"><b>Other files you sent:</b> ${other.map(f => esc(f.name)).join(", ")}</div>` : ""}
-      <div><button class="btn small" type="button" data-upload="" ${dis}>Send another document</button></div>
+      ${other.filter(f => !f.confidential).length ? `<div class="info"><b>Other files you sent:</b> ${other.filter(f => !f.confidential).map(f => esc(f.name)).join(", ")}</div>` : ""}
+      ${other.some(f => f.confidential) ? `<div class="info"><b>Private paperwork sent:</b> ${other.filter(f => f.confidential).length} file${other.filter(f => f.confidential).length === 1 ? "" : "s"} 🔒</div>` : ""}
+      <div class="docbtns"><button class="btn small" type="button" data-upload="" ${dis}>Send another document</button>
+        <button class="btn small" type="button" data-upload="${CONF_KEY}" ${dis}>🔒 Send medical or Social Security paperwork</button></div>
+      <p class="info" style="margin:0">Medical and Social Security paperwork goes privately to our orientation paperwork coordinator. The membership committee can't open it.</p>
       <p class="info" style="margin:0">PDF or photo, up to 15 MB each. Trouble uploading? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></section>
 
     <section class="card glass"><h2>What to expect</h2><div class="info">
@@ -130,15 +135,27 @@ export function startPortal(id, email){
   picker.addEventListener("change", async () => {
     const list = [...picker.files]; picker.value = ""; if (!list.length) return;
     const docEntry = (P.pd.docs || []).find(d => d.key === uploadKey);
+    const label = docEntry ? docEntry.label : uploadKey === CONF_KEY ? "Medical / Social Security paperwork" : "Other";
+    const conf = uploadKey === CONF_KEY || isConfidential(label), docKey = uploadKey === CONF_KEY ? "" : uploadKey;
     for (const f of list) {
       if (!okType(f)) { toast(`${f.name} isn't a PDF or photo.`); continue; }
       if (f.size > MAX) { toast(`${f.name} is over 15 MB.`); continue; }
       try {
         toast(`Uploading ${f.name}…`);
-        const path = `uploads/${id}/${Date.now()}-${f.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
-        await uploadBytes(ref(storage, path), f, { contentType: f.type });
-        await addDoc(collection(db, "portal", id, "files"), { docKey: uploadKey, label: docEntry ? docEntry.label : "Other", name: f.name, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: email });
-        toast(`Uploaded ${f.name}`);
+        const safe = `${Date.now()}-${f.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
+        if (conf) {
+          // Private: the file and its name go only to the paperwork account; the squad sees a nameless placeholder.
+          const path = `confidential/${id}/${safe}`;
+          await uploadBytes(ref(storage, path), f, { contentType: f.type });
+          await addDoc(collection(db, "vault"), { appId: id, appName: P.pd.name || "", label, name: f.name, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: email, from: "applicant" });
+          await addDoc(collection(db, "portal", id, "files"), { docKey, label, name: "Private document", path: "", size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: email, confidential: true });
+          toast(`Sent ${f.name} privately`);
+        } else {
+          const path = `uploads/${id}/${safe}`;
+          await uploadBytes(ref(storage, path), f, { contentType: f.type });
+          await addDoc(collection(db, "portal", id, "files"), { docKey: uploadKey, label, name: f.name, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: email });
+          toast(`Uploaded ${f.name}`);
+        }
       } catch (e) { console.error(e); toast(`Couldn't upload ${f.name}. Try again or email ${CONTACT_EMAIL}.`); }
     }
   });

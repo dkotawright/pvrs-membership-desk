@@ -1,19 +1,20 @@
 import { auth, db, onAuthStateChanged, setDoc, deleteDoc, onSnapshot, signOut, GoogleAuthProvider, signInWithPopup, sendSignInLinkToEmail,
   isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, sendPasswordResetEmail, doc, getDoc, getDocs, collection, query, where, limit } from "./fb.js";
 import { $, lower, toast } from "./shared.js";
-import { OWNER_EMAIL, CONTACT_EMAIL } from "./config.js";
+import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
 import { startDesk } from "./desk.js";
 import { startPortal } from "./portal.js";
 import { startApply } from "./apply.js";
+import { startVault } from "./vault.js";
 
 const LINK_KEY = "pvrsEmailForSignIn";
-const VIEWS = ["loading","home","apply","signin","confirm","noaccess","app","portal"];
+const VIEWS = ["loading","home","apply","signin","confirm","noaccess","app","portal","vault"];
 const PUBLIC = ["home","apply","signin","confirm"];
 const show = id => {
   VIEWS.forEach(v => { $("#" + v).hidden = v !== id; });
   $("#pubnav").hidden = !PUBLIC.includes(id);
   $("#navApply").classList.toggle("on", id === "apply"); $("#navSignin").classList.toggle("on", id === "signin");
-  document.title = id === "apply" ? "Apply · PVRS Membership" : id === "home" ? "PVRS Membership" : "PVRS Membership Desk";
+  document.title = id === "apply" ? "Apply · PVRS Membership" : id === "home" ? "PVRS Membership" : id === "vault" ? "Confidential paperwork · PVRS" : "PVRS Membership Desk";
 };
 
 // Public pages: / (choose), /apply (the application form, also the link for the squad website), /signin.
@@ -158,6 +159,7 @@ async function startFor(user){
   show("loading");
   const email = lower(user.email);
   try {
+    if (email === lower(PAPERWORK_EMAIL)) { homeView = "vault"; show("vault"); return startVault(email); }
     if (email === lower(OWNER_EMAIL)) { homeView = "app"; show("app"); return startDesk({ email, role: "admin", owner: true, name: user.displayName || "" }); }
     const staff = await getDoc(doc(db, "staff", email));
     if (staff.exists()) { homeView = "app"; show("app"); return startDesk({ email, role: staff.data().role === "admin" ? "admin" : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
