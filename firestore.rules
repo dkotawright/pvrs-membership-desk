@@ -51,8 +51,8 @@ service cloud.firestore {
       allow delete: if isOwner() || (verified() && email == myEmail() && resource.data.status != 'denied');
     }
 
-    // Online applications from the public form (no sign-in needed). Strict shape. The license number is allowed
-    // (the squad runs a driving-record check) and only the owner can read submissions.
+    // Online applications from the public form (no sign-in needed). Strict shape. A driver's license number and
+    // 3–4 references are required (the squad runs a driving-record check).
     // Only the owner can read them; the owner's desk turns each one into an applicant record.
     function validSubmission() {
       let d = request.resource.data;
@@ -61,14 +61,15 @@ service cloud.firestore {
         && d.v == 1 && d.status == 'new' && d.hp == ''
         && d.submittedAt is int && d.submittedAt > nowMs() - 600000 && d.submittedAt < nowMs() + 600000
         && p is map && p.keys().hasOnly(['first', 'last', 'email', 'phone', 'dob', 'birthplace', 'permAddr', 'localAddr', 'dlState', 'dlNumber', 'type'])
-        && p.get('dlNumber', '') is string && p.get('dlNumber', '').size() <= 30
+        && p.dlNumber is string && p.dlNumber.size() > 0 && p.dlNumber.size() <= 30
+        && p.dlState is string && p.dlState != 'none'
         && p.first is string && p.first.size() > 0 && p.first.size() <= 200
         && p.last is string && p.last.size() > 0 && p.last.size() <= 200
         && p.email is string && p.email.size() <= 200 && p.email.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$')
         && p.phone is string && p.phone.size() <= 40
         && p.type in ['Regular', 'Associate', 'Auxiliary', 'Non-Operational', 'Driver Only', 'Non-Resident']
         && d.education is map && d.experience is map && d.employment is map && d.background is map
-        && d.references is list && d.references.size() >= 2 && d.references.size() <= 4
+        && d.references is list && d.references.size() >= 3 && d.references.size() <= 4
         && d.signature is map && d.signature.keys().hasOnly(['confirmed', 'name'])
         && d.signature.confirmed == true && d.signature.name is string && d.signature.name.size() >= 3 && d.signature.name.size() <= 200;
     }

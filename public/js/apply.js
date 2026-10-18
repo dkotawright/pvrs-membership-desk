@@ -49,7 +49,7 @@ const filled = v => String(v || "").trim().length > 0;
 const refUsed = r => filled(r.name) || filled(r.email) || filled(r.phone) || filled(r.relationship) || filled(r.address);
 
 let A = null;   // { step, data, startedAt, done }
-const load = () => { try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); if (d && d.data) return d; } catch {} return null; };
+const load = () => { try { const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null"); if (d && d.data) { if (d.data.person && d.data.person.dlState === "none") d.data.person.dlState = "NY"; return d; } } catch {} return null; };
 let saveT;
 const saveNow = () => { clearTimeout(saveT); if (!A || A.done) return; try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ step: A.step, data: A.data, startedAt: A.startedAt })); } catch {} };
 const save = () => { clearTimeout(saveT); saveT = setTimeout(saveNow, 300); };
@@ -93,8 +93,8 @@ function stepHTML(){
       ${addr("person.permAddr", "Permanent address", true)}
       <label class="check"><input type="checkbox" data-p="person.sameLocal" ${d.person.sameLocal ? "checked" : ""}> My school / local address is the same as my permanent address</label>
       ${d.person.sameLocal ? "" : addr("person.localAddr", "School / local address (if different)", false)}
-      <div class="afgrid">${select("person.dlState", "State your driver's license is from", [...STATES.map(s => [s, s]), ["none", "I don't have a driver's license"]], { half: true })}
-        ${d.person.dlState === "none" ? "" : input("person.dlNumber", "Driver's license ID number", { half: true, ac: "off", max: 30 })}</div>
+      <div class="afgrid">${select("person.dlState", "State your driver's license is from", STATES.map(s => [s, s]), { half: true })}
+        ${input("person.dlNumber", "Driver's license ID number", { req: true, half: true, ac: "off", max: 30 })}</div>
       <p class="afnote">We use your license number only to run the driving record check. It's kept private to the membership officer and administrator, and we'll also see your physical license in person.</p>
       <fieldset class="afs"><legend>Membership type <i aria-hidden="true">*</i></legend><div class="types" role="radiogroup" aria-label="Membership type">
         ${TYPES.map(t => `<button type="button" role="radio" class="typecard" aria-checked="${d.person.type === t}" data-type="${esc(t)}"><b>${esc(t)}</b><span>${esc(TYPE_INFO[t] || "")}</span></button>`).join("")}</div></fieldset>`;
@@ -127,12 +127,12 @@ function stepHTML(){
     case "bg": return `${yesno("background.convicted", "Have you ever been convicted, fined, placed on probation or imprisoned for any misdemeanor or felony?")}
       ${d.background.convicted === "yes" ? area("background.detail", "Please describe the nature of the offense, date of conviction, penalty imposed and, if applicable, date of release", { req: true, rows: 4 }) : ""}
       <p class="afnote">Answering yes doesn't automatically disqualify you. Please be complete and honest; omissions can be grounds for dismissal later.</p>`;
-    case "refs": return `<p class="afnote" style="margin-top:0">List 2 to 4 people who know you well (not relatives). We contact references by email, and we need to hear from all of them before your application goes to the board.</p>
-      ${d.references.map((r, i) => `<fieldset class="afs"><legend>Reference ${i + 1}${i >= 2 ? " <span class=\"opt\">optional</span>" : ""}${i >= 3 ? ` <button type="button" class="linkbtn" data-rmref="${i}">Remove</button>` : ""}</legend><div class="afgrid">
-        ${input(`references.${i}.name`, "Full name", { half: true, req: i < 2 })}
-        ${input(`references.${i}.relationship`, "Relationship", { half: true, req: i < 2, ph: "e.g. Coach, supervisor" })}
-        ${input(`references.${i}.email`, "Email", { type: "email", half: true, req: i < 2 })}
-        ${input(`references.${i}.phone`, "Phone", { type: "tel", half: true, req: i < 2 })}
+    case "refs": return `<p class="afnote" style="margin-top:0">List 3 or 4 people who know you well (not relatives). We contact references by email, and we need to hear from all of them before your application goes to the board.</p>
+      ${d.references.map((r, i) => `<fieldset class="afs"><legend>Reference ${i + 1}${i >= 3 ? " <span class=\"opt\">optional</span>" : ""}${i >= 3 ? ` <button type="button" class="linkbtn" data-rmref="${i}">Remove</button>` : ""}</legend><div class="afgrid">
+        ${input(`references.${i}.name`, "Full name", { half: true, req: i < 3 })}
+        ${input(`references.${i}.relationship`, "Relationship", { half: true, req: i < 3, ph: "e.g. Coach, supervisor" })}
+        ${input(`references.${i}.email`, "Email", { type: "email", half: true, req: i < 3 })}
+        ${input(`references.${i}.phone`, "Phone", { type: "tel", half: true, req: i < 3 })}
         ${input(`references.${i}.address`, "Address", { ph: "Street, City, State ZIP" })}</div></fieldset>`).join("")}
       ${d.references.length < 4 ? `<button type="button" class="btn small addbtn" data-addref>+ Add a fourth reference</button>` : ""}`;
     case "sign": return `${reviewHTML()}
@@ -154,7 +154,7 @@ function reviewHTML(){
   const refs = d.references.filter(refUsed);
   return `<p class="afnote" style="margin-top:0">Check everything below, then sign at the bottom.</p><div class="review">
     ${sec("About you", 0, line("Name", `${p.first} ${p.last}`) + line("Email", p.email) + line("Cell phone", p.phone) + line("Date of birth", p.dob) + line("Place of birth", p.birthplace)
-      + line("Permanent address", a(p.permAddr)) + line("School / local address", p.sameLocal ? "Same as permanent" : a(p.localAddr)) + line("Driver's license", p.dlState === "none" ? "No driver's license" : [p.dlState, p.dlNumber ? "ending " + String(p.dlNumber).slice(-4) : ""].filter(filled).join(" · ")) + line("Membership type", p.type))}
+      + line("Permanent address", a(p.permAddr)) + line("School / local address", p.sameLocal ? "Same as permanent" : a(p.localAddr)) + line("Driver's license", [p.dlState, p.dlNumber ? "ending " + String(p.dlNumber).slice(-4) : ""].filter(filled).join(" · ")) + line("Membership type", p.type))}
     ${sec("Education", 1, line("High school", [d.education.hs.name, d.education.hs.location, d.education.hs.grad].filter(filled).join(" · "))
       + line("College", [d.education.college.name, d.education.college.study, d.education.college.grad].filter(filled).join(" · "))
       + line("Other", [d.education.other.name, d.education.other.study].filter(filled).join(" · ")))}
@@ -176,6 +176,8 @@ function problems(step){
       need(phoneOk(p.phone), "person.phone", "Enter your cell phone number.");
       need(filled(p.dob), "person.dob", "Enter your date of birth.");
       need(filled(p.permAddr.street) && filled(p.permAddr.city) && filled(p.permAddr.zip), "person.permAddr.street", "Enter your permanent address.");
+      need(STATES.includes(p.dlState), "person.dlState", "Choose the state your driver's license is from.");
+      need(filled(p.dlNumber), "person.dlNumber", "Enter your driver's license ID number.");
       need(filled(p.type), "type", "Choose a membership type.");
       break;
     case "exp":
@@ -188,8 +190,8 @@ function problems(step){
       break;
     case "refs": {
       const used = d.references.filter(refUsed);
-      need(used.length >= 2, "references.0.name", "List at least 2 references.");
-      d.references.forEach((r, i) => { if (!refUsed(r) && i >= 2) return;
+      need(used.length >= 3, "references.0.name", "List at least 3 references.");
+      d.references.forEach((r, i) => { if (!refUsed(r) && i >= 3) return;
         need(filled(r.name), `references.${i}.name`, `Reference ${i + 1}: enter their name.`);
         need(filled(r.relationship), `references.${i}.relationship`, `Reference ${i + 1}: enter how you know them.`);
         need(emailOk(r.email), `references.${i}.email`, `Reference ${i + 1}: enter a valid email.`);
@@ -247,7 +249,6 @@ async function submit(btn){
   const hp = $("#ap-hp"); if (hp && hp.value) { A.done = { first: A.data.person.first, email: A.data.person.email }; return render(); }   // bots fill hidden fields
   const d = clean(A.data);
   if (d.person.sameLocal) d.person.localAddr = null;
-  if (d.person.dlState === "none") d.person.dlNumber = "";
   d.person.email = d.person.email.toLowerCase();
   d.references = d.references.filter(refUsed);
   d.employment.jobs = d.employment.jobs.filter(j => filled(j.place) || filled(j.duties));
