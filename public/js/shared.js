@@ -125,13 +125,6 @@ export function progress(a){
 }
 export const isDeclined = a => a.status === "declined" || get(a,"appr.committee") === "no" || get(a,"board.result") === "denied";
 export const inBoardQueue = a => get(a,"appr.committee") === "yes" && !["approved","denied"].includes(get(a,"board.result")) && !["declined","withdrawn"].includes(a.status);
-export function nextReview(a){
-  const s = get(a,"notify.probStart"); if (!s || get(a,"notify.probEnd")) return null;
-  const base = new Date(s + "T12:00:00"), now = new Date(); now.setHours(0,0,0,0);
-  for (let k = 1; k < 400; k++) { const d = new Date(base); d.setMonth(d.getMonth() + 3*k); if (d >= now) return d; }
-  return null;
-}
-export const onProbation = a => !!get(a,"notify.probStart") && !get(a,"notify.probEnd");
 
 /* ---------- what the applicant sees ---------- */
 export function applicantSteps(a){

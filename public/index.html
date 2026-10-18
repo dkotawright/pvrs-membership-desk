@@ -28,6 +28,36 @@
   </svg>
 </div>
 
+<!-- Public top bar: Apply / Sign in -->
+<nav class="pubnav" id="pubnav" aria-label="PVRS Membership" hidden>
+  <a class="pubbrand" href="/" data-nav="/"><svg viewBox="-120 -120 240 240" aria-hidden="true"><g fill="#fff"><rect x="-24" y="-100" width="48" height="200" rx="7"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(60)"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(-60)"/></g><rect x="-5" y="-78" width="10" height="156" rx="5" fill="#c8102e"/></svg><span>PVRS <b>Membership</b></span></a>
+  <span class="publinks"><a href="/apply" data-nav="/apply" id="navApply">Apply</a><a href="/signin" data-nav="/signin" id="navSignin">Sign in</a></span>
+</nav>
+
+<!-- Public home: apply or sign in -->
+<div class="gate home" id="home" hidden>
+  <div class="hero">
+    <div class="eyebrow light">Potsdam Volunteer Rescue Squad · Est. 1955</div>
+    <h1>Join the squad that answers the call.</h1>
+    <p class="lead">Volunteer EMTs, drivers and members serving Potsdam around the clock. Apply online in about 15 minutes, then follow your application from your own portal.</p>
+    <div class="homecards">
+      <a class="homecard glass" href="/apply" data-nav="/apply">
+        <span class="hc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v5h5 M9 13h7 M9 17h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
+        <b>Apply to join PVRS</b>
+        <span>Contact details, education, work history and 2–4 references. Your progress saves on this device as you go.</span>
+        <em>Start application →</em></a>
+      <a class="homecard glass" href="/signin" data-nav="/signin">
+        <span class="hc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 21c.8-4 4-6 8-6s7.2 2 8 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+        <b>Sign in</b>
+        <span>Applicants: check your status, upload documents and book your interview. PVRS members: open the desk.</span>
+        <em>Sign in →</em></a>
+    </div>
+  </div>
+</div>
+
+<!-- Public application form -->
+<div class="gate apply" id="apply" hidden><div class="applywrap" id="applyRoot"></div></div>
+
 <!-- Loading -->
 <div class="gate" id="loading"><div class="empty"><span class="spin" aria-hidden="true"></span><h3>Loading…</h3></div></div>
 

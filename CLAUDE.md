@@ -35,12 +35,13 @@ Read this first. It's the full context from the original build conversation (Oct
 ## PVRS process decisions (from Dkota)
 - Background check is **Sterling Volunteers only** (no separate NYS registry step), and it is run **only after board approval** (milestone after "Board approval"; fields on the Onboard tab; not in the board packet).
 - Applications go to the board only once references and all other prerequisites are complete. References: names + received status are shown to the applicant; reference contact is email (no phone numbers collected).
-- Driver's license check is a required step (never store the license number).
-- Probation starts after board approval, is **reviewed every 3 months**, and ends when the board approves full membership.
+- Driver's license check is a required step. The online application collects the license number (Dkota is authorized to run the check); it lives only in the private record (`private/main.form.person.dlNumber`), shown on the Screening tab to admins. Never in the portal, board packet or member views.
+- Probation is handled by the general membership, not this app (probation tracking removed Oct 18).
 - Board: committee approval → board vote (motion/second/for/against/abstain, Approved/Tabled/Denied); "Board queue" filter + copy agenda.
 - Location is Potsdam or Other (free text). Membership types: Regular, Associate, Auxiliary, Non-Operational, Driver Only, Non-Resident.
 - Contact/documents email: membership@pvrs.org. Signature:
   Dkota Wright, NREMT / NYS EMT-B / Potsdam Volunteer Rescue Squad / dkota@pvrs.org
+- Online application: public form at `/apply` (link for the squad website); `/` is a public home with Apply / Sign in; `/signin` is sign-in. Submissions go to `submissions` (anyone may create, strict rules; owner-only read) and the owner's desk auto-imports each into an applicant (tagged Online, interview answers prefilled, references + full form in the private record).
 - Applicants must never see a rejection: when declined (status declined, committee no, or board denied) the portal's current step reads "with the membership committee… you'll receive a letter", booking closes, nothing else changes. The administrator sends letters.
 - Messages: `portal/{id}/messages` (applicant ↔ squad). Applicants write as themselves; only the owner replies; admins can read; members can't.
 - Applicants must never see check results, board votes, notes, or other applicants.

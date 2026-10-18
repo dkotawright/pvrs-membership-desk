@@ -4,10 +4,34 @@ import { $, lower, toast } from "./shared.js";
 import { OWNER_EMAIL, CONTACT_EMAIL } from "./config.js";
 import { startDesk } from "./desk.js";
 import { startPortal } from "./portal.js";
+import { startApply } from "./apply.js";
 
 const LINK_KEY = "pvrsEmailForSignIn";
-const VIEWS = ["loading","signin","confirm","noaccess","app","portal"];
-const show = id => VIEWS.forEach(v => { $("#" + v).hidden = v !== id; });
+const VIEWS = ["loading","home","apply","signin","confirm","noaccess","app","portal"];
+const PUBLIC = ["home","apply","signin","confirm"];
+const show = id => {
+  VIEWS.forEach(v => { $("#" + v).hidden = v !== id; });
+  $("#pubnav").hidden = !PUBLIC.includes(id);
+  $("#navApply").classList.toggle("on", id === "apply"); $("#navSignin").classList.toggle("on", id === "signin");
+  document.title = id === "apply" ? "Apply · PVRS Membership" : id === "home" ? "PVRS Membership" : "PVRS Membership Desk";
+};
+
+// Public pages: / (choose), /apply (the application form, also the link for the squad website), /signin.
+// Signed-in people go to their own area, except on /apply, which always shows the form.
+let currentUser = null, homeView = null;
+const pathNow = () => (location.pathname.replace(/\/+$/, "") || "/");
+function routePublic(){
+  const p = pathNow();
+  if (p === "/apply") { show("apply"); startApply(); return; }
+  if (currentUser) { if (homeView) show(homeView); else startFor(currentUser); return; }
+  show(p === "/signin" ? "signin" : "home");
+}
+function navTo(path){ if (path !== pathNow()) history.pushState(null, "", path); routePublic(); window.scrollTo(0, 0); }
+document.addEventListener("click", e => {
+  const a = e.target.closest("[data-nav]"); if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault(); navTo(a.dataset.nav);
+});
+addEventListener("popstate", routePublic);
 const store = { get(){ try { return localStorage.getItem(LINK_KEY); } catch { return null; } }, set(v){ try { localStorage.setItem(LINK_KEY, v); } catch {} }, clear(){ try { localStorage.removeItem(LINK_KEY); } catch {} } };
 export const linkSettings = () => ({ url: location.origin + "/", handleCodeInApp: true });
 
@@ -115,30 +139,35 @@ $("#googleBtn").addEventListener("click", async () => {
   try { await signInWithPopup(auth, new GoogleAuthProvider()); }
   catch (e) { if (e && e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") toast("Google sign-in didn't finish. Try again."); }
 });
-document.addEventListener("click", async e => { if (e.target.closest("[data-signout]")) { await signOut(auth); location.replace("/"); } });
+document.addEventListener("click", async e => { if (e.target.closest("[data-signout]")) { await signOut(auth); location.replace("/signin"); } });
 
 let started = false;
 onAuthStateChanged(auth, async user => {
+  currentUser = user || null;
   if (!user) {
-    if (!finishing) show("signin");
+    if (!finishing) routePublic();
     let idle = null; try { idle = sessionStorage.getItem("pvrsIdle"); sessionStorage.removeItem("pvrsIdle"); } catch {}
     if (idle) toast(`Signed out after ${idle} minutes without activity, to protect applicant information.`);
     return;
   }
+  if (pathNow() === "/apply") { show("apply"); startApply(); return; }   // the form, even when signed in
+  startFor(user);
+});
+async function startFor(user){
   if (started) return; started = true;
   show("loading");
   const email = lower(user.email);
   try {
-    if (email === lower(OWNER_EMAIL)) { show("app"); return startDesk({ email, role: "admin", owner: true, name: user.displayName || "" }); }
+    if (email === lower(OWNER_EMAIL)) { homeView = "app"; show("app"); return startDesk({ email, role: "admin", owner: true, name: user.displayName || "" }); }
     const staff = await getDoc(doc(db, "staff", email));
-    if (staff.exists()) { show("app"); return startDesk({ email, role: staff.data().role === "admin" ? "admin" : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
+    if (staff.exists()) { homeView = "app"; show("app"); return startDesk({ email, role: staff.data().role === "admin" ? "admin" : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
     const p = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1)));
-    if (!p.empty) { show("portal"); return startPortal(p.docs[0].id, email); }
+    if (!p.empty) { homeView = "portal"; show("portal"); return startPortal(p.docs[0].id, email); }
     const req = await getDoc(doc(db, "accessRequests", email));
-    showNoAccess(user, email, req.exists() ? req.data() : null);
+    homeView = "noaccess"; showNoAccess(user, email, req.exists() ? req.data() : null);
   } catch (err) {
     console.error(err);
     $("#noaccessMsg").textContent = `Something went wrong loading your account. Try again, or contact ${CONTACT_EMAIL}.`;
-    show("noaccess");
+    homeView = "noaccess"; show("noaccess");
   }
-});
+}
