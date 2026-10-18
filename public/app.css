@@ -932,3 +932,5 @@ body:has(.gate:not([hidden])) .ems-bg{display:block}
 .vfiled input{width:auto}
 .vgroup+.vgroup{margin-top:10px}
 .vgroup h2{margin:6px 0 2px}
+.hacts .btn.hdel{color:var(--s-dec)}
+.hacts .btn.hdel:hover{background:color-mix(in srgb,var(--s-dec) 12%,var(--box))}

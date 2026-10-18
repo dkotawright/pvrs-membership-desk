@@ -362,6 +362,7 @@ function syncSignoff(a){
 // Which tab holds each MILESTONES step, so clicking the progress bar jumps there.
 const STEP_TAB = ["app","app","screen","screen","refs","iv","iv","board","board","onb","onb","onb","onb","onb"];
 const ICON = {
+  trash:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   mail:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 4l6 4.5L14 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
   cal:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 6.5h13M5 1v3M11 1v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
   doc:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5l3.5 3.5v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-11.5a1 1 0 0 1 1-1z M9 1.5V5h3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
@@ -400,6 +401,7 @@ function paintDetail(){
           <button class="btn small" type="button" data-act="book" title="Book an interview time">${ICON.cal}<span class="tl">Book</span></button>
           <button class="btn small" type="button" data-act="docs" title="Request documents">${ICON.doc}<span class="tl">Request docs</span></button>
           <button class="btn small" type="button" data-act="preview" title="See their applicant portal">${ICON.eye}<span class="tl">Portal</span></button>
+          ${S.canEdit ? `<button class="btn small hdel" type="button" data-act="delete" title="Delete this applicant">${ICON.trash}<span class="tl">Delete</span></button>` : ""}
         </div>` : ""}</div>
       ${S.admin?`<div class="prog" id="dProg"></div>`:""}
     </div>
@@ -1106,6 +1108,20 @@ async function importFile(file){
 }
 
 /* ---------- delete ---------- */
+// Owner only. For clearing out test applicants (or anyone who withdraws).
+function confirmDelete(id){
+  if (!S.canEdit) return ownerOnlyToast();
+  const a = S.apps.get(id); if (!a) return;
+  const M = openModal(`<h3>Delete ${esc(a.name || "this applicant")}?</h3>
+    <p class="help">Removes their file, interview answers, references, notes, history, portal, messages, uploads, staff records and their online application. This can't be undone.</p>
+    <p class="help">🔒 Private medical or Social Security paperwork stays with ${esc(PAPERWORK_EMAIL)}, who can delete it there.</p>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn danger" type="button" id="delGo">Delete permanently</button></div>`);
+  $("#delGo").focus();
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    if (e.target.closest("#delGo")) { e.target.closest("#delGo").disabled = true; await deleteApplicant(id); closeModal(); }
+  };
+}
 async function deleteApplicant(id){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id);
@@ -1122,6 +1138,8 @@ async function deleteApplicant(id){
     if (recs) for (const r0 of recs.docs) { if (r0.data().path) await deleteObject(ref(storage, r0.data().path)).catch(() => {}); await deleteDoc(r0.ref).catch(() => {}); }
     const hist = await getDocs(collection(db, "applicants", id, "history")).catch(() => null);
     if (hist) for (const h of hist.docs) await deleteDoc(h.ref).catch(() => {});
+    const subs = await getDocs(query(collection(db, "submissions"), where("applicantId", "==", id))).catch(() => null);
+    if (subs) for (const sd of subs.docs) await deleteDoc(sd.ref).catch(() => {});
     await deleteDoc(doc(db, "applicants", id, "private", "main"));
     await deleteDoc(doc(db, "applicants", id));
     S.sel = null; renderList(); renderDetail(); toast("Applicant deleted");
@@ -1251,6 +1269,7 @@ function bindEvents(){
       if (k === "email") return openEmailPicker();
       if (k === "invite") return inviteToPortal(S.sel);
       if (k === "preview") { flushAll(); return openPreview(S.sel); }
+      if (k === "delete") return confirmDelete(S.sel);
       if (k === "docs") return openRequestDocs(S.sel);
       if (k === "records") return openUploadRecords(S.sel);
       if (k === "viewform") return openForm(S.sel);
