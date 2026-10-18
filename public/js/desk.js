@@ -1050,6 +1050,17 @@ function bindEvents(){
   $("#chips").addEventListener("click", onFilter);
   $("#chipsMini").addEventListener("click", onFilter);
   $("#q").addEventListener("input", e => { S.q = e.target.value; renderList(); });
+  // While a file is open the list tucks away to a strip on the left; hover (or ⌘K) slides it out. Pin keeps it docked.
+  const setPinned = on => { $("#app").classList.toggle("pinned", on); $("#pinBtn").setAttribute("aria-pressed", on); $("#pinBtn").title = on ? "Let the list tuck away while a file is open" : "Keep the list open while a file is open"; prefs.set("pinned", on ? "1" : ""); };
+  setPinned(prefs.get("pinned") === "1");
+  $("#pinBtn").addEventListener("click", () => setPinned(!$("#app").classList.contains("pinned")));
+  // After picking someone from the slid-out list, let it tuck away again instead of holding it open by focus.
+  // and don't slide back out under the mouse until the pointer has left the list once.
+  const R = $(".roster");
+  $("#list").addEventListener("click", e => { if ($("#app").classList.contains("pinned") || !e.target.closest(".arow")) return;
+    R.classList.add("nohover"); setTimeout(() => { const f = document.activeElement; if (f && f.closest && f.closest(".roster") && f.id !== "q") f.blur(); }, 0); });
+  R.addEventListener("mouseleave", () => R.classList.remove("nohover"));
+  $(".rhandle").addEventListener("mouseenter", () => R.classList.remove("nohover"));
   const sortSel = $("#sort"); sortSel.value = S.sort; sortSel.addEventListener("change", e => { S.sort = e.target.value; prefs.set("sort", S.sort); renderList(); });
   $("#overviewBtn").addEventListener("click", () => { if (S.sel) deselect(); else { S.filter = "all"; renderList(); } });
   $("#kbdBtn").addEventListener("click", openShortcuts);
@@ -1316,7 +1327,7 @@ export function startDesk({ email, role, owner, name }){
   S.sort = SORTS[prefs.get("sort")] ? prefs.get("sort") : "stage";
   bindEvents(); renderList(); renderDetail();
   const conn = $("#conn");
-  conn.textContent = S.owner ? "Owner · full access" : S.admin ? "Admin" : "Member";
+  conn.textContent = S.owner ? "Owner" : S.admin ? "Admin" : "Member";
   conn.classList.add("on");
   $("#meName").textContent = S.name || email;
   $("#meName").title = email;

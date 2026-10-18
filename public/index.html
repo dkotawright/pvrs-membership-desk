@@ -103,9 +103,11 @@
   </aside>
   <div class="main">
     <section class="pane roster" aria-label="Applicants">
+      <div class="rhandle" aria-hidden="true"><span>Applicants</span></div>
       <div class="top">
         <div class="titlebar">
           <div class="tt"><h1 id="rosterTitle">All applicants</h1><span class="count" id="rosterCount"></span></div>
+          <button class="iconbtn pinbtn" type="button" id="pinBtn" title="Keep the list open while a file is open" aria-label="Keep the applicant list open" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 2.5v11" stroke="currentColor" stroke-width="1.5"/></svg></button>
           <label class="sortsel" title="Sort"><span class="sr">Sort:</span><select id="sort">
             <option value="stage">Stage</option><option value="name">Name</option><option value="newest">Newest</option><option value="waiting">Longest waiting</option><option value="updated">Recently updated</option>
           </select></label>

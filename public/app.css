@@ -693,3 +693,27 @@ body{background:
 .stack textarea:disabled{background:color-mix(in srgb,var(--fill) 50%,transparent)}
 .seg button:disabled{cursor:default}
 .seg button:disabled:not(.on){opacity:.5}
+
+/* ---------- applicant list tucks away while a file is open (desktop) ---------- */
+.rhandle,.pinbtn{display:none}
+@media (min-width:861px){
+  .pinbtn{display:grid;margin-left:auto}
+  .pinbtn[aria-pressed="true"]{color:var(--navy);background:var(--tab-on)}
+  .titlebar .tt{flex:0 1 auto}
+  .main{position:relative}
+  .app.open:not(.pinned) .main{grid-template-columns:minmax(0,1fr);padding-left:26px;overflow:hidden;border-radius:24px}
+  .app.open:not(.pinned) .roster{position:absolute;left:0;top:0;bottom:0;width:min(360px,46vw);z-index:20;
+    transform:translateX(calc(-100% + 20px));transition:transform .28s cubic-bezier(.2,.8,.2,1) .35s,box-shadow .28s .35s;
+    box-shadow:0 1px 2px var(--glass-shade)}
+  .app.open:not(.pinned) .roster:not(.nohover):hover,.app.open:not(.pinned) .roster:has(#q:focus),.app.open:not(.pinned) .roster:has(select:focus){
+    transform:none;transition-delay:.12s;box-shadow:inset 0 1px 0 var(--glass-hi),0 30px 70px -20px rgba(0,0,0,.4),0 0 0 1px var(--glass-edge)}
+  .app.open:not(.pinned) .rhandle{display:flex;position:absolute;right:0;top:0;bottom:0;width:20px;align-items:center;justify-content:center;z-index:6;cursor:e-resize;
+    border-left:1px solid var(--glass-line);background:color-mix(in srgb,var(--box) 40%,transparent);transition:opacity .2s .35s}
+  .app.open:not(.pinned) .rhandle span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3)}
+  .app.open:not(.pinned) .roster:not(.nohover):hover .rhandle,.app.open:not(.pinned) .roster:has(#q:focus) .rhandle{opacity:0;transition-delay:.12s}
+  .app.open:not(.pinned) .roster .top,.app.open:not(.pinned) .roster .list{transition:opacity .2s .35s}
+  .app.open:not(.pinned) .roster:is(.nohover,:not(:hover)):not(:has(#q:focus)):not(:has(select:focus)) .top,
+  .app.open:not(.pinned) .roster:is(.nohover,:not(:hover)):not(:has(#q:focus)):not(:has(select:focus)) .list{opacity:0}
+  .app.open:not(.pinned) .detail{grid-column:1}
+}
+@media (prefers-reduced-motion:reduce){ .app.open .roster,.app.open .rhandle,.app.open .roster .top,.app.open .roster .list{transition:none!important} }
