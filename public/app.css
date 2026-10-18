@@ -676,3 +676,10 @@ body{background:
 .tl-short{display:none}
 @container (max-width:560px){ .tabdock .tl-long{display:none} .tabdock .tl-short{display:inline} .tabdock .tabs button{padding:6px 9px} }
 @container (max-width:760px){ .hacts .btn .tl{display:none} .hacts .btn{padding:0 9px} }
+/* sign-in: applicant / staff switch */
+.gate .seg.who{display:grid;grid-template-columns:1fr 1fr;border-radius:999px;flex-wrap:nowrap}
+.gate .seg.who button{flex:1;height:32px;font-size:13.5px}
+.gate .forgot{font-size:12.5px;margin-top:-4px}
+#staffSignin,#appSignin{display:flex;flex-direction:column;gap:14px}
+#staffSignin[hidden],#appSignin[hidden]{display:none}
+.field input[type=checkbox]{width:auto}

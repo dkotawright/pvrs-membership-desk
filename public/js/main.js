@@ -1,5 +1,5 @@
 import { auth, db, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, sendSignInLinkToEmail,
-  isSignInWithEmailLink, signInWithEmailLink, doc, getDoc, getDocs, collection, query, where, limit } from "./fb.js";
+  isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, sendPasswordResetEmail, doc, getDoc, getDocs, collection, query, where, limit } from "./fb.js";
 import { $, lower, toast } from "./shared.js";
 import { OWNER_EMAIL, CONTACT_EMAIL } from "./config.js";
 import { startDesk } from "./desk.js";
@@ -42,6 +42,36 @@ $("#linkForm").addEventListener("submit", async e => {
     s.querySelector("b").textContent = email;
   } catch { toast("Couldn't send the link. Check the address and try again."); }
   finally { btn.disabled = false; }
+});
+// Applicant (emailed link) or PVRS staff (email + password, Google as backup). The choice is remembered on this computer.
+const pref = { get(k){ try { return localStorage.getItem(k); } catch { return null; } }, set(k, v){ try { localStorage.setItem(k, v); } catch {} } };
+function setWho(who){
+  $("#whoSeg").querySelectorAll("[data-who]").forEach(b => { const on = b.dataset.who === who; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+  $("#staffSignin").hidden = who !== "staff"; $("#appSignin").hidden = who !== "applicant";
+  pref.set("pvrsWho", who);
+}
+setWho(pref.get("pvrsWho") === "staff" ? "staff" : "applicant");
+$("#pwEmail").value = pref.get("pvrsStaffEmail") || "";
+$("#whoSeg").addEventListener("click", e => { const b = e.target.closest("[data-who]"); if (b) { setWho(b.dataset.who); (b.dataset.who === "staff" ? ($("#pwEmail").value ? $("#pwPass") : $("#pwEmail")) : $("#linkEmail")).focus(); } });
+$("#pwForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const email = lower($("#pwEmail").value), pw = $("#pwPass").value;
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !pw) return toast("Enter your email and password.");
+  const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true;
+  try { await signInWithEmailAndPassword(auth, email, pw); pref.set("pvrsStaffEmail", email); $("#pwPass").value = ""; }
+  catch (err) {
+    const c = err && err.code;
+    toast(c === "auth/too-many-requests" ? "Too many tries. Wait a few minutes, or use Forgot password."
+      : c === "auth/network-request-failed" ? "No connection. Check your internet and try again."
+      : "Email or password is incorrect. No password yet? Sign in with Google, then click the key next to your name.");
+    $("#pwPass").select();
+  } finally { btn.disabled = false; }
+});
+$("#pwForgot").addEventListener("click", async () => {
+  const email = lower($("#pwEmail").value);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $("#pwEmail").focus(); return toast("Enter your email first, then click Forgot password."); }
+  try { await sendPasswordResetEmail(auth, email); } catch {}
+  toast(`If ${email} has a password, a reset link is on its way.`);
 });
 $("#googleBtn").addEventListener("click", async () => {
   try { await signInWithPopup(auth, new GoogleAuthProvider()); }

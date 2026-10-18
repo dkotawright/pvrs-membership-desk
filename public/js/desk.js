@@ -1,6 +1,7 @@
 // Staff Desk: roster, applicant file, board, onboarding, interview times, settings.
 import { auth, db, storage, doc, collection, collectionGroup, setDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch,
-  sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut } from "./fb.js";
+  sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut,
+  GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
   progress, inBoardQueue, nextReview, onProbation, applicantSteps, checkSVG, icsFile, refList } from "./shared.js";
@@ -1092,6 +1093,7 @@ function bindEvents(){
   $("#slotsBtn").addEventListener("click", openSlots);
   $("#newBtn").addEventListener("click", openNew);
   $("#agendaBtn").addEventListener("click", copyAgenda);
+  $("#pwBtn").addEventListener("click", openPassword);
   $("#packetBtn").addEventListener("click", () => { flushAll(); printPacket(sorted().filter(r => inBoardQueue(r.a)).map(r => r.a)); });
 }
 function select(id){
@@ -1215,6 +1217,51 @@ function watchActivity(){
     feedPrimed = true;
     if (!S.sel) renderOverview();
   }, e => console.error(e));
+}
+
+/* ---------- sign-in password ---------- */
+// Adds (or changes) an email + password sign-in on the current account. Firebase stores the password; it never touches the code.
+function openPassword(){
+  const user = auth.currentUser; if (!user) return;
+  const has = user.providerData.some(p => p.providerId === "password");
+  const M = openModal(`<form id="pwSetForm" style="display:contents" novalidate><h3>${has ? "Change" : "Set"} your sign-in password</h3>
+    <p class="help">Then sign in on the <b>PVRS staff</b> tab with <b>${esc(user.email)}</b> and this password.${has ? "" : " Google sign-in keeps working as a backup."}</p>
+    <div class="field"><label for="pwNew">New password</label><input id="pwNew" type="password" autocomplete="new-password" minlength="10" required>
+      <label for="pwAgain">Type it again</label><input id="pwAgain" type="password" autocomplete="new-password" required>
+      <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="pwShow" style="width:auto"> Show password</label></div>
+    <p class="help">At least 10 characters. Don't reuse a password from another site.</p>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="submit">Save password</button></div></form>`);
+  $("#pwNew").focus();
+  $("#pwShow").addEventListener("change", e => { $("#pwNew").type = $("#pwAgain").type = e.target.checked ? "text" : "password"; });
+  M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); };
+  const save = async pw => {
+    if (user.providerData.some(p => p.providerId === "password")) await updatePassword(user, pw);
+    else await linkWithCredential(user, EmailAuthProvider.credential(user.email, pw));
+  };
+  $("#pwSetForm").onsubmit = async e => {
+    e.preventDefault();
+    const pw = $("#pwNew").value;
+    if (pw.length < 10) { $("#pwNew").focus(); return toast("Use at least 10 characters."); }
+    if (pw !== $("#pwAgain").value) { $("#pwAgain").select(); return toast("The two passwords don't match."); }
+    const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true;
+    try {
+      try { await save(pw); }
+      catch (err) {
+        if (err && err.code === "auth/requires-recent-login" && user.providerData.some(p => p.providerId === "google.com")) {
+          toast("For security, confirm it's you with Google first.");
+          await reauthenticateWithPopup(user, new GoogleAuthProvider()); await save(pw);
+        } else throw err;
+      }
+      closeModal(); toast("Password saved. Use it on the PVRS staff sign-in tab.");
+    } catch (err) {
+      console.error(err);
+      const c = err && err.code;
+      toast(c === "auth/weak-password" ? "That password is too weak. Try a longer one."
+        : c === "auth/requires-recent-login" ? "For security, sign out, sign back in, and set the password again."
+        : c === "auth/popup-closed-by-user" ? "Google confirmation was closed. Try again."
+        : "Couldn't save the password. Try again.");
+    } finally { btn.disabled = false; }
+  };
 }
 
 /* ---------- auto sign-out after inactivity ---------- */

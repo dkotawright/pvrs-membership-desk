@@ -10,7 +10,7 @@ Read this first. It's the full context from the original build conversation (Oct
 ## Architecture (static site, no build step)
 - Firebase project ID: **pvrs-membership** (on the **Blaze** plan, $1 budget alert). Project is owned by Dkota's *personal* Google account for now; plan is to add dkota@pvrs.org as Owner later.
 - Hosting: Firebase Hosting (`public/`). SDK v10.12.2 loaded from gstatic CDN as ES modules; no npm/bundler.
-- Auth: Email link (passwordless) + Google. Owner hardcoded as `dkota@pvrs.org` in `public/js/config.js`, `firestore.rules`, `storage.rules`.
+- Auth: staff sign in with email + password (set in-app via the key button next to their name, which links a password credential to their account; Google stays as a backup). Applicants use the email link. Passwords are never stored in code. Owner hardcoded as `dkota@pvrs.org` in `public/js/config.js`, `firestore.rules`, `storage.rules`.
 - Roles: owner (everything incl. Settings behind PIN 0508, hashed in config.js), `staff/{email}` docs with role `admin` (everything but Settings) or `member` (Application + Interview tabs only), applicants (own portal only, matched by `portal/{id}.email`).
 
 ## Files
