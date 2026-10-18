@@ -761,10 +761,9 @@ body{background:
    Sign-in screens: dark navy with emergency-light glows, a heart-monitor trace and a faint Star of Life.
    No fast flashing (slow 5s fades); all motion stops with Reduce Motion.
    ====================================================================== */
-.ems-bg{display:none;position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;
+.ems-bg{display:block;position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;
   background:radial-gradient(120% 85% at 50% 115%,#0c2c60 0%,#061429 52%,#03070f 100%)}
 body:has(.gate:not([hidden])){background:#03070f}
-body:has(.gate:not([hidden])) .ems-bg{display:block}
 .ems-bg .light{position:absolute;top:-28vmax;width:72vmax;height:72vmax;border-radius:50%;filter:blur(100px);opacity:.1;animation:siren 5s ease-in-out infinite}
 .ems-bg .light.red{left:-24vmax;background:#e0162b}
 .ems-bg .light.blue{right:-24vmax;background:#1f5fff;animation-delay:-2.5s}
@@ -934,3 +933,17 @@ body:has(.gate:not([hidden])) .ems-bg{display:block}
 .vgroup h2{margin:6px 0 2px}
 .hacts .btn.hdel{color:var(--s-dec)}
 .hacts .btn.hdel:hover{background:color-mix(in srgb,var(--s-dec) 12%,var(--box))}
+
+/* The same EMS backdrop behind the desk, applicant portal and paperwork page, toned down so text stays easy to read.
+   (The sign-in and public pages keep the full dark version.) */
+.app{z-index:1}
+body:not(:has(.gate:not([hidden]))) .ems-bg{background:none}
+body:not(:has(.gate:not([hidden]))) .ems-bg .light.red{background:rgba(224,22,43,.6)}
+body:not(:has(.gate:not([hidden]))) .ems-bg .light.blue{background:rgba(31,95,255,.6)}
+body:not(:has(.gate:not([hidden]))) .ems-bg .sol{color:color-mix(in srgb,var(--navy) 10%,transparent)}
+body:not(:has(.gate:not([hidden]))) .ecg-grid{stroke:color-mix(in srgb,var(--fg) 5%,transparent)}
+body:not(:has(.gate:not([hidden]))) .ecg-faint{stroke:color-mix(in srgb,var(--red) 12%,transparent)}
+body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filter:drop-shadow(0 0 5px color-mix(in srgb,var(--red) 55%,transparent))}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) body:not(:has(.gate:not([hidden]))) .ems-bg .light.red{background:rgba(224,22,43,.85)}
+  :root:not([data-theme="light"]) body:not(:has(.gate:not([hidden]))) .ems-bg .light.blue{background:rgba(31,95,255,.85)} }
+@media print{ .ems-bg{display:none!important} }
