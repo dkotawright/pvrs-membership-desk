@@ -1,0 +1,101 @@
+rules_version = '2';
+
+// PVRS Membership Desk — who can see what
+//   Owner (dkota@pvrs.org) and staff with role "admin": everything
+//   Staff with role "member": application + interview only
+//   Applicants: their own portal page, their own uploads, open interview times
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn()  { return request.auth != null; }
+    function verified()  { return signedIn() && request.auth.token.email_verified == true && request.auth.token.email != null; }
+    function myEmail()   { return request.auth.token.email.lower(); }
+    function isOwner()   { return verified() && myEmail() == 'dkota@pvrs.org'; }
+    function staffPath() { return /databases/$(database)/documents/staff/$(myEmail()); }
+    function isStaff()   { return isOwner() || (verified() && exists(staffPath())); }
+    function isAdmin()   { return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'admin'); }
+    function portalOf(id)      { return get(/databases/$(database)/documents/portal/$(id)); }
+    function ownsPortal(id)    { return verified() && exists(/databases/$(database)/documents/portal/$(id)) && portalOf(id).data.email == myEmail(); }
+    function onlyChanged(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+    function nowMs()     { return request.time.toMillis(); }
+    function DAY()       { return 86400000; }
+
+    // Team roster. Everyone can read their own entry (so the app knows their role).
+    match /staff/{email} {
+      allow read: if isAdmin() || (verified() && email == myEmail());
+      allow write: if isAdmin() && email != 'dkota@pvrs.org';
+    }
+
+    // Application + interview (shared with members)
+    match /applicants/{id} {
+      allow read, create, update: if isStaff();
+      allow delete: if isAdmin();
+
+      // Screening, board, onboarding, notes (admins only)
+      match /private/{doc} {
+        allow read, write: if isAdmin();
+      }
+    }
+    // Lets the Desk load every private record in one query
+    match /{path=**}/private/{doc} {
+      allow read: if isAdmin();
+    }
+
+    // What the applicant sees. Written by admins; the applicant may only book or cancel an interview.
+    match /portal/{id} {
+      allow read: if isAdmin() || (verified() && resource.data.email == myEmail());
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        verified() && resource.data.email == myEmail()
+        && onlyChanged(['interview'])
+        && (
+          // booking (only while you've opened booking for them): the slot must now be held by this applicant
+          (request.resource.data.interview != null
+            && resource.data.get('bookingOpen', false) == true
+            && getAfter(/databases/$(database)/documents/slots/$(request.resource.data.interview.slotId)).data.bookedBy == id
+            && request.resource.data.interview.start == getAfter(/databases/$(database)/documents/slots/$(request.resource.data.interview.slotId)).data.start)
+          ||
+          // cancelling: the old slot must be released
+          (request.resource.data.interview == null && resource.data.interview != null
+            && getAfter(/databases/$(database)/documents/slots/$(resource.data.interview.slotId)).data.bookedBy == null)
+        )
+      );
+
+      // Files the applicant uploaded
+      match /files/{fileId} {
+        allow read: if isAdmin() || ownsPortal(id);
+        allow create: if ownsPortal(id)
+          && request.resource.data.keys().hasOnly(['docKey','label','name','path','size','contentType','uploadedAt','uploadedBy'])
+          && request.resource.data.uploadedBy == myEmail()
+          && request.resource.data.path.matches('uploads/' + id + '/.*')
+          && request.resource.data.size is int && request.resource.data.size <= 15 * 1024 * 1024;
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // Interview times you post. Applicants can only claim or release a slot for themselves, 24h+ ahead.
+    match /slots/{slotId} {
+      allow read: if verified();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        verified() && onlyChanged(['bookedBy']) && resource.data.start > nowMs() + DAY()
+        && (
+          (resource.data.bookedBy == null && request.resource.data.bookedBy is string
+            && ownsPortal(request.resource.data.bookedBy)
+            && portalOf(request.resource.data.bookedBy).data.get('bookingOpen', false) == true
+            && getAfter(/databases/$(database)/documents/portal/$(request.resource.data.bookedBy)).data.interview.slotId == slotId)
+          ||
+          (resource.data.bookedBy != null && request.resource.data.bookedBy == null
+            && ownsPortal(resource.data.bookedBy)
+            && (getAfter(/databases/$(database)/documents/portal/$(resource.data.bookedBy)).data.interview == null
+                || getAfter(/databases/$(database)/documents/portal/$(resource.data.bookedBy)).data.interview.slotId != slotId))
+        )
+      );
+    }
+
+    // Email signature, contact address (admins only)
+    match /settings/{doc} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

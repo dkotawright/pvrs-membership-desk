@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// Applicant uploads: uploads/{applicantId}/{file}
+//   Applicants can add files to their own folder (PDF or image, 15 MB max) but can't read, replace or delete them.
+//   Admins can read and delete everything.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function verified() { return request.auth != null && request.auth.token.email_verified == true && request.auth.token.email != null; }
+    function myEmail()  { return request.auth.token.email.lower(); }
+    function isAdmin()  {
+      return verified() && (myEmail() == 'dkota@pvrs.org'
+        || (firestore.exists(/databases/(default)/documents/staff/$(myEmail()))
+            && firestore.get(/databases/(default)/documents/staff/$(myEmail())).data.role == 'admin'));
+    }
+    function ownsPortal(id) {
+      return verified() && firestore.exists(/databases/(default)/documents/portal/$(id))
+        && firestore.get(/databases/(default)/documents/portal/$(id)).data.email == myEmail();
+    }
+
+    match /uploads/{appId}/{fileName} {
+      allow read, delete: if isAdmin();
+      allow create: if ownsPortal(appId)
+        && request.resource.size <= 15 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+    }
+
+    match /{everythingElse=**} {
+      allow read, write: if false;
+    }
+  }
+}
