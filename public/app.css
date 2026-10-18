@@ -637,3 +637,18 @@ body{background:
   .tabdock .tabs{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);padding-right:20px}
   .tabdock .tabs button{padding:8px 11px;font-size:12.5px}
 }
+
+/* references */
+.refsum{display:flex;flex-direction:column;gap:3px;padding:12px 16px;margin-bottom:20px;border-radius:16px;font-size:13px;color:var(--fg2);line-height:1.45;
+  background:var(--box);border:1px solid var(--glass-edge);border-left:4px solid var(--fg3)}
+.refsum b{color:var(--fg);font-size:14px}
+.refsum.warn{border-left-color:var(--s-appr)}
+.refsum.ok{border-left-color:var(--s-act)}
+.badge:empty{display:none}
+.group>h3 .badge{font-family:var(--font);letter-spacing:0;text-transform:none}
+/* interview panel: name + initials on one row */
+.row.panel .lbl{flex:0 0 1.4em;color:var(--fg3);font-variant-numeric:tabular-nums}
+.row.panel input[type=text]:not(.init){flex:1 1 auto;max-width:none;text-align:left}
+.row.panel input.init{flex:0 0 5em;text-align:center;background:var(--fill);border-radius:999px}
+.row .lbl{min-width:min(10.5em,42%)}
+.row.panel .lbl{min-width:0}

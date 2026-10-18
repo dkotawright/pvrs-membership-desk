@@ -48,6 +48,8 @@ export function portalHTML({ pd, files = [], slots = [], preview = false, pick =
 
     <section class="card glass" id="ivCard"><h2>Interview</h2>${ivBody}</section>
 
+    <section class="card glass" id="refCard"><h2>References</h2>${refsBody(pd.refs || [])}</section>
+
     <section class="card glass"><h2>Documents</h2>
       ${docs.length ? `<div>${docRows}</div>` : `<p class="info">Nothing needed right now. If we need anything from you, it will show up here.</p>`}
       ${other.length ? `<div class="info"><b>Other files you sent:</b> ${other.map(f => esc(f.name)).join(", ")}</div>` : ""}
@@ -61,6 +63,13 @@ export function portalHTML({ pd, files = [], slots = [], preview = false, pick =
       <li>Monthly training is offered and all members are encouraged to take part.</li></ul>
       <p style="margin:10px 0 0">Questions? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></div></section>
   </div>`;
+}
+// Only names and received/waiting come through; contact details stay with the squad.
+function refsBody(refs){
+  if (!refs.length) return `<p class="info" style="margin:0">Once we start contacting your references, you'll see here which ones we've heard from.</p>`;
+  const waiting = refs.filter(r => !r.received).length;
+  return `<p class="info" style="margin:0">${waiting ? `We need to hear from all of your references before your application goes to the board. Still waiting on ${waiting} of ${refs.length}. It can help to give them a quick reminder.` : "All of your references are in. Thank you!"}</p>
+    <div>${refs.map(r => `<div class="doc"><div class="dt">${esc(r.name)}</div><span class="badge ${r.received ? "ok" : "wait"}">${r.received ? "Received" : "Waiting"}</span></div>`).join("")}</div>`;
 }
 function slotPicker(days, pick, dis, busy){
   return `<p class="info" style="margin:0">Pick a time that works for you. Interviews are with the Membership Committee.</p><div class="slots">${Object.entries(days).map(([day, list]) => `<div class="slotday"><h4>${esc(day)}</h4><div class="slotrow">${list.map(s =>

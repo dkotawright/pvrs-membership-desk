@@ -3,7 +3,7 @@ import { auth, db, storage, doc, collection, collectionGroup, setDoc, deleteDoc,
   sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
-  progress, inBoardQueue, nextReview, onProbation, applicantSteps, checkSVG, icsFile } from "./shared.js";
+  progress, inBoardQueue, nextReview, onProbation, applicantSteps, checkSVG, icsFile, refList } from "./shared.js";
 import { portalHTML } from "./portal.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PIN_HASH } from "./config.js";
 
@@ -40,7 +40,7 @@ const SHOW = {
   residentOther: a => get(a,"iv.resident") === "other",
 };
 
-const TABS_ADMIN = [["app","Application"],["screen","Screening"],["iv","Interview"],["board","Board"],["onb","Onboard"],["notes","Notes"]];
+const TABS_ADMIN = [["app","Application"],["screen","Screening"],["refs","References"],["iv","Interview"],["board","Board"],["onb","Onboard"],["notes","Notes"]];
 const TABS_MEMBER = [["app","Application"],["iv","Interview"]];
 
 function tabHTML(tab){
@@ -64,17 +64,20 @@ function tabHTML(tab){
     ${group("License issue",[F.area("dl.issue","What's the issue?","Restriction, suspension, expired…")],"dlBad")}
     ${group("Background check · Sterling Volunteers",[F.note("Sterling Volunteers runs the full background check."),F.date("bg.sterReq","Date requested"),F.date("bg.sterDone","Date completed"),
       F.seg("bg.sterResult","Result",[["clear","Clear","good"],["review","Needs review","bad"]],true),F.init("bg.sterInit")])}
-  </div>
-  <section class="group" style="margin-top:18px"><h3><span>Reference checks</span></h3><div class="refgrid">
-    ${[1,2,3,4].map(i => `<div class="ref"><h4>Reference ${i}</h4><div class="ios">${[
-      F.text(`refs.r${i}.name`,"Name","Full name"),F.text(`refs.r${i}.phone`,"Phone","","tel"),F.date(`refs.r${i}.contacted`,"Date contacted"),
-      F.seg(`refs.r${i}.method`,"Method",[["Phone","Phone"],["Email","Email"],["Text","Text"]]),F.date(`refs.r${i}.returned`,"Date returned"),F.init(`refs.r${i}.init`)].join("")}</div></div>`).join("")}
-  </div></section>`;
+  </div>`;
+  if (tab === "refs") return `<div class="refsum" id="refSummary"></div>
+  <div class="cols">${[1,2,3,4].map(i => `<section class="group ref"><h3><span class="refh">Reference ${i}</span><span class="badge" id="refBadge${i}"></span></h3><div class="ios">${[
+      F.text(`refs.r${i}.name`,"Name","Full name"),
+      `<div class="row"><span class="lbl">Reference received<small id="refRcv${i}">—</small></span><button class="btn small" type="button" data-refrcv="${i}" id="refBtn${i}">Mark received</button></div>`,
+      F.text(`refs.r${i}.phone`,"Phone","","tel"),F.date(`refs.r${i}.contacted`,"Date contacted"),
+      F.seg(`refs.r${i}.method`,"Method",[["Phone","Phone"],["Email","Email"],["Text","Text"]]),F.date(`refs.r${i}.returned`,"Date received"),F.init(`refs.r${i}.init`)].join("")}</div></section>`).join("")}
+  </div>`;
   if (tab === "iv") return `<div class="cols">
     ${group("Scheduling",[
       `<div class="row"><span class="lbl">Booked time<small id="bookedEcho">—</small></span><span id="bookedActs" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"></span></div>`,
-      F.date("sched.contacted","Applicant contacted"),F.date("sched.scheduled","Interview date (if not booked above)"),F.text("sched.time","Interview time","6:30 PM"),F.date("sched.completed","Interview completed")])}
-    ${group("Interviewers",[1,2,3,4].map(i => F.text(`iv.panel.m${i}`,`Interviewer ${i}`,"First and last name")))}
+      F.date("sched.contacted","Applicant contacted"),F.date("sched.scheduled","Interview date (if not booked above)"),F.text("sched.time","Interview time","6:30 PM"),F.date("sched.completed","Interview completed"),F.init("sched.completedInit","Completed by (initials)")])}
+    ${group("Who was at the interview",[F.note("Committee members who sat in on the interview. Matches the panel on the completed interview intake."),
+      ...[1,2,3,4,5].map(i => `<div class="row panel"><span class="lbl">${i}</span><input type="text" id="f-iv-panel-m${i}" data-k="iv.panel.m${i}" placeholder="First and last name" autocomplete="off" aria-label="Interviewer ${i}"><input class="init" type="text" id="f-iv-panel-i${i}" data-k="iv.panel.i${i}" maxlength="4" placeholder="Init." autocomplete="off" aria-label="Interviewer ${i} initials"></div>`)],"",`<small id="panelCount" style="font-weight:500;color:var(--fg3)"></small>`)}
   </div>
   <div class="cols">
     ${group("About the applicant",[
@@ -125,7 +128,7 @@ function tabHTML(tab){
     ${admin?group("Committee decision",[F.yn("appr.committee","Committee approval",true)]):""}
   </div>`;
   if (tab === "board") return `<div class="cols">
-    ${group("Membership committee",[F.yn("appr.committee","Committee approval",true),F.date("appr.chairNotified","Membership chair notified")])}
+    ${group("Membership committee",[`<div class="note warn" id="boardRefNote" hidden></div>`,F.yn("appr.committee","Committee approval",true),F.date("appr.chairNotified","Membership chair notified")])}
     ${group("Board vote",[F.date("board.date","Board meeting date"),F.text("board.motion","Motion by","Name"),F.text("board.second","Seconded by","Name"),
       `<div class="row"><span class="lbl">Vote</span><div class="tally">
         <label>For<input type="number" min="0" inputmode="numeric" id="f-board-for" data-k="board.for" placeholder="0"></label>
@@ -319,7 +322,7 @@ function renderOverview(){
 
 /* ---------- detail ---------- */
 // Which tab holds each MILESTONES step, so clicking the progress bar jumps there.
-const STEP_TAB = ["app","app","screen","screen","screen","screen","iv","iv","board","board","onb","onb","onb","onb"];
+const STEP_TAB = ["app","app","screen","screen","refs","screen","iv","iv","board","board","onb","onb","onb","onb"];
 const ICON = {
   mail:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 4l6 4.5L14 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
   cal:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 6.5h13M5 1v3M11 1v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
@@ -394,7 +397,8 @@ function syncDetail(){
     const cal = a._booked ? `<button class="btn small" type="button" data-act="ics" title="Add to Calendar">${ICON.cal}<span class="tl">Calendar</span></button>` : "";
     $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
-  renderDocs(a); renderHistory();
+  renderDocs(a); renderHistory(); syncRefs(a);
+  const pc = $("#panelCount"); if (pc) { const n = [1,2,3,4,5].filter(i => String(get(a,`iv.panel.m${i}`) || "").trim()).length; pc.textContent = n ? `${n} recorded` : ""; }
   document.querySelectorAll("#dbody [data-k]").forEach(el => {
     const k = el.dataset.k; let v = get(a, k);
     if (k === "status" && !v) v = "open";
@@ -402,6 +406,24 @@ function syncDetail(){
     else { const sv = v == null ? "" : String(v); if (el !== document.activeElement && el.value !== sv) el.value = sv; }
   });
   document.querySelectorAll("#dbody [data-show]").forEach(el => { el.hidden = !SHOW[el.dataset.show](a); });
+}
+function syncRefs(a){
+  const refs = refList(a), got = refs.filter(x => x.received).length, waiting = refs.length - got;
+  const sum = $("#refSummary");
+  if (sum) {
+    sum.className = "refsum " + (!refs.length ? "" : waiting ? "warn" : "ok");
+    sum.innerHTML = `<b>${!refs.length ? "No references entered yet" : waiting ? `${got} of ${refs.length} references received · waiting on ${waiting}` : `All ${refs.length} references received`}</b>
+      <span>All references must be in before the application goes to the board. The applicant sees each name with Received or Waiting in their portal; phone numbers, dates and initials stay private.</span>`;
+  }
+  for (const i of [1,2,3,4]) {
+    const badge = $("#refBadge" + i); if (!badge) continue;
+    const name = String(get(a,`refs.r${i}.name`) || "").trim(), ret = get(a,`refs.r${i}.returned`);
+    badge.className = "badge " + (!name ? "" : ret ? "ok" : "wait"); badge.textContent = !name ? "" : ret ? "Received" : "Waiting";
+    $("#refRcv" + i).textContent = !name ? "Enter a name first" : ret ? "Received " + fmtDate(ret) : "Waiting on this reference";
+    const b = $("#refBtn" + i); b.textContent = ret ? "Undo" : "Mark received"; b.disabled = !name; b.classList.toggle("primary", !!name && !ret);
+  }
+  const bn = $("#boardRefNote");
+  if (bn) { bn.hidden = !(refs.length === 0 || waiting); bn.textContent = refs.length === 0 ? "No references entered yet. All references must be in before this goes to the board." : `Waiting on ${waiting} reference${waiting===1?"":"s"} (${refs.filter(x => !x.received).map(x => x.name).join(", ")}). All references must be in before this goes to the board.`; }
 }
 function requestedDocs(a){
   return Object.entries(get(a,"docs.requested") || {}).filter(([,v]) => v && v.label && !v.removed)
@@ -530,9 +552,10 @@ function renderHistory(){
 function portalPayload(a){
   return { email: lower(a.email), name: a.name || "", firstName: first(a.name), type: a.type || "",
     steps: applicantSteps(a), docs: requestedDocs(a).map(d => ({ key: d.key, label: d.label, received: d.received })),
+    refs: refList(a).map(r => ({ name: r.name, received: r.received })),
     bookingOpen: get(a,"portal.bookingOpen") === "yes" };
 }
-const portalKey = p => JSON.stringify([p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.bookingOpen]);
+const portalKey = p => JSON.stringify([p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.bookingOpen]);
 const portalTimers = {};
 function schedulePortal(id, delay = 1500){ if (!S.admin) return; clearTimeout(portalTimers[id]); portalTimers[id] = setTimeout(() => syncPortal(id), delay); }
 async function syncPortal(id, force = false){
@@ -696,13 +719,15 @@ const TEMPLATES = {
     body: `Hi ${first(a.name)},\n\nThank you for applying to the Potsdam Volunteer Rescue Squad. You can follow your application, upload documents and book your interview in your applicant portal:\n\n${location.origin}\n\nSign in with this email address (${lower(a.email)}). We just sent you a separate sign-in link, and you can request a new one from that page any time. No password needed.\n\nQuestions? Email ${S.settings.docsEmail || CONTACT_EMAIL}.\n\nThank you,\n${sig()}` }),
   docs: (a, list = []) => ({ subject: "PVRS application: documents needed",
     body: `Hi ${first(a.name)},\n\nTo keep your application moving, please upload the following in your applicant portal:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\n${location.origin}\n\nIf the upload gives you trouble, email them to ${S.settings.docsEmail || CONTACT_EMAIL} instead.\n\nThank you,\n${sig()}` }),
+  refs: (a, list = []) => ({ subject: "PVRS application: references still needed",
+    body: `Hi ${first(a.name)},\n\nWe're still waiting to hear from ${list.length === 1 ? "one of your references" : "some of your references"}:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\nWe need all of your references before your application can go to the board. If you can, please check in with them, or let us know if one of them is hard to reach and you'd like to suggest someone else.\n\nYou can see which references we've heard from in your applicant portal:\n${location.origin}\n\nThank you,\n${sig()}` }),
   interview: a => ({ subject: "PVRS interview: pick a time",
     body: `Hi ${first(a.name)},\n\nThe next step in your application is an interview with the Membership Committee. Interview times are now open in your applicant portal. Sign in and pick the one that works best for you:\n\n${location.origin}\n\nIf none of the times work, reply to this email and we'll find another.\n\nThank you,\n${sig()}` }),
 };
 function openEmail(kind, extra){
   const a = S.apps.get(S.sel); if (!a) return;
   const t = TEMPLATES[kind](a, extra);
-  const titles = { portal: "Welcome email", docs: "Documents email", interview: "Interview email" };
+  const titles = { portal: "Welcome email", docs: "Documents email", refs: "References email", interview: "Interview email" };
   const M = openModal(`<h3>${titles[kind]}</h3><p class="help">Optional personal note to go with the portal. Copy it or open it in Mail.</p>
     <div class="ios"><div class="row"><span class="lbl">To<small>${esc(a.email || "No email on file")}</small></span>${a.email?`<button class="copy" type="button" id="cpTo">Copy</button>`:""}</div>
       <label class="row stack"><span class="lbl">Subject</span><input type="text" id="emSubject" value="${esc(t.subject)}"></label>
@@ -838,7 +863,8 @@ function fieldLabels(){
     const k = el.dataset.k; if (map[k]) return;
     const row = el.closest(".row"), refEl = el.closest(".ref"), lb = row && row.querySelector(".lbl");
     let t = lb ? (lb.firstChild && lb.firstChild.nodeType === 3 ? lb.firstChild.textContent : lb.textContent) : (el.closest("label") ? el.closest("label").textContent : k);
-    if (refEl) t = refEl.querySelector("h4").textContent + ": " + t;
+    if (refEl) t = refEl.querySelector(".refh, h4").textContent + ": " + t;
+    if (el.getAttribute("aria-label")) t = el.getAttribute("aria-label");
     map[k] = t.trim();
   });
   return map;
@@ -909,13 +935,15 @@ function moveSel(dir){
 function openEmailPicker(){
   const a = S.apps.get(S.sel); if (!a) return;
   const waiting = requestedDocs(a).filter(d => !d.received).map(d => d.label);
+  const waitRefs = refList(a).filter(r => !r.received).map(r => r.name);
   const opts = [["portal","Welcome to the applicant portal","Their sign-in address and what the portal is for"],
     ["docs","Documents needed", waiting.length ? `Lists the ${waiting.length} document${waiting.length===1?"":"s"} still outstanding` : "Nothing requested yet. You can type the list yourself"],
+    ["refs","References still needed", waitRefs.length ? `Lists the ${waitRefs.length} reference${waitRefs.length===1?"":"s"} we haven't heard from` : "All entered references are in"],
     ["interview","Pick an interview time","Tells them interview times are open in the portal"]];
   const M = openModal(`<h3>Write an email</h3><p class="help">To ${esc(a.name || "this applicant")}${a.email ? ` · ${esc(a.email)}` : ". No email address on file yet"}. You can edit it before sending.</p>
     <div class="ios">${opts.map(([k,l,s]) => `<button class="oitem" type="button" data-em="${k}" style="width:100%;padding-inline:14px"><span class="ot"><b>${l}</b><small>${s}</small></span><span class="when">›</span></button>`).join("")}</div>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button></div>`);
-  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const b = e.target.closest("[data-em]"); if (b) openEmail(b.dataset.em, b.dataset.em === "docs" ? waiting : undefined); };
+  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const b = e.target.closest("[data-em]"); if (b) openEmail(b.dataset.em, b.dataset.em === "docs" ? waiting : b.dataset.em === "refs" ? waitRefs : undefined); };
 }
 function openShortcuts(){
   const k = (...keys) => `<span>${keys.map(x => `<kbd>${x}</kbd>`).join("")}</span>`;
@@ -925,7 +953,7 @@ function openShortcuts(){
     ${k("K")}<span>Previous applicant (or <kbd>↑</kbd> in the list)</span>
     ${k("/")}<span>Search</span>
     ${k("N")}<span>New applicant</span>
-    ${k("1")}<span>…through <kbd>6</kbd>: switch tabs on the open file</span>
+    ${k("1")}<span>…through <kbd>7</kbd>: switch tabs on the open file</span>
     ${k("[")}<span>Previous tab</span>
     ${k("]")}<span>Next tab</span>
     ${S.admin ? `${k("E")}<span>Write an email to the open applicant</span>` : ""}
@@ -1002,6 +1030,9 @@ function bindEvents(){
       if (k === "ics") { const a = S.apps.get(S.sel); if (a && a._booked) { download(`PVRS-interview-${(a.name||"applicant").replace(/\W+/g,"-")}.ics`, icsFile([icsEvent(a, a._booked)]), "text/calendar"); toast("Calendar file downloaded. Open it to add the interview."); } return; }
       if (k === "release") { try { await releaseFor(S.sel); toast("Interview time released"); } catch { toast("Couldn't release that time."); } return; }
     }
+    const rr = t.closest("[data-refrcv]");
+    if (rr) { const a = S.apps.get(S.sel), i = rr.dataset.refrcv; if (!String(get(a,`refs.r${i}.name`) || "").trim()) return toast("Enter the reference's name first.");
+      edit(S.sel, `refs.r${i}.returned`, get(a,`refs.r${i}.returned`) ? "" : today()); return; }
     const rc = t.closest("[data-docrcv]"); if (rc) { const a = S.apps.get(S.sel); const k = rc.dataset.docrcv; edit(S.sel, `docs.requested.${k}.received`, get(a,`docs.requested.${k}.received`) === "yes" ? "" : "yes"); return; }
     const rm = t.closest("[data-docrm]"); if (rm) { if (rm.dataset.confirm !== "1") { rm.dataset.confirm = "1"; rm.textContent = "Confirm"; return; } edit(S.sel, `docs.requested.${rm.dataset.docrm}.removed`, true); return; }
     const fl = t.closest("[data-file]"); if (fl) return openFile(fl.dataset.file);
@@ -1078,7 +1109,7 @@ const d8 = v => v ? fmtDate(v) : "—";
 function packetPage(a){
   const g = k => get(a, k);
   const refs = [1,2,3,4].map(i => g("refs.r"+i) || {}).filter(x => x.name);
-  const panel = [1,2,3,4].map(i => g("iv.panel.m"+i)).filter(Boolean);
+  const panel = [1,2,3,4,5].map(i => g("iv.panel.m"+i) ? g("iv.panel.m"+i) + (g("iv.panel.i"+i) ? ` (${g("iv.panel.i"+i)})` : "") : "").filter(Boolean);
   const row = (k, v, flag) => `<tr${flag ? ' class="flag"' : ""}><th>${k}</th><td>${v}</td></tr>`;
   const ans = (q, k, alt) => { const v = g(k); return v ? `<div class="pq"><b>${q}</b><p>${esc(alt ? alt(v) : v)}</p></div>` : ""; };
   const iv = a._booked ? slotLong(a._booked.start) : g("sched.scheduled") ? longDate(g("sched.scheduled")) + (g("sched.time") ? " at " + g("sched.time") : "") : "";
@@ -1090,11 +1121,11 @@ function packetPage(a){
         ${row("Application complete", yn(g("app.complete")), g("app.complete") === "no")}
         ${row("Driving record (MVR)", g("mvr.completed") ? `Completed ${d8(g("mvr.completed"))} · violations: ${yn(g("mvr.violations"))}` : "Not completed", g("mvr.violations") === "yesbad")}
         ${row("Driver's license", g("dl.date") ? `Verified ${d8(g("dl.date"))} · valid and unrestricted: ${yn(g("dl.valid"))}` : "Not verified", g("dl.valid") === "no")}
-        ${row("References", refs.length ? `${refs.filter(x => x.returned).length} of ${refs.length} returned` : "None entered")}
+        ${row("References", refs.length ? `${refs.filter(x => x.returned).length} of ${refs.length} received` + (refs.some(x => !x.returned) ? " · NOT ALL IN" : "") : "None entered", !refs.length || refs.some(x => !x.returned))}
         ${row("Background check (Sterling)", g("bg.sterDone") ? `Completed ${d8(g("bg.sterDone"))} · ${g("bg.sterResult") === "clear" ? "Clear" : g("bg.sterResult") === "review" ? "Needs review" : "Result not entered"}` : "Not completed", g("bg.sterResult") === "review")}
       </table></div>
       <div><h2>Interview and committee</h2><table>
-        ${row("Interview", g("sched.completed") ? "Completed " + d8(g("sched.completed")) : iv ? "Scheduled " + esc(iv) : "Not scheduled")}
+        ${row("Interview", g("sched.completed") ? "Completed " + d8(g("sched.completed")) + (g("sched.completedInit") ? " · " + esc(g("sched.completedInit")) : "") : iv ? "Scheduled " + esc(iv) : "Not scheduled")}
         ${row("Interviewers", panel.length ? esc(panel.join(", ")) : "—")}
         ${row("Understands requirements", `${yn(g("iv.understands"))} · able to meet them: ${yn(g("iv.ableToMeet"))}`, g("iv.understands") === "no" || g("iv.ableToMeet") === "no")}
         ${row("Committee recommendation", g("appr.committee") === "yes" ? "Approved" : g("appr.committee") === "no" ? "Not approved" : "Pending", g("appr.committee") === "no")}

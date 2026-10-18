@@ -87,6 +87,9 @@ export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","n
 export const DOC_ITEMS = ["Copy of driver's license (front and back)","EMT certification card","CPR card","Medical documentation for orientation","Missing pages of the application","Reference contact information"];
 
 const scheduled = a => !!(get(a,"sched.scheduled") || a._booked || get(a,"sched.completed"));
+// References with a name entered, and whether each has come back. Applicants see only the name and status.
+export const refList = a => [1,2,3,4].map(i => ({ i, ...(get(a,"refs.r"+i) || {}) })).filter(r => r.name && String(r.name).trim())
+  .map(r => ({ i: r.i, name: String(r.name).trim(), received: !!r.returned, returned: r.returned || "" }));
 export const MILESTONES = [
   ["Application received",          a => !!get(a,"app.received")],
   ["Application complete",          a => get(a,"app.complete") === "yes"],
