@@ -349,7 +349,8 @@ function paintDetail(){
   if (!a) return renderOverview();
   const tabs = S.admin ? TABS_ADMIN : TABS_MEMBER;
   if (!tabs.some(t => t[0] === S.tab)) S.tab = "app";
-  D.innerHTML = `<div class="dhead">
+  // The header sticks to the top of the scrolling file and the tab bar floats at the bottom; content scrolls under both.
+  D.innerHTML = `<div class="dbody" id="dbody"><div class="dhead">
       <div class="drow"><button class="btn small back" type="button" id="backBtn" aria-label="Back to roster">‹ Roster</button>
         <span class="av" id="dAv" aria-hidden="true"></span>
         <div class="dname"><h2 id="dName"></h2><div class="sub" id="dSub"></div></div>
@@ -360,10 +361,10 @@ function paintDetail(){
           <button class="btn small" type="button" data-act="preview" title="See their applicant portal">${ICON.eye}<span class="tl">Portal</span></button>
         </div>` : ""}</div>
       ${S.admin?`<div class="prog" id="dProg"></div>`:""}
-      <div class="tabrow"><div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="dbody" data-tab="${k}" aria-selected="${S.tab===k}" title="${l} (${i+1})">${l}</button>`).join("")}</div>
-        <span class="save" id="saveState" role="status"></span></div>
     </div>
-    <div class="dbody" id="dbody" role="tabpanel" aria-labelledby="tab-${S.tab}"><div class="dinner">${tabHTML(S.tab)}</div></div>`;
+    <div class="dinner" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${tabHTML(S.tab)}</div></div>
+    <nav class="tabdock" aria-label="Applicant file sections"><div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="dpanel" data-tab="${k}" aria-selected="${S.tab===k}" title="${l} (${i+1})">${l}</button>`).join("")}</div>
+      <span class="save" id="saveState" role="status"></span></nav>`;
   stackCols($("#dbody"));
   syncDetail();
 }
@@ -590,6 +591,7 @@ function openSlots(){
     <div id="slotList"></div>
     <div class="acts"><button class="btn" type="button" id="slIcs" title="Every booked interview as one calendar file">Add booked interviews to Calendar</button><button class="btn" type="button" data-x>Done</button></div>`, true);
   const paint = () => {
+    if (!$("#slotList")) return;
     const up = [...S.slots.values()].filter(s => s.start > Date.now() - 864e5).sort((x,y) => x.start - y.start);
     const days = {}; up.forEach(s => { const k = slotDay(s.start); (days[k] = days[k] || []).push(s); });
     $("#slotList").innerHTML = up.length ? Object.entries(days).map(([day, list]) => `<div class="group"><h3><span>${esc(day)}</span></h3><div class="ios slotlist">${list.map(s => {
@@ -599,6 +601,7 @@ function openSlots(){
       : `<p class="help">No upcoming interview times yet.</p>`;
   };
   paint(); S._slotPaint = paint;
+  M._cleanup = () => { S._slotPaint = null; };
   $("#slotForm").onsubmit = async e => {
     e.preventDefault();
     const [y,mo,d] = $("#slDate").value.split("-").map(Number), [h,mi] = $("#slTime").value.split(":").map(Number);
@@ -813,6 +816,7 @@ function openSettings(){
     }
   };
   S._teamPaint = () => { const el = $("#teamList"); if (el) el.innerHTML = teamHTML(); };
+  M._cleanup = () => { S._teamPaint = null; };
 }
 
 /* ---------- exports / import ---------- */
@@ -892,7 +896,7 @@ function switchTab(k){ flushAll(); S.tab = k; renderDetail(); const b = $("#dbod
 function deselect(){ flushAll(); S.sel = null; watchFiles(null); watchHistory(null); renderList(); renderDetail(); }
 function setFilter(f, focusList){
   S.filter = f; renderList();
-  if (focusList) { const L = $("#list"); L.scrollTop = 0; const first = L.querySelector(".arow"); if (first && innerWidth > 860) first.focus(); }
+  if (focusList) { const L = $("#list"); $(".roster").scrollTop = 0; const first = L.querySelector(".arow"); if (first && innerWidth > 860) first.focus(); }
 }
 function moveSel(dir){
   const ids = S.vis || []; if (!ids.length) return;

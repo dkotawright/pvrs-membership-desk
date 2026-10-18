@@ -491,3 +491,149 @@ mark{background:color-mix(in srgb,#ffd60a 45%,transparent);color:inherit;border-
   .pk-res{margin:10px 0 0;font-size:11pt}
   .pk footer{margin-top:18px;padding-top:6px;border-top:1px solid #ccd;font-size:8pt;color:#666}
 }
+
+/* ======================================================================
+   Liquid glass: frosted panels over a soft colour field, floating pill bars.
+   Everything below overrides the flat styles above.
+   ====================================================================== */
+:root{
+  --glass:rgba(255,255,255,.5); --glass-2:rgba(255,255,255,.68); --glass-edge:rgba(255,255,255,.78); --glass-line:rgba(255,255,255,.6);
+  --glass-shade:rgba(24,36,70,.16); --glass-hi:rgba(255,255,255,.9); --box:rgba(255,255,255,.74); --tab-on:rgba(0,53,111,.1);
+  --blur:blur(26px) saturate(190%);
+  --mesh-1:rgba(47,111,224,.32); --mesh-2:rgba(200,16,46,.2); --mesh-3:rgba(13,154,141,.18); --mesh-4:rgba(124,85,230,.16);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --glass:rgba(30,32,42,.46); --glass-2:rgba(36,38,50,.64); --glass-edge:rgba(255,255,255,.13); --glass-line:rgba(255,255,255,.08);
+  --glass-shade:rgba(0,0,0,.5); --glass-hi:rgba(255,255,255,.16); --box:rgba(44,46,58,.58); --tab-on:rgba(143,180,255,.18);
+  --mesh-1:rgba(40,90,220,.34); --mesh-2:rgba(190,20,50,.22); --mesh-3:rgba(10,140,130,.16); --mesh-4:rgba(110,70,220,.2) }}
+:root[data-theme="dark"]{
+  --glass:rgba(30,32,42,.46); --glass-2:rgba(36,38,50,.64); --glass-edge:rgba(255,255,255,.13); --glass-line:rgba(255,255,255,.08);
+  --glass-shade:rgba(0,0,0,.5); --glass-hi:rgba(255,255,255,.16); --box:rgba(44,46,58,.58); --tab-on:rgba(143,180,255,.18);
+  --mesh-1:rgba(40,90,220,.34); --mesh-2:rgba(190,20,50,.22); --mesh-3:rgba(10,140,130,.16); --mesh-4:rgba(110,70,220,.2) }
+
+body{background:
+  radial-gradient(70vmax 55vmax at 6% -4%, var(--mesh-1), transparent 62%),
+  radial-gradient(55vmax 45vmax at 102% 4%, var(--mesh-2), transparent 60%),
+  radial-gradient(65vmax 55vmax at 78% 104%, var(--mesh-3), transparent 60%),
+  radial-gradient(55vmax 55vmax at -6% 100%, var(--mesh-4), transparent 60%),
+  var(--bg);background-attachment:fixed}
+
+/* the glass material */
+.side,.roster,.detail,.tabdock,.dhead,.roster .top,.modal .sheet,.gate .sheet,.portal .card,.glass{
+  background:var(--glass);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  border:1px solid var(--glass-edge);
+  box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 -1px 0 rgba(255,255,255,.06),0 1px 2px var(--glass-shade),0 18px 48px -18px var(--glass-shade)}
+
+/* frame: three floating glass panels */
+.app{grid-template-columns:236px minmax(0,1fr);gap:12px;padding:12px max(12px,env(safe-area-inset-right,0px)) 12px max(12px,env(safe-area-inset-left,0px))}
+.side{border-radius:24px;padding:14px 10px 10px}
+.main{margin:0;background:transparent;border:0;box-shadow:none;overflow:visible;gap:12px}
+.roster,.detail{border-radius:24px;overflow:hidden}
+.brand{border-radius:14px;border-color:var(--glass-edge)}
+.nav-i{border-radius:11px}
+.me{border-top-color:var(--glass-line)}
+
+/* list: frosted header floats over the scrolling list */
+.roster{overflow-y:auto;border-right:1px solid var(--glass-edge);scrollbar-width:thin}
+.roster .top{position:sticky;top:0;z-index:5;background:var(--glass-2);border:0;border-bottom:1px solid var(--glass-line);border-radius:0;box-shadow:0 8px 24px -16px var(--glass-shade)}
+.list{flex:none;overflow:visible;padding:8px 8px 20px}
+.arow{border-radius:16px}
+.arow:hover{background:color-mix(in srgb,var(--box) 70%,transparent)}
+.arow[aria-current="true"]{background:var(--box);box-shadow:0 1px 2px var(--glass-shade),inset 0 0 0 1px var(--glass-edge)}
+
+/* applicant file: sticky frosted header, floating pill tab bar */
+.detail{position:relative;background:var(--glass)}
+.dbody{position:absolute;inset:0;overflow-y:auto;padding:0 0 112px;scrollbar-width:thin}
+.dhead{position:sticky;top:0;z-index:5;background:var(--glass-2);border:0;border-bottom:1px solid var(--glass-line);border-radius:0;padding:16px 24px 14px;
+  box-shadow:0 10px 28px -18px var(--glass-shade)}
+.dinner{padding:22px 24px 0}
+.tabdock{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:4px;padding:5px;border-radius:999px;
+  max-width:calc(100% - 32px);background:var(--glass-2);box-shadow:inset 0 1px 0 var(--glass-hi),0 2px 6px var(--glass-shade),0 22px 50px -14px var(--glass-shade)}
+.tabdock .tabs{margin:0;gap:2px;flex:0 1 auto;min-width:0}
+.tabdock .tabs button{border-radius:999px;padding:8px 15px;font-size:13px;font-weight:550;color:var(--fg2)}
+.tabdock .tabs button:hover{color:var(--fg);background:color-mix(in srgb,var(--box) 60%,transparent)}
+.tabdock .tabs button[aria-selected="true"]{background:var(--tab-on);color:var(--navy);font-weight:650;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--navy) 14%,transparent)}
+.tabdock .tabs button[aria-selected="true"]::after{display:none}
+.tabdock .save{min-width:0;padding:0 12px 0 8px;border-left:1px solid var(--glass-line);margin-left:2px;height:22px}
+.tabdock .save:empty{display:none}
+
+/* pills */
+.btn{border-radius:999px;background:var(--box);border-color:var(--glass-edge);box-shadow:inset 0 1px 0 var(--glass-hi),0 1px 2px var(--glass-shade)}
+.btn:hover{background:color-mix(in srgb,var(--box) 80%,var(--fg) 6%)}
+.btn.small{border-radius:999px;padding:0 12px}
+.btn.block{border-radius:999px}
+.btn.primary{background:linear-gradient(180deg,color-mix(in srgb,var(--red-fill) 82%,#fff),var(--red-fill));border-color:transparent;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 6px 16px -6px color-mix(in srgb,var(--red-fill) 70%,transparent)}
+.btn.danger{border-radius:999px}
+.newbtn{height:38px}
+.search{border-radius:999px;height:36px;padding:0 12px 0 13px;background:color-mix(in srgb,var(--box) 70%,transparent);border:1px solid var(--glass-edge)}
+.search:focus-within{background:var(--box)}
+.search kbd{border-radius:999px;padding:0 7px}
+.sortsel select{border-radius:999px}
+.seg{border-radius:999px;padding:3px;background:color-mix(in srgb,var(--fill) 80%,transparent)}
+.seg button{border-radius:999px;height:26px;padding:0 13px}
+.seg.wide{border-radius:18px}
+.seg.wide button{border-radius:999px}
+.chip{height:28px}
+.iconbtn{border-radius:999px}
+.hacts{background:color-mix(in srgb,var(--box) 55%,transparent);border:1px solid var(--glass-edge);border-radius:999px;padding:4px;gap:4px}
+.hacts .btn{background:transparent;border-color:transparent;box-shadow:none}
+.hacts .btn:hover{background:var(--box)}
+
+/* content cards sit a little more solid on the glass, for readability */
+.ios,.tile,.ovcard{background:var(--box);border-color:var(--glass-edge);border-radius:18px;box-shadow:inset 0 1px 0 var(--glass-hi),0 1px 2px var(--glass-shade)}
+.row input:focus,.row select:focus,.stack textarea:focus,.stack input:focus{background:var(--box)}
+.pipe{border-radius:999px}
+.note{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+
+/* windows, toast, sign-in, portal */
+.modal{background:rgba(10,20,40,.2);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.modal .sheet{border-radius:26px;background:var(--glass-2)}
+.modal .acts{background:linear-gradient(transparent,color-mix(in srgb,var(--glass-2) 100%,transparent) 35%)}
+.toast{border-radius:999px;background:rgba(28,30,38,.74);color:#fff;-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 14px 40px -12px rgba(0,0,0,.45)}
+.gate .sheet{border-radius:28px;background:var(--glass-2)}
+.field input,.field select{border-radius:14px;background:var(--box);border-color:var(--glass-edge)}
+.portal .card{border-radius:24px;background:var(--glass-2)}
+.slotbtn{border-radius:999px;background:var(--box);border-color:var(--glass-edge)}
+.booked{border-radius:18px;background:color-mix(in srgb,var(--box) 70%,transparent)}
+.pad button{border-radius:999px;aspect-ratio:1;background:var(--box);border-color:var(--glass-edge)}
+
+/* icon rail */
+@media (max-width:1180px){
+  .app{grid-template-columns:64px minmax(0,1fr)}
+  .side{padding:12px 8px;border-radius:22px}
+  .newbtn{width:44px;height:44px;border-radius:999px}
+  .nav-i{border-radius:999px;width:44px;height:40px}
+  .dhead,.dinner{padding-left:18px;padding-right:18px}
+}
+/* phone / narrow window: floating pill top bar, full-screen file with a floating tab bar */
+@media (max-width:860px){
+  .app{grid-template-columns:1fr;gap:8px;padding:8px max(8px,env(safe-area-inset-right,0px)) 8px max(8px,env(safe-area-inset-left,0px))}
+  .side{border-radius:999px;padding:6px 6px 6px 8px}
+  .brand{border-radius:999px;padding:4px 12px}
+  .newbtn{width:40px;height:40px}
+  .nav-i{width:38px;height:38px}
+  .main{margin:0}
+  .roster{border-radius:22px}
+  .detail{position:fixed;border-radius:0;border:0;background:color-mix(in srgb,var(--bg) 70%,transparent)}
+  .dhead{padding:12px 14px 12px}
+  .dinner{padding:14px 12px 0}
+  .dbody{padding-bottom:calc(104px + env(safe-area-inset-bottom,0px))}
+  .tabdock{bottom:calc(14px + env(safe-area-inset-bottom,0px));max-width:calc(100% - 20px)}
+  .tabdock .tabs button{padding:8px 12px}
+  .tabdock .save{display:none}
+}
+/* people who ask the system for less transparency get solid panels */
+@media (prefers-reduced-transparency: reduce){
+  .side,.roster,.detail,.tabdock,.dhead,.roster .top,.modal .sheet,.gate .sheet,.portal .card,.glass,.toast{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--pane)}
+  .ios,.tile,.ovcard,.btn{background:var(--pane2)}
+}
+@media print{ body{background:#fff!important} }
+/* glass refinements: headers that content scrolls under need thicker frosting to stay readable */
+.dhead,.roster .top{background:color-mix(in srgb,var(--pane) 80%,transparent)}
+.seg.wide button{padding:0 6px}
+@media (max-width:860px){
+  .dhead{background:color-mix(in srgb,var(--pane) 88%,transparent)}
+  .tabdock .tabs{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);padding-right:20px}
+  .tabdock .tabs button{padding:8px 11px;font-size:12.5px}
+}
