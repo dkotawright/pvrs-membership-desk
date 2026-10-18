@@ -52,7 +52,8 @@ function setWho(who){
 }
 setWho(pref.get("pvrsWho") === "staff" ? "staff" : "applicant");
 $("#pwEmail").value = pref.get("pvrsStaffEmail") || "";
-$("#whoSeg").addEventListener("click", e => { const b = e.target.closest("[data-who]"); if (b) { setWho(b.dataset.who); (b.dataset.who === "staff" ? ($("#pwEmail").value ? $("#pwPass") : $("#pwEmail")) : $("#linkEmail")).focus(); } });
+if (pref.get("pvrsStaffEmail")) $("#manualSignin").open = true;   // they've used a password here before
+$("#whoSeg").addEventListener("click", e => { const b = e.target.closest("[data-who]"); if (b) { setWho(b.dataset.who); (b.dataset.who === "staff" ? ($("#manualSignin").open ? ($("#pwEmail").value ? $("#pwPass") : $("#pwEmail")) : $("#googleBtn")) : $("#linkEmail")).focus(); } });
 $("#pwForm").addEventListener("submit", async e => {
   e.preventDefault();
   const email = lower($("#pwEmail").value), pw = $("#pwPass").value;

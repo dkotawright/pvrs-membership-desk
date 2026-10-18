@@ -949,9 +949,9 @@ function requestsHTML(){
   if (!S.requests.length) return "";
   return `<div class="note warn"><b>${S.requests.length} access request${S.requests.length===1?"":"s"}</b> waiting for you</div>` + S.requests.map(q => `<div class="row reqrow" style="flex-wrap:wrap">
     <span class="lbl">${esc(q.name || q.email)}<small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""} · requested ${esc(ago(q.requestedAt))}</small></span>
-    <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small primary" type="button" data-approve="${esc(q.email)}" data-v="member">Approve as member</button>
-      <button class="btn small" type="button" data-approve="${esc(q.email)}" data-v="admin">Approve as admin</button>
-      <button class="btn small danger" type="button" data-deny="${esc(q.email)}">Deny</button></span></div>`).join("");
+    <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small primary" type="button" data-approve="${esc(q.email)}" data-v="member">Approve</button>
+      <button class="btn small danger" type="button" data-deny="${esc(q.email)}">Deny</button></span></div>`).join("")
+    + `<div class="row"><span class="lbl"><small>Approved people join as members. To make someone an admin (like the administrator), switch them to Admin in the list below.</small></span></div>`;
 }
 async function decideRequest(email, role){
   const q = S.requests.find(x => x.email === email); if (!q) return;
