@@ -11,7 +11,7 @@ Read this first. It's the full context from the original build conversation (Oct
 - Firebase project ID: **pvrs-membership** (on the **Blaze** plan, $1 budget alert). Project is owned by Dkota's *personal* Google account for now; plan is to add dkota@pvrs.org as Owner later.
 - Hosting: Firebase Hosting (`public/`). SDK v10.12.2 loaded from gstatic CDN as ES modules; no npm/bundler.
 - Auth: staff sign in with email + password (set in-app via the key button next to their name, which links a password credential to their account; Google stays as a backup). Applicants use the email link. Passwords are never stored in code. Owner hardcoded as `dkota@pvrs.org` in `public/js/config.js`, `firestore.rules`, `storage.rules`.
-- Roles: owner (everything incl. Settings behind PIN 0508, hashed in config.js), `staff/{email}` docs with role `admin` (everything but Settings) or `member` (Application + Interview tabs only), applicants (own portal only, matched by `portal/{id}.email`).
+- Roles: **only the owner (dkota@pvrs.org) edits anything.** `staff/{email}` admins can view every tab and members the Application + Interview tabs, but both can only fill in the interview questionnaire (`iv.*`), `sched.completed`/`completedInit` and the Interview page sign-off (`signoff.iv`). Enforced in firestore.rules (`interviewOnly()`), storage.rules and in the UI (`S.canEdit`, `canEditPath`). Only the owner's client writes portal docs and mirrors `stage`. Applicants see their own portal only (matched by `portal/{id}.email`).
 
 ## Files
 - `public/js/main.js`: sign-in and routing (owner → admin desk; staff doc → desk; portal match → applicant portal; else "No application found").

@@ -1,8 +1,9 @@
 rules_version = '2';
 
 // PVRS Membership Desk — who can see what
-//   Owner (dkota@pvrs.org) and staff with role "admin": everything
-//   Staff with role "member": application + interview only
+//   Owner (dkota@pvrs.org): reads and edits everything
+//   Staff with role "admin": read everything; may only fill in the interview questionnaire
+//   Staff with role "member": read application + interview; may only fill in the interview questionnaire
 //   Applicants: their own portal page, their own uploads, open interview times
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -19,21 +20,34 @@ service cloud.firestore {
     function onlyChanged(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
     function nowMs()     { return request.time.toMillis(); }
     function DAY()       { return 86400000; }
+    // What non-owner staff may change on an applicant: interview answers (iv), interview completed date/initials,
+    // the Interview page sign-off, and the updated-by stamp.
+    function subChangedOnly(field, keys) {
+      return request.resource.data.get(field, {}).diff(resource.data.get(field, {})).affectedKeys().hasOnly(keys);
+    }
+    function interviewOnly() {
+      return onlyChanged(['iv', 'sched', 'signoff', 'updatedAt', 'updatedBy'])
+        && subChangedOnly('sched', ['completed', 'completedInit'])
+        && subChangedOnly('signoff', ['iv'])
+        && request.resource.data.updatedBy == myEmail();
+    }
 
     // Team roster. Everyone can read their own entry (so the app knows their role).
     match /staff/{email} {
       allow read: if isAdmin() || (verified() && email == myEmail());
-      allow write: if isAdmin() && email != 'dkota@pvrs.org';
+      allow write: if isOwner() && email != 'dkota@pvrs.org';
     }
 
     // Application + interview (shared with members)
     match /applicants/{id} {
-      allow read, create, update: if isStaff();
-      allow delete: if isAdmin();
+      allow read: if isStaff();
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || (isStaff() && interviewOnly());
 
       // Screening, board, onboarding, notes (admins only)
       match /private/{doc} {
-        allow read, write: if isAdmin();
+        allow read: if isAdmin();
+        allow write: if isOwner();
       }
 
       // Change history: append-only. Any staff member's edits are logged under their own email; only admins read it.
@@ -45,7 +59,7 @@ service cloud.firestore {
           && request.resource.data.at is int
           && request.resource.data.at > nowMs() - 300000 && request.resource.data.at < nowMs() + 300000
           && request.resource.data.changes is list && request.resource.data.changes.size() <= 200;
-        allow delete: if isAdmin();
+        allow delete: if isOwner();
       }
     }
     // Lets the Desk load every private record in one query
@@ -60,8 +74,8 @@ service cloud.firestore {
     // What the applicant sees. Written by admins; the applicant may only book or cancel an interview.
     match /portal/{id} {
       allow read: if isAdmin() || (verified() && resource.data.email == myEmail());
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || (
         verified() && resource.data.email == myEmail()
         && onlyChanged(['interview'])
         && (
@@ -85,15 +99,15 @@ service cloud.firestore {
           && request.resource.data.uploadedBy == myEmail()
           && request.resource.data.path.matches('uploads/' + id + '/.*')
           && request.resource.data.size is int && request.resource.data.size <= 15 * 1024 * 1024;
-        allow update, delete: if isAdmin();
+        allow update, delete: if isOwner();
       }
     }
 
     // Interview times you post. Applicants can only claim or release a slot for themselves, 24h+ ahead.
     match /slots/{slotId} {
       allow read: if verified();
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || (
         verified() && onlyChanged(['bookedBy']) && resource.data.start > nowMs() + DAY()
         && (
           (resource.data.bookedBy == null && request.resource.data.bookedBy is string
@@ -111,7 +125,8 @@ service cloud.firestore {
 
     // Email signature, contact address (admins only)
     match /settings/{doc} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      allow write: if isOwner();
     }
   }
 }

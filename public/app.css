@@ -683,3 +683,13 @@ body{background:
 #staffSignin,#appSignin{display:flex;flex-direction:column;gap:14px}
 #staffSignin[hidden],#appSignin[hidden]{display:none}
 .field input[type=checkbox]{width:auto}
+
+/* view-only for everyone but the owner */
+.viewonly{margin-bottom:18px;padding:11px 16px;border-radius:16px;font-size:13px;line-height:1.5;color:var(--fg2);background:var(--box);border:1px solid var(--glass-edge);border-left:4px solid var(--accent)}
+.viewonly b{color:var(--fg)}
+.row input:disabled,.row select:disabled,.stack textarea:disabled,.stack input:disabled{opacity:1;color:var(--fg);-webkit-text-fill-color:var(--fg);background:transparent;cursor:default;resize:none}
+.row input:disabled::placeholder,.stack textarea:disabled::placeholder{-webkit-text-fill-color:var(--fg3);color:var(--fg3)}
+.row input[type=date]:disabled{-webkit-text-fill-color:var(--fg2)}
+.stack textarea:disabled{background:color-mix(in srgb,var(--fill) 50%,transparent)}
+.seg button:disabled{cursor:default}
+.seg button:disabled:not(.on){opacity:.5}

@@ -310,7 +310,7 @@ function renderOverview(){
       <div class="pipe" role="img" aria-label="${order.map(k => `${STAGES[k].label} ${c[k]}`).join(", ")}">${order.map(k => `<span style="flex:${c[k]};--stage-c:${stageVar(k)}" title="${STAGES[k].label}: ${c[k]}"></span>`).join("")}</div>
       <div class="legend">${order.map(k => `<button type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}">${STAGES[k].label} <b>${c[k]}</b></button>`).join("")}</div></section>` : ""}
     <div class="ovgrid cols">
-      <section class="ovcard"><h3>Upcoming interviews${S.admin?`<button class="btn small" type="button" data-cmd="slots">Interview times</button>`:""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>
+      <section class="ovcard"><h3>Upcoming interviews${S.canEdit?`<button class="btn small" type="button" data-cmd="slots">Interview times</button>`:""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>
       <section class="ovcard"><h3>Waiting longest<small>in process</small></h3><div class="olist">${waiting || `<div class="oempty">Nobody in process.</div>`}</div></section>
       ${activityCard()}
       ${S.admin ? `<section class="ovcard"><h3>Probation reviews<small>every 3 months</small></h3><div class="olist">${revList || `<div class="oempty">Nobody on probation.</div>`}</div></section>` : ""}
@@ -322,6 +322,14 @@ function renderOverview(){
   const ov = D.querySelector(".ov"); if (ov) ov.scrollTop = keepScroll;
 }
 
+/* ---------- who can edit what ---------- */
+// Only the owner edits. Everyone else on the team may fill in the interview questionnaire, record who was there,
+// mark the interview completed and sign off the Interview page. Firestore rules enforce the same thing.
+const INTERVIEW_FIELDS = new Set(["sched.completed", "sched.completedInit", "signoff.iv.init", "signoff.iv.done"]);
+const canEditPath = path => S.canEdit || path.startsWith("iv.") || INTERVIEW_FIELDS.has(path);
+const OWNER_ONLY = '[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],#delBtn,#rqAdd';
+const ownerOnlyToast = () => toast("View only. You can fill in the Interview tab; everything else is changed by the owner.");
+
 /* ---------- page sign-off ---------- */
 // Initials + "complete" at the bottom of each working tab. Tabs members can open keep it on the shared record;
 // admin-only tabs keep it in the private record.
@@ -332,6 +340,9 @@ const signHTML = k => !SIGN_ROOT[k] ? "" : `<section class="group signoff" id="s
     <span class="lbl">${esc(tabLabel(k))} page complete<small id="signNote">Initial and mark complete once everything on this page is done</small></span>
     <input class="init" type="text" id="f-sign-${k}" data-k="${signPath(k, "init")}" maxlength="4" placeholder="Init." autocomplete="off" aria-label="${esc(tabLabel(k))} page sign-off initials">
     <button class="btn small primary" type="button" data-sign="${k}" id="signBtn">Mark complete</button></div></div></section>`;
+const viewOnlyNote = k => S.canEdit ? "" : k === "iv"
+  ? `<div class="viewonly"><b>You can fill in this page.</b> Answer the questionnaire, record who was at the interview, then add the completed date, your initials and the page sign-off. Scheduling is view only.</div>`
+  : `<div class="viewonly"><b>View only.</b> You can fill in the <button class="copy" type="button" data-tab="iv">Interview</button> tab; everything else is changed by the owner.</div>`;
 function syncSignoff(a){
   document.querySelectorAll(".tabdock [data-tab]").forEach(b => { const k = b.dataset.tab; b.classList.toggle("signed", !!(SIGN_ROOT[k] && get(a, signPath(k, "done")))); });
   const box = $("#signBox"); if (!box) return;
@@ -339,6 +350,7 @@ function syncSignoff(a){
   box.classList.toggle("done", !!done);
   $("#signNote").textContent = done ? `Completed ${fmtDate(done)}${init ? " · " + init : ""}` : init ? "Click Mark complete to sign off this page" : "Initial and mark complete once everything on this page is done";
   const b = $("#signBtn"); b.textContent = done ? "Undo" : "Mark complete"; b.classList.toggle("primary", !done); b.disabled = !done && !init;
+  b.hidden = !canEditPath(signPath(k, "done"));
 }
 
 /* ---------- detail ---------- */
@@ -386,7 +398,7 @@ function paintDetail(){
         </div>` : ""}</div>
       ${S.admin?`<div class="prog" id="dProg"></div>`:""}
     </div>
-    <div class="dinner" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${tabHTML(S.tab)}${signHTML(S.tab)}</div></div>
+    <div class="dinner" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${viewOnlyNote(S.tab)}${tabHTML(S.tab)}${signHTML(S.tab)}</div></div>
     <nav class="tabdock" aria-label="Applicant file sections"><div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="dpanel" data-tab="${k}" aria-selected="${S.tab===k}" title="${l} (${i+1})"><span class="tl-long">${l}</span><span class="tl-short" aria-hidden="true">${TAB_SHORT[k] || l}</span></button>`).join("")}</div>
       <span class="save" id="saveState" role="status"></span></nav>`;
   stackCols($("#dbody"));
@@ -420,9 +432,11 @@ function syncDetail(){
   }
   renderDocs(a); renderHistory(); syncRefs(a);
   syncSignoff(a);
+  if (!S.canEdit) document.querySelectorAll("#detail " + OWNER_ONLY).forEach(el => { el.hidden = true; });
   const pc = $("#panelCount"); if (pc) { const n = [1,2,3,4,5].filter(i => String(get(a,`iv.panel.m${i}`) || "").trim()).length; pc.textContent = n ? `${n} recorded` : ""; }
   document.querySelectorAll("#dbody [data-k]").forEach(el => {
     const k = el.dataset.k; let v = get(a, k);
+    if (!canEditPath(k)) { if (el.classList.contains("seg")) el.querySelectorAll("button").forEach(b => { b.disabled = true; }); else el.disabled = true; }
     if (k === "status" && !v) v = "open";
     if (el.classList.contains("seg")) el.querySelectorAll("button").forEach(b => { b.classList.toggle("on", b.dataset.v === v); b.setAttribute("aria-pressed", b.dataset.v === v); });
     else { const sv = v == null ? "" : String(v); if (el !== document.activeElement && el.value !== sv) el.value = sv; }
@@ -474,8 +488,9 @@ function queue(kind, id, patch){
 }
 function edit(id, path, value){
   if (!S.apps.has(id)) return;
+  if (!canEditPath(path)) { ownerOnlyToast(); syncDetail(); return; }
   const kind = SECURE.has(path.split(".")[0]) ? "sec" : "pub";
-  if (kind === "sec" && !S.admin) return;
+  if (kind === "sec" && !S.canEdit) return;
   const now = Date.now();
   const meta = kind === "pub" ? { updatedAt: now, updatedBy: S.me } : { secUpdatedAt: now, secUpdatedBy: S.me };
   const patch = merge(nest(path, value), meta);
@@ -484,7 +499,7 @@ function edit(id, path, value){
   store.set(id, merge(store.get(id) || {}, clone(patch)));
   queue(kind, id, patch);
   rebuild(id);
-  if (S.admin) {   // mirror the stage onto the shared record so members see where an applicant stands
+  if (S.canEdit) {   // mirror the stage onto the shared record so members see where an applicant stands
     const st = progress(S.apps.get(id)).stage;
     if (S.shared.get(id).stage !== st) { S.shared.get(id).stage = st; queue("pub", id, { stage: st }); rebuild(id); }
     schedulePortal(id);
@@ -580,15 +595,20 @@ function portalPayload(a){
 }
 const portalKey = p => JSON.stringify([p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.bookingOpen]);
 const portalTimers = {};
-function schedulePortal(id, delay = 1500){ if (!S.admin) return; clearTimeout(portalTimers[id]); portalTimers[id] = setTimeout(() => syncPortal(id), delay); }
+function schedulePortal(id, delay = 1500){ if (!S.canEdit) return; clearTimeout(portalTimers[id]); portalTimers[id] = setTimeout(() => syncPortal(id), delay); }
 async function syncPortal(id, force = false){
-  const a = S.apps.get(id); if (!a || !S.admin) return;
+  const a = S.apps.get(id); if (!a || !S.canEdit) return;
   if (!force && (!get(a,"portal.invited") || !a.email)) return;
   const next = portalPayload(a), cur = S.portal.get(id);
   if (!force && cur && portalKey(cur) === portalKey(next)) return;
   try { await setDoc(doc(db, "portal", id), { ...next, updatedAt: Date.now() }, { merge: true }); }
   catch (e) { console.error(e); }
 }
+// Others can complete interviews but can't write the stage, so the owner's desk keeps the shared stage current.
+let mirrorT;
+function mirrorStages(){ clearTimeout(mirrorT); mirrorT = setTimeout(() => {
+  for (const [id, a] of S.apps) { const st = progress(a).stage, sh = S.shared.get(id); if (sh && sh.stage !== st) { sh.stage = st; queue("pub", id, { stage: st }); } }
+}, 2000); }
 let syncAllT;
 const syncAllPortals = () => { clearTimeout(syncAllT); syncAllT = setTimeout(() => { for (const id of S.apps.keys()) schedulePortal(id, 50); }, 2500); };
 
@@ -610,6 +630,7 @@ async function releaseFor(id){
   await b.commit();
 }
 function openBook(id){
+  if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id);
   const open = [...S.slots.values()].filter(s => !s.bookedBy && s.start > Date.now()).sort((x,y) => x.start - y.start);
   const M = openModal(`<h3>Book a time</h3><p class="help">For ${esc(a.name || "this applicant")}. Booking here works even inside 24 hours.</p>
@@ -624,6 +645,7 @@ function openBook(id){
   };
 }
 function openSlots(){
+  if (!S.canEdit) return ownerOnlyToast();
   const def = S.settings.defaultLocation || "";
   const d0 = new Date(Date.now() + 3*864e5), dStr = `${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,"0")}-${String(d0.getDate()).padStart(2,"0")}`;
   const M = openModal(`<h3>Interview times</h3><p class="help">Applicants with booking turned on can pick any open time at least 24 hours out.</p>
@@ -676,6 +698,7 @@ const icsEvent = (a, s) => ({ uid: "iv-" + (s.slotId || s.id), start: s.start, d
 
 /* ---------- documents ---------- */
 function openRequestDocs(id){
+  if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id); const have = requestedDocs(a).map(d => d.label);
   const picked = new Set(), custom = [];
   const M = openModal(`<h3>Request documents</h3><p class="help">They'll see these in their portal with an upload button.</p>
@@ -723,6 +746,7 @@ function watchFiles(id){
 
 /* ---------- portal invite ---------- */
 async function inviteToPortal(id, showEmail = true){
+  if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id); if (!a) return;
   const email = lower(a.email);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Add a valid email on the Application tab first.");
@@ -925,6 +949,7 @@ async function importFile(file){
 
 /* ---------- delete ---------- */
 async function deleteApplicant(id){
+  if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id);
   try {
     if (a && a._booked) await releaseFor(id).catch(() => {});
@@ -957,6 +982,7 @@ function moveSel(dir){
   if (el) { el.scrollIntoView({ block: "nearest" }); if (!el.closest("[inert]")) el.focus({ preventScroll: true }); }
 }
 function openEmailPicker(){
+  if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(S.sel); if (!a) return;
   const waiting = requestedDocs(a).filter(d => !d.received).map(d => d.label);
   const waitRefs = refList(a).filter(r => !r.received).map(r => r.name);
@@ -976,11 +1002,11 @@ function openShortcuts(){
     ${k("J")}<span>Next applicant (or <kbd>↓</kbd> in the list)</span>
     ${k("K")}<span>Previous applicant (or <kbd>↑</kbd> in the list)</span>
     ${k("/")}<span>Search</span>
-    ${k("N")}<span>New applicant</span>
+    ${S.canEdit ? `${k("N")}<span>New applicant</span>` : ""}
     ${k("1")}<span>…through <kbd>7</kbd>: switch tabs on the open file</span>
     ${k("[")}<span>Previous tab</span>
     ${k("]")}<span>Next tab</span>
-    ${S.admin ? `${k("E")}<span>Write an email to the open applicant</span>` : ""}
+    ${S.canEdit ? `${k("E")}<span>Write an email to the open applicant</span>` : ""}
     ${k("Esc")}<span>Close a window, clear search, or go back to the overview</span>
     ${k("?")}<span>Show this list</span></div>
     <p class="help">Shortcuts pause while you're typing in a field. Press <kbd>Esc</kbd> to leave the field first.</p>
@@ -1011,12 +1037,12 @@ function onKeys(e){
   const inList = tg && tg.closest && tg.closest(".roster");
   if (e.key === "j" || (e.key === "ArrowDown" && inList)) { e.preventDefault(); moveSel(1); }
   else if (e.key === "k" || (e.key === "ArrowUp" && inList)) { e.preventDefault(); moveSel(-1); }
-  else if (e.key === "n" || e.key === "N") { e.preventDefault(); openNew(); }
+  else if ((e.key === "n" || e.key === "N") && S.canEdit) { e.preventDefault(); openNew(); }
   else if (e.key === "/") { e.preventDefault(); $("#q").focus(); }
   else if (e.key === "?") { e.preventDefault(); openShortcuts(); }
   else if (S.sel && /^[1-9]$/.test(e.key) && tabs[+e.key - 1]) { e.preventDefault(); switchTab(tabs[+e.key - 1]); }
   else if (S.sel && (e.key === "[" || e.key === "]")) { e.preventDefault(); const i = tabs.indexOf(S.tab); switchTab(tabs[(i + (e.key === "]" ? 1 : -1) + tabs.length) % tabs.length]); }
-  else if (S.sel && S.admin && (e.key === "e" || e.key === "E")) { e.preventDefault(); openEmailPicker(); }
+  else if (S.sel && S.canEdit && (e.key === "e" || e.key === "E")) { e.preventDefault(); openEmailPicker(); }
 }
 function bindEvents(){
   $("#list").addEventListener("click", e => { const c = e.target.closest(".arow"); if (c) select(c.dataset.id); });
@@ -1042,6 +1068,7 @@ function bindEvents(){
     const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "slots") openSlots(); return; }
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
+    if (!S.canEdit && t.closest(OWNER_ONLY)) return ownerOnlyToast();
     const act = t.closest("[data-act]");
     if (act) {
       const k = act.dataset.act;
@@ -1102,10 +1129,11 @@ function select(id){
   if (!same) { watchFiles(id); watchHistory(id); }
   renderList(); renderDetail();
   const b = $("#dbody"); if (b && !same) b.scrollTop = 0;
-  if (S.admin) schedulePortal(id, 200);
+  if (S.canEdit) schedulePortal(id, 200);
 }
 
 function openNew(){
+  if (!S.canEdit) return ownerOnlyToast();
   const M = openModal(`<form id="newForm" style="display:contents" novalidate><h3>New applicant</h3>
     <div class="ios">${F.text("n.name","Full name","First Last")}${F.text("n.phone","Phone","(315) 555-0100","tel")}${F.text("n.email","Email","name@example.com","email")}${F.date("n.received","Date received")}</div>
     <div class="ios">${F.seg("n.type","Membership type",TYPES.map(t=>[t,t]),true)}${F.seg("n.location","Location",[["Potsdam","Potsdam"],["other","Other"]])}<div id="nLocRow" hidden>${F.text("n.locationOther","Where?","Town")}</div></div>
@@ -1284,7 +1312,7 @@ function startIdleLock(){
 
 /* ---------- start ---------- */
 export function startDesk({ email, role, owner, name }){
-  S.me = email; S.admin = role === "admin"; S.owner = !!owner; S.name = name || "";
+  S.me = email; S.admin = role === "admin"; S.owner = !!owner; S.canEdit = !!owner; S.name = name || "";
   S.sort = SORTS[prefs.get("sort")] ? prefs.get("sort") : "stage";
   bindEvents(); renderList(); renderDetail();
   const conn = $("#conn");
@@ -1294,7 +1322,9 @@ export function startDesk({ email, role, owner, name }){
   $("#meName").title = email;
   $("#meAv").textContent = initials(S.name || email);
   if (S.owner) $("#settingsBtn").hidden = false;
-  if (S.admin) $("#slotsBtn").hidden = false;
+  if (S.canEdit) $("#slotsBtn").hidden = false;
+  $("#newBtn").hidden = !S.canEdit;
+  if (!S.canEdit) document.body.classList.add("viewonly-user");
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
   startIdleLock();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
@@ -1305,18 +1335,18 @@ export function startDesk({ email, role, owner, name }){
     S.shared = next; S.ready = true; rebuildAll();
     if (S.sel && !S.apps.has(S.sel)) { S.sel = null; renderDetail(); }
     renderList(); if (S.sel) syncDetail();
-    if (S.admin) syncAllPortals();
+    if (S.canEdit) { syncAllPortals(); mirrorStages(); }
   }, lost);
   onSnapshot(collection(db, "slots"), snap => {
     S.slots = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
     rebuildAll(); renderList(); if (S.sel) syncDetail(); if (S._slotPaint && !$("#modal").hidden) S._slotPaint();
-    if (S.admin) syncAllPortals();
+    if (S.canEdit) { syncAllPortals(); mirrorStages(); }
   }, () => {});
   if (S.admin) {
     onSnapshot(collectionGroup(db, "private"), snap => {
       const next = new Map();
       snap.docs.forEach(d => { if (d.id !== "main") return; const id = d.ref.parent.parent.id; const data = d.data(); merge(data, clone(inflight["sec|"+id] || {})); merge(data, clone(pending["sec|"+id] || {})); next.set(id, data); });
-      S.secure = next; rebuildAll(); renderList(); if (S.sel) syncDetail(); syncAllPortals();
+      S.secure = next; rebuildAll(); renderList(); if (S.sel) syncDetail(); if (S.canEdit) { syncAllPortals(); mirrorStages(); }
     }, e => console.error(e));
     onSnapshot(collection(db, "portal"), snap => {
       const before = S.portal; S.portal = new Map(snap.docs.map(d => [d.id, d.data()]));
