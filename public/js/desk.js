@@ -41,6 +41,7 @@ const SHOW = {
 };
 
 const TABS_ADMIN = [["app","Application"],["screen","Screening"],["refs","References"],["iv","Interview"],["board","Board"],["onb","Onboard"],["notes","Notes"]];
+const TAB_SHORT = { app:"App", screen:"Screen", refs:"Refs", iv:"Interview", board:"Board", onb:"Onboard", notes:"Notes" };
 const TABS_MEMBER = [["app","Application"],["iv","Interview"]];
 
 function tabHTML(tab){
@@ -385,7 +386,7 @@ function paintDetail(){
       ${S.admin?`<div class="prog" id="dProg"></div>`:""}
     </div>
     <div class="dinner" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${tabHTML(S.tab)}${signHTML(S.tab)}</div></div>
-    <nav class="tabdock" aria-label="Applicant file sections"><div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="dpanel" data-tab="${k}" aria-selected="${S.tab===k}" title="${l} (${i+1})">${l}</button>`).join("")}</div>
+    <nav class="tabdock" aria-label="Applicant file sections"><div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="dpanel" data-tab="${k}" aria-selected="${S.tab===k}" title="${l} (${i+1})"><span class="tl-long">${l}</span><span class="tl-short" aria-hidden="true">${TAB_SHORT[k] || l}</span></button>`).join("")}</div>
       <span class="save" id="saveState" role="status"></span></nav>`;
   stackCols($("#dbody"));
   syncDetail();
@@ -464,7 +465,7 @@ function renderDocs(a){
 }
 
 /* ---------- writes ---------- */
-function setSave(t){ const el = $("#saveState"); if (!el) return; el.textContent = t; el.classList.toggle("busy", /…$/.test(t)); el.classList.toggle("err", t === "Not saved"); }
+function setSave(t){ const el = $("#saveState"); if (!el) return; el.textContent = t; el.title = t; el.classList.toggle("busy", /…$/.test(t)); el.classList.toggle("err", t === "Not saved"); }
 function queue(kind, id, patch){
   const key = kind + "|" + id;
   pending[key] = merge(pending[key] || {}, patch);

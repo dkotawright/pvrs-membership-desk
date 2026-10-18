@@ -661,3 +661,18 @@ body{background:
 .tabs button.signed::before{content:"✓";color:var(--s-act);font-weight:800;margin-right:5px}
 /* keep pop-up messages above the floating tab bar */
 .app:not([hidden]) ~ .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+/* compact floating tab bar: fits without scrolling; save status shrinks to a dot (text on hover) */
+@media (min-width:861px){
+  .tabdock{bottom:14px;padding:4px;gap:2px}
+  .tabdock .tabs{overflow:visible;gap:0}
+  .tabdock .tabs button{padding:6px 11px;font-size:12.5px}
+  .tabdock .tabs button.signed::before{margin-right:3px}
+  .tabdock .save{font-size:0;gap:0;padding:0 8px;margin-left:2px;min-width:0;cursor:default}
+  .tabdock .save::before{width:8px;height:8px}
+  .dbody{padding-bottom:84px}
+}
+/* narrow file pane: short tab labels so the bar still fits */
+.detail{container-type:inline-size}
+.tl-short{display:none}
+@container (max-width:560px){ .tabdock .tl-long{display:none} .tabdock .tl-short{display:inline} .tabdock .tabs button{padding:6px 9px} }
+@container (max-width:760px){ .hacts .btn .tl{display:none} .hacts .btn{padding:0 9px} }
