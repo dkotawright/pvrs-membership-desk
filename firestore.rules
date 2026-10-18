@@ -65,6 +65,18 @@ service cloud.firestore {
         allow write: if isOwner();
       }
 
+      // Records the owner uploads to an applicant's file (MVR, background check, interview intake…). Staff-only:
+      // admins can open and print them; members and applicants never see them.
+      match /records/{recordId} {
+        allow read: if isAdmin();
+        allow create: if isOwner()
+          && request.resource.data.keys().hasOnly(['name','label','path','size','contentType','uploadedAt','uploadedBy'])
+          && request.resource.data.path.matches('records/' + id + '/.*')
+          && request.resource.data.uploadedBy == myEmail()
+          && request.resource.data.size is int && request.resource.data.size <= 25 * 1024 * 1024;
+        allow update, delete: if isOwner();
+      }
+
       // Change history: append-only. Any staff member's edits are logged under their own email; only admins read it.
       match /history/{entryId} {
         allow read: if isAdmin();

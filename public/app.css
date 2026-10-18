@@ -726,3 +726,12 @@ body{background:
 #reqList[hidden]{display:none}
 .reqacc{font-size:12.5px;text-align:center;margin:0}
 #accessBox:empty{display:none}
+
+/* staff records */
+.recs{margin-top:10px}
+.recs .row .btn{flex:none}
+.dropzone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:26px 16px;border:2px dashed color-mix(in srgb,var(--accent) 35%,transparent);border-radius:18px;
+  background:color-mix(in srgb,var(--accent) 5%,transparent);cursor:pointer;text-align:center;transition:background .15s,border-color .15s}
+.dropzone b{font-size:14px}
+.dropzone span{font-size:12.5px;color:var(--fg2)}
+.dropzone:hover,.dropzone.over{background:color-mix(in srgb,var(--accent) 12%,transparent);border-color:var(--accent)}

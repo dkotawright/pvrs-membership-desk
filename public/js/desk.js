@@ -1,6 +1,6 @@
 // Staff Desk: roster, applicant file, board, onboarding, interview times, settings.
 import { auth, db, storage, doc, collection, collectionGroup, setDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch,
-  sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut,
+  sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut, uploadBytes,
   GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
@@ -56,7 +56,7 @@ function tabHTML(tab){
       `<div class="row"><span class="lbl">Portal access<small id="portalStatus">—</small></span><button class="btn small primary" type="button" data-act="invite" id="inviteBtn">Send invite</button></div>`,
       F.yn("portal.bookingOpen","Let them book an interview",false,"Shows your open interview times in their portal"),
       `<div class="row"><span class="lbl">Applicant view<small>What they see when they sign in</small></span><button class="btn small" type="button" data-act="preview">Preview</button></div>`]) : ""}
-    ${admin ? `<section class="group"><h3><span>Documents</span><button class="btn small" type="button" data-act="docs">Request documents</button></h3><div class="ios" id="docList"></div></section>` : ""}
+    ${admin ? `<section class="group"><h3><span>Documents</span><span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" type="button" data-act="records">Upload records</button><button class="btn small" type="button" data-act="docs">Request documents</button></span></h3><div class="ios" id="docList"></div><div class="ios recs" id="recList"></div></section>` : ""}
   </div>`;
   if (tab === "screen") return `<div class="cols">
     ${group("MVR",[F.init("mvr.requestInit","Request initials"),F.date("mvr.completed","Date completed"),F.ynBadYes("mvr.violations","Violations?")])}
@@ -162,7 +162,7 @@ function tabHTML(tab){
 }
 
 /* ---------- state ---------- */
-const S = { requests:[], shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[], hist:[], feedFiles:[],
+const S = { records:[], requests:[], shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[], hist:[], feedFiles:[],
   sel:null, tab:"app", filter:"all", q:"", admin:false, owner:false, me:"", settings:{}, ready:false };
 const pending = {}, inflight = {}, timers = {};
 let filesUnsub = null;
@@ -328,7 +328,7 @@ function renderOverview(){
 // mark the interview completed and sign off the Interview page. Firestore rules enforce the same thing.
 const INTERVIEW_FIELDS = new Set(["sched.completed", "sched.completedInit", "signoff.iv.init", "signoff.iv.done"]);
 const canEditPath = path => S.canEdit || path.startsWith("iv.") || INTERVIEW_FIELDS.has(path);
-const OWNER_ONLY = '[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],#delBtn,#rqAdd';
+const OWNER_ONLY = '[data-act="records"],[data-recrm],[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],#delBtn,#rqAdd';
 const ownerOnlyToast = () => toast("View only. You can fill in the Interview tab; everything else is changed by the owner.");
 
 /* ---------- page sign-off ---------- */
@@ -476,8 +476,20 @@ function renderDocs(a){
       <button class="copy" type="button" data-docrm="${esc(d.key)}" aria-label="Remove ${esc(d.label)}">Remove</button></div>`; }).join("");
   const other = files.filter(f => !f.docKey || !docs.some(d => d.key === f.docKey));
   el.innerHTML = (rows || `<div class="row"><span class="lbl" style="color:var(--fg2)">No documents requested.</span></div>`)
-    + (files.length ? `<div class="note">Uploaded files</div>${files.map(fileRow).join("")}` : "")
+    + (files.length ? `<div class="note">Uploaded by the applicant</div>${files.map(fileRow).join("")}` : "")
     + (!files.length && other.length ? "" : "");
+  renderRecords();
+}
+function renderRecords(){
+  const el = $("#recList"); if (!el) return;
+  const recs = S.records;
+  el.innerHTML = `<div class="note">Squad records · staff only, never shown to the applicant${recs.length ? ` · ${recs.length} file${recs.length===1?"":"s"}` : ""}</div>`
+    + (recs.length ? recs.map(r => `<div class="row"><span class="lbl"><button class="filelink" type="button" data-rec="${esc(r.id)}" title="Open (then ⌘P to print)">${esc(r.name)}</button>
+        <small>${esc(r.label || "Other")} · ${esc(new Date(r.uploadedAt).toLocaleDateString())} · ${Math.max(1, Math.round((r.size||0)/1024))} KB${r.uploadedBy ? " · " + esc(personName(r.uploadedBy)) : ""}</small></span>
+        <button class="btn small" type="button" data-rec="${esc(r.id)}">Open</button>
+        <button class="copy" type="button" data-recrm="${esc(r.id)}" aria-label="Remove ${esc(r.name)}">Remove</button></div>`).join("")
+      : `<div class="row"><span class="lbl" style="color:var(--fg2)">${S.canEdit ? "No records yet. Click <b>Upload records</b> to add MVRs, background checks, intake forms and other copies." : "No records uploaded yet."}</span></div>`);
+  if (!S.canEdit) el.querySelectorAll(OWNER_ONLY).forEach(b => { b.hidden = true; });
 }
 
 /* ---------- writes ---------- */
@@ -735,6 +747,61 @@ async function openFile(fid){
   try { const url = await getDownloadURL(ref(storage, f.path)); if (w) w.location = url; else location.href = url; }
   catch (e) { if (w) w.close(); toast("Couldn't open that file."); }
 }
+let recUnsub = null;
+function watchRecords(id){
+  if (recUnsub) { recUnsub(); recUnsub = null; }
+  S.records = [];
+  if (!S.admin || !id) return;
+  recUnsub = onSnapshot(collection(db, "applicants", id, "records"), s => {
+    S.records = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x,y) => (y.uploadedAt||0) - (x.uploadedAt||0));
+    if (S.sel === id) renderRecords();
+  }, () => {});
+}
+async function openRecord(rid){
+  const r = S.records.find(x => x.id === rid); if (!r) return;
+  const w = window.open("", "_blank");
+  try { const url = await getDownloadURL(ref(storage, r.path)); if (w) w.location = url; else location.href = url; }
+  catch (e) { if (w) w.close(); toast("Couldn't open that file."); }
+}
+const RECORD_LABELS = ["Application","Interview intake","MVR (driving record)","Driver's license copy","Background check (Sterling)","Reference letter","EMT / CPR certification","Medical documentation","Board paperwork","Other"];
+const RECORD_MAX = 25 * 1024 * 1024;
+function openUploadRecords(id){
+  if (!S.canEdit) return ownerOnlyToast();
+  const a = S.apps.get(id); if (!a) return;
+  const M = openModal(`<h3>Upload records</h3><p class="help">For ${esc(a.name || "this applicant")}. Staff only: admins can open and print these; the applicant never sees them. PDFs or photos, up to 25 MB each.</p>
+    <div class="field"><label for="recLabel">What is it?</label><select id="recLabel">${RECORD_LABELS.map(l => `<option>${esc(l)}</option>`).join("")}</select></div>
+    <label class="dropzone" id="recDrop" for="recFiles"><input type="file" id="recFiles" accept="application/pdf,image/*" multiple hidden>
+      <b>Drop files here</b><span>or click to choose from your Mac</span></label>
+    <div id="recQueue" class="ios" hidden></div>
+    <div class="acts"><button class="btn" type="button" data-x>Done</button></div>`);
+  const queue = $("#recQueue");
+  const upload = async list => {
+    const label = $("#recLabel").value;
+    for (const f of list) {
+      const row = document.createElement("div"); row.className = "row"; row.innerHTML = `<span class="lbl">${esc(f.name)}<small>Uploading…</small></span>`; queue.hidden = false; queue.appendChild(row);
+      const note = row.querySelector("small");
+      if (!(f.type === "application/pdf" || /^image\//.test(f.type))) { note.textContent = "Skipped: only PDFs and photos"; continue; }
+      if (f.size > RECORD_MAX) { note.textContent = "Skipped: over 25 MB"; continue; }
+      try {
+        const path = `records/${id}/${Date.now()}-${f.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
+        await uploadBytes(ref(storage, path), f, { contentType: f.type });
+        await addDoc(collection(db, "applicants", id, "records"), { name: f.name, label, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: S.me });
+        note.textContent = `Uploaded · ${label}`;
+      } catch (e) { console.error(e); note.textContent = "Couldn't upload. Try again."; }
+    }
+  };
+  $("#recFiles").addEventListener("change", e => { const l = [...e.target.files]; e.target.value = ""; if (l.length) upload(l); });
+  const dz = $("#recDrop");
+  ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("over"); }));
+  ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("over"); }));
+  dz.addEventListener("drop", e => { const l = [...(e.dataTransfer?.files || [])]; if (l.length) upload(l); });
+  M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); };
+}
+async function removeRecord(rid){
+  const r = S.records.find(x => x.id === rid); if (!r || !S.canEdit) return;
+  try { await deleteObject(ref(storage, r.path)).catch(() => {}); await deleteDoc(doc(db, "applicants", S.sel, "records", rid)); toast("Record removed"); }
+  catch (e) { console.error(e); toast("Couldn't remove that record."); }
+}
 function watchFiles(id){
   if (filesUnsub) { filesUnsub(); filesUnsub = null; }
   S.files = [];
@@ -948,6 +1015,8 @@ async function deleteApplicant(id){
     if (files) for (const f of files.docs) { await deleteObject(ref(storage, f.data().path)).catch(() => {}); await deleteDoc(f.ref).catch(() => {}); }
     await deleteDoc(doc(db, "portal", id)).catch(() => {});
     delete logBuf[id]; clearTimeout(logTimers[id]);
+    const recs = await getDocs(collection(db, "applicants", id, "records")).catch(() => null);
+    if (recs) for (const r0 of recs.docs) { await deleteObject(ref(storage, r0.data().path)).catch(() => {}); await deleteDoc(r0.ref).catch(() => {}); }
     const hist = await getDocs(collection(db, "applicants", id, "history")).catch(() => null);
     if (hist) for (const h of hist.docs) await deleteDoc(h.ref).catch(() => {});
     await deleteDoc(doc(db, "applicants", id, "private", "main"));
@@ -959,7 +1028,7 @@ async function deleteApplicant(id){
 /* ---------- events ---------- */
 const prefs = { get(k){ try { return localStorage.getItem("pvrsDesk." + k); } catch { return null; } }, set(k, v){ try { localStorage.setItem("pvrsDesk." + k, v); } catch {} } };
 function switchTab(k){ flushAll(); S.tab = k; renderDetail(); const b = $("#dbody"); if (b) b.scrollTop = 0; }
-function deselect(){ flushAll(); S.sel = null; watchFiles(null); watchHistory(null); renderList(); renderDetail(); }
+function deselect(){ flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
 function setFilter(f, focusList){
   S.filter = f; renderList();
   if (focusList) { const L = $("#list"); $(".roster").scrollTop = 0; const first = L.querySelector(".arow"); if (first && innerWidth > 860) first.focus(); }
@@ -1078,6 +1147,7 @@ function bindEvents(){
       if (k === "invite") return inviteToPortal(S.sel);
       if (k === "preview") { flushAll(); return openPreview(S.sel); }
       if (k === "docs") return openRequestDocs(S.sel);
+      if (k === "records") return openUploadRecords(S.sel);
       if (k === "book") return openBook(S.sel);
       if (k === "packet") { flushAll(); return printPacket([S.apps.get(S.sel)]); }
       if (k === "ics") { const a = S.apps.get(S.sel); if (a && a._booked) { download(`PVRS-interview-${(a.name||"applicant").replace(/\W+/g,"-")}.ics`, icsFile([icsEvent(a, a._booked)]), "text/calendar"); toast("Calendar file downloaded. Open it to add the interview."); } return; }
@@ -1094,6 +1164,8 @@ function bindEvents(){
     const rc = t.closest("[data-docrcv]"); if (rc) { const a = S.apps.get(S.sel); const k = rc.dataset.docrcv; edit(S.sel, `docs.requested.${k}.received`, get(a,`docs.requested.${k}.received`) === "yes" ? "" : "yes"); return; }
     const rm = t.closest("[data-docrm]"); if (rm) { if (rm.dataset.confirm !== "1") { rm.dataset.confirm = "1"; rm.textContent = "Confirm"; return; } edit(S.sel, `docs.requested.${rm.dataset.docrm}.removed`, true); return; }
     const fl = t.closest("[data-file]"); if (fl) return openFile(fl.dataset.file);
+    const rc0 = t.closest("[data-rec]"); if (rc0) return openRecord(rc0.dataset.rec);
+    const rrm = t.closest("[data-recrm]"); if (rrm) { if (rrm.dataset.confirm !== "1") { rrm.dataset.confirm = "1"; rrm.textContent = "Confirm remove"; return; } return removeRecord(rrm.dataset.recrm); }
     const segBtn = t.closest(".seg button");
     if (segBtn && segBtn.parentElement.dataset.k) { const k = segBtn.parentElement.dataset.k; const cur = get(S.apps.get(S.sel), k);
       const v = cur === segBtn.dataset.v && k !== "status" ? "" : segBtn.dataset.v; edit(S.sel, k, v);
@@ -1128,7 +1200,7 @@ function bindEvents(){
 function select(id){
   if (!S.apps.has(id)) return;
   flushAll(); const same = S.sel === id; S.sel = id;
-  if (!same) { watchFiles(id); watchHistory(id); }
+  if (!same) { watchFiles(id); watchHistory(id); watchRecords(id); }
   renderList(); renderDetail();
   const b = $("#dbody"); if (b && !same) b.scrollTop = 0;
   if (S.canEdit) schedulePortal(id, 200);

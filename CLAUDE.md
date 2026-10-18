@@ -26,6 +26,7 @@ Read this first. It's the full context from the original build conversation (Oct
 - `applicants/{id}`: shared fields (name, phone, email, type, location, app.*, sched.*, iv.* interview answers, stage mirror, updatedAt/By).
 - `applicants/{id}/private/main`: admin-only (mvr, dl, refs, bg [Sterling], appr, board, notify [incl. probation], notes, status, docs.requested, portal.invited/bookingOpen).
 - `portal/{id}`: what the applicant sees (email lowercase, name, firstName, type, steps[], docs[], bookingOpen, interview{slotId,start,duration,location}). Written by admin clients (`syncPortal`); applicant may only change `interview`.
+- `applicants/{id}/records/{recordId}` + Storage `records/{id}/…`: staff-only records the owner uploads (PDF/image ≤25 MB, labelled). Admins (e.g. the squad administrator) can open/print; members and applicants cannot see them.
 - `portal/{id}/files/{fileId}` + Storage `uploads/{id}/…`: applicant uploads (PDF/image ≤15 MB).
 - `slots/{id}`: interview times {start ms, duration, location, bookedBy}. Applicants book/cancel ≥24 h ahead only if `bookingOpen`.
 - `settings/main`: signature, docsEmail, defaultLocation. `staff/{email}`: role, name.

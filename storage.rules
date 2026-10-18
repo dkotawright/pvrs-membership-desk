@@ -25,6 +25,15 @@ service firebase.storage {
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
     }
 
+    // Records the owner uploads to an applicant's file. Admins can open them; nobody else can see them.
+    match /records/{appId}/{fileName} {
+      allow read: if isAdmin();
+      allow create: if verified() && myEmail() == 'dkota@pvrs.org'
+        && request.resource.size <= 25 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow delete: if verified() && myEmail() == 'dkota@pvrs.org';
+    }
+
     match /{everythingElse=**} {
       allow read, write: if false;
     }
