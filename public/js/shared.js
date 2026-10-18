@@ -91,13 +91,13 @@ export const isConfidential = label => /medical|immuni[sz]|vaccin|physical|tuber
 const scheduled = a => !!(get(a,"sched.scheduled") || a._booked || get(a,"sched.completed"));
 // References with a name entered, and whether each has come back. Applicants see only the name and status.
 export const refList = a => [1,2,3,4].map(i => ({ i, ...(get(a,"refs.r"+i) || {}) })).filter(r => r.name && String(r.name).trim())
-  .map(r => ({ i: r.i, name: String(r.name).trim(), received: !!r.returned, returned: r.returned || "" }));
+  .map(r => ({ i: r.i, name: String(r.name).trim(), received: !!r.returned && !r.replace, returned: r.returned || "", replace: !!r.replace }));
 export const MILESTONES = [
   ["Application received",          a => !!get(a,"app.received")],
   ["Application complete",          a => get(a,"app.complete") === "yes"],
   ["MVR completed",                 a => !!get(a,"mvr.completed")],
   ["Driver's license verified",     a => !!get(a,"dl.date") && get(a,"dl.valid") === "yes"],
-  ["References returned",           a => { const r = [1,2,3,4].map(i => get(a,"refs.r"+i) || {}).filter(x => x.name); return r.length > 0 && r.every(x => x.returned); }],
+  ["References returned",           a => { const r = [1,2,3,4].map(i => get(a,"refs.r"+i) || {}).filter(x => x.name); return r.length > 0 && r.every(x => x.returned && !x.replace); }],
   ["Interview scheduled",           scheduled],
   ["Interview completed",           a => !!get(a,"sched.completed")],
   ["Committee approval",            a => get(a,"appr.committee") === "yes"],
@@ -132,7 +132,7 @@ export const inBoardQueue = a => get(a,"appr.committee") === "yes" && !["approve
 export function applicantSteps(a){
   const g = k => get(a,k);
   const refs = [1,2,3,4].map(i => g("refs.r"+i) || {}).filter(x => x.name);
-  const checksDone = !!g("mvr.completed") && !!g("dl.date") && g("dl.valid") === "yes" && refs.length > 0 && refs.every(x => x.returned);
+  const checksDone = !!g("mvr.completed") && !!g("dl.date") && g("dl.valid") === "yes" && refs.length > 0 && refs.every(x => x.returned && !x.replace);
   const checksStarted = !!(g("mvr.requestInit") || g("mvr.completed") || g("dl.date") || refs.some(x => x.contacted || x.returned));
   const approved = g("board.result") === "approved";
   const ivWhen = a._booked ? slotLong(a._booked.start) : g("sched.scheduled") ? `${longDate(g("sched.scheduled"))}${g("sched.time") ? " at " + g("sched.time") : ""}` : "";

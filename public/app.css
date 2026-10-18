@@ -947,3 +947,7 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) body:not(:has(.gate:not([hidden]))) .ems-bg .light.red{background:rgba(224,22,43,.85)}
   :root:not([data-theme="light"]) body:not(:has(.gate:not([hidden]))) .ems-bg .light.blue{background:rgba(31,95,255,.85)} }
 @media print{ .ems-bg{display:none!important} }
+.badge.bad{background:color-mix(in srgb,var(--s-dec) 14%,transparent);color:var(--s-dec)}
+/* Applicant portal: send a different reference */
+.refform{display:flex;flex-direction:column;gap:10px;padding:12px 14px;margin:2px 0 10px;border-radius:16px;background:color-mix(in srgb,var(--box) 70%,transparent);border:1px solid var(--glass-edge)}
+.refform .acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}

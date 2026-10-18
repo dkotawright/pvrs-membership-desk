@@ -160,6 +160,10 @@ service cloud.firestore {
     match /{path=**}/messages/{messageId} {
       allow read: if isAdmin();
     }
+    // Lets the owner's desk pick up new references from every applicant in one query
+    match /{path=**}/refUpdates/{updateId} {
+      allow read: if isOwner();
+    }
     // Lets admins see every applicant upload in one query (the Overview activity feed)
     match /{path=**}/files/{fileId} {
       allow read: if isAdmin();
@@ -198,6 +202,24 @@ service cloud.firestore {
               || (request.resource.data.from == 'staff' && isOwner()));
         allow update: if isOwner()
           || (ownsPortal(id) && resource.data.from == 'staff' && onlyChanged(['seenAt']) && request.resource.data.seenAt is int);
+        allow delete: if isOwner();
+      }
+
+      // A different reference, sent by the applicant when the owner asks for one (portal.refReplace lists which).
+      // The owner's desk copies it into the private references and marks it applied.
+      match /refUpdates/{updateId} {
+        allow read: if isOwner() || ownsPortal(id);
+        allow create: if ownsPortal(id)
+          && request.resource.data.keys().hasOnly(['slot', 'name', 'relationship', 'email', 'phone', 'address', 'at', 'by'])
+          && request.resource.data.slot is int && request.resource.data.slot in portalOf(id).data.get('refReplace', [])
+          && request.resource.data.by == myEmail()
+          && request.resource.data.at is int && request.resource.data.at > nowMs() - 300000 && request.resource.data.at < nowMs() + 300000
+          && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 200
+          && request.resource.data.relationship is string && request.resource.data.relationship.size() <= 200
+          && request.resource.data.email is string && request.resource.data.email.size() <= 200 && request.resource.data.email.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$')
+          && request.resource.data.phone is string && request.resource.data.phone.size() <= 40
+          && request.resource.data.address is string && request.resource.data.address.size() <= 300;
+        allow update: if isOwner() && onlyChanged(['appliedAt']);
         allow delete: if isOwner();
       }
 

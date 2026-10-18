@@ -13,7 +13,7 @@ export function threadHTML(msgs, mine){
   return msgs.map(m => `<div class="msg ${m.from === mine ? "me" : "them"}"><div class="bub">${esc(m.text)}</div>
     <small>${m.from === "staff" ? (mine === "staff" ? esc(m.name || "PVRS") : "PVRS Membership") : (mine === "applicant" ? "You" : esc(m.name || "Applicant"))} · ${esc(msgTime(m.at))}${mine === "staff" && m.from === "staff" && m.seenAt ? " · Seen" : ""}</small></div>`).join("");
 }
-export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false }){
+export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false }){
   const now = Date.now();
   const docs = pd.docs || [];
   const byKey = k => files.filter(f => f.docKey === k);
@@ -62,7 +62,7 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
 
     <section class="card glass" id="ivCard"><h2>Interview</h2>${ivBody}</section>
 
-    <section class="card glass" id="refCard"><h2>References</h2>${refsBody(pd.refs || [])}</section>
+    <section class="card glass" id="refCard"><h2>References</h2>${refsBody(pd.refs || [], { ups: refUps, form: refForm, draft: refDraft, sending: refSending, dis })}</section>
 
     <section class="card glass"><h2>Documents</h2>
       ${docs.length ? `<div>${docRows}</div>` : `<p class="info">Nothing needed right now. If we need anything from you, it will show up here.</p>`}
@@ -82,11 +82,35 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
   </div>`;
 }
 // Only names and received/waiting come through; contact details stay with the squad.
-function refsBody(refs){
+// When the squad asks for a different reference, that row gets a short form; what they send replaces it in the squad's file.
+function refsBody(refs, { ups = [], form = null, draft = {}, sending = false, dis = "" } = {}){
   if (!refs.length) return `<p class="info" style="margin:0">Once we start contacting your references, you'll see here which ones we've heard from.</p>`;
+  const pending = slot => ups.find(u => u.slot === slot && !u.appliedAt);
+  const asks = refs.filter(r => r.replace && !pending(r.slot));
   const waiting = refs.filter(r => !r.received).length;
-  return `<p class="info" style="margin:0">${waiting ? `We need to hear from all of your references before your application goes to the board. Still waiting on ${waiting} of ${refs.length}. It can help to give them a quick reminder.` : "All of your references are in. Thank you!"}</p>
-    <div>${refs.map(r => `<div class="doc"><div class="dt">${esc(r.name)}</div><span class="badge ${r.received ? "ok" : "wait"}">${r.received ? "Received" : "Waiting"}</span></div>`).join("")}</div>`;
+  const intro = asks.length
+    ? `We need a different reference in place of ${asks.map(r => `<b>${esc(r.name)}</b>`).join(" and ")}. Please give us someone else who knows you well.`
+    : waiting ? `We need to hear from all of your references before your application goes to the board. Still waiting on ${waiting} of ${refs.length}. It can help to give them a quick reminder.` : "All of your references are in. Thank you!";
+  return `<p class="info" style="margin:0">${intro}</p>
+    <div>${refs.map(r => {
+      if (!r.replace) return `<div class="doc"><div class="dt">${esc(r.name)}</div><span class="badge ${r.received ? "ok" : "wait"}">${r.received ? "Received" : "Waiting"}</span></div>`;
+      const p = pending(r.slot);
+      return `<div class="doc"><div class="dt">${esc(r.name)}<small>${p ? `New reference sent: ${esc(p.name)}. We'll update this shortly.` : "Please give us a different reference in place of this one."}</small></div>
+        ${p ? `<span class="badge ok">Sent</span>` : form === r.slot ? "" : `<span class="badge wait">Please replace</span><button class="btn small primary" type="button" data-refnew="${r.slot}" ${dis}>Give a new reference</button>`}</div>
+        ${!p && form === r.slot ? refFormHTML(draft, sending) : ""}`;
+    }).join("")}</div>`;
+}
+function refFormHTML(d, sending){
+  const v = k => esc(d[k] || "");
+  return `<div class="refform"><div class="field">
+      <label for="rf-name">Their full name</label><input id="rf-name" data-rf="name" type="text" maxlength="200" autocomplete="off" value="${v("name")}">
+      <label for="rf-rel">How do they know you?</label><input id="rf-rel" data-rf="relationship" type="text" maxlength="200" placeholder="e.g. Coach, supervisor, teacher" value="${v("relationship")}">
+      <label for="rf-email">Their email</label><input id="rf-email" data-rf="email" type="email" maxlength="200" autocomplete="off" value="${v("email")}">
+      <label for="rf-phone">Their phone <span style="font-weight:400">(optional)</span></label><input id="rf-phone" data-rf="phone" type="tel" maxlength="40" autocomplete="off" value="${v("phone")}">
+      <label for="rf-addr">Their address <span style="font-weight:400">(optional)</span></label><input id="rf-addr" data-rf="address" type="text" maxlength="300" autocomplete="off" value="${v("address")}">
+    </div>
+    <p class="info" style="margin:0">Let them know we'll be reaching out by email.</p>
+    <div class="acts"><button class="btn small" type="button" data-refcancel>Cancel</button><button class="btn small primary" type="button" data-refsend ${sending ? "disabled" : ""}>Send new reference</button></div></div>`;
 }
 function slotPicker(days, pick, dis, busy){
   return `<p class="info" style="margin:0">Pick a time that works for you. Interviews are with the Membership Committee.</p><div class="slots">${Object.entries(days).map(([day, list]) => `<div class="slotday"><h4>${esc(day)}</h4><div class="slotrow">${list.map(s =>
@@ -95,7 +119,7 @@ function slotPicker(days, pick, dis, busy){
 }
 
 export function startPortal(id, email){
-  const P = { pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false };
+  const P = { pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false, refUps: [], refForm: null, refDraft: {}, refSending: false };
   const seen = new Set();
   const root = $("#portal");
   const render = () => {
@@ -103,8 +127,10 @@ export function startPortal(id, email){
     const pd = P.changing ? { ...P.pd, interview: null } : P.pd;
     // Snapshots re-render the page; keep a half-typed message, its caret and the page scroll intact.
     const ta = $("#msgText"), focused = !!ta && document.activeElement === ta, caret = ta ? ta.selectionStart : 0, scroll = root.scrollTop;
+    const rf = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.rf ? document.activeElement : null, rfCaret = rf ? rf.selectionStart : 0;
     if (ta) P.draft = ta.value;
-    root.innerHTML = portalHTML({ pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy });
+    root.innerHTML = portalHTML({ pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending });
+    if (rf) { const back = root.querySelector(`[data-rf="${rf.dataset.rf}"]`); if (back) { back.focus({ preventScroll: true }); try { back.setSelectionRange(rfCaret, rfCaret); } catch {} } }
     const t2 = $("#msgText"); if (t2) { t2.value = P.draft; if (focused) { t2.focus({ preventScroll: true }); t2.setSelectionRange(caret, caret); } }
     const th = $("#thread"); if (th) th.scrollTop = th.scrollHeight;
     root.scrollTop = scroll;
@@ -125,7 +151,23 @@ export function startPortal(id, email){
     catch (err) { console.error(err); toast(`Couldn't send. Try again, or email ${CONTACT_EMAIL}.`); }
     finally { P.sending = false; }
   };
-  root.addEventListener("input", e => { if (e.target.id === "msgText") P.draft = e.target.value; });
+  root.addEventListener("input", e => { if (e.target.id === "msgText") P.draft = e.target.value; if (e.target.dataset.rf) P.refDraft[e.target.dataset.rf] = e.target.value; });
+  onSnapshot(collection(db, "portal", id, "refUpdates"), s => { P.refUps = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
+  const sendRef = async () => {
+    const d = P.refDraft, slot = P.refForm; if (slot == null || P.refSending) return;
+    const v = k => String(d[k] || "").trim();
+    if (!v("name")) { $("#rf-name")?.focus(); return toast("Enter their name."); }
+    if (!v("relationship")) { $("#rf-rel")?.focus(); return toast("Tell us how they know you."); }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v("email"))) { $("#rf-email")?.focus(); return toast("Enter a valid email for them."); }
+    P.refSending = true; render();
+    try {
+      await addDoc(collection(db, "portal", id, "refUpdates"), { slot, name: v("name").slice(0, 200), relationship: v("relationship").slice(0, 200), email: v("email").toLowerCase().slice(0, 200),
+        phone: v("phone").slice(0, 40), address: v("address").slice(0, 300), at: Date.now(), by: email });
+      P.refForm = null; P.refDraft = {}; toast("Thanks! We've got your new reference.");
+    } catch (err) { console.error(err); toast(`Couldn't send. Try again, or email ${CONTACT_EMAIL}.`); }
+    finally { P.refSending = false; render(); }
+  };
+  root.addEventListener("keydown", e => { if (e.target.dataset && e.target.dataset.rf && e.key === "Enter") { e.preventDefault(); sendRef(); } });
   root.addEventListener("keydown", e => { if (e.target.id === "msgText" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } });
   onSnapshot(collection(db, "portal", id, "files"), s => { P.files = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
   onSnapshot(collection(db, "slots"), s => { P.slots = s.docs.map(d => ({ id: d.id, ...d.data() })); if (P.pick && !P.slots.some(x => x.id === P.pick && !x.bookedBy)) P.pick = null; render(); }, () => {});
@@ -163,6 +205,9 @@ export function startPortal(id, email){
   root.addEventListener("click", async e => {
     const t = e.target;
     if (t.closest("[data-send]")) return send();
+    const rn = t.closest("[data-refnew]"); if (rn) { P.refForm = +rn.dataset.refnew; P.refDraft = {}; render(); $("#rf-name")?.focus(); return; }
+    if (t.closest("[data-refcancel]")) { P.refForm = null; P.refDraft = {}; render(); return; }
+    if (t.closest("[data-refsend]")) return sendRef();
     if (t.closest("[data-ics]")) {
       const iv = P.pd.interview; if (!iv) return;
       download("PVRS-interview.ics", icsFile([{ uid: "iv-" + iv.slotId, start: iv.start, duration: iv.duration || 30, title: "PVRS membership interview",

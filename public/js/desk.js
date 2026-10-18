@@ -72,6 +72,7 @@ function tabHTML(tab){
   <div class="cols">${[1,2,3,4].map(i => `<section class="group ref"><h3><span class="refh">Reference ${i}</span><span class="badge" id="refBadge${i}"></span></h3><div class="ios">${[
       F.text(`refs.r${i}.name`,"Name","Full name"),
       `<div class="row"><span class="lbl">Reference received<small id="refRcv${i}">—</small></span><button class="btn small" type="button" data-refrcv="${i}" id="refBtn${i}">Mark received</button></div>`,
+      `<div class="row"><span class="lbl">Need a different reference?<small id="refRepNote${i}">—</small></span><button class="btn small" type="button" data-refrep="${i}" id="refRepBtn${i}">Ask for a new one</button></div>`,
       F.text(`refs.r${i}.email`,"Email","name@example.com","email"),F.text(`refs.r${i}.relationship`,"Relationship",""),F.text(`refs.r${i}.phone`,"Phone","","tel"),F.text(`refs.r${i}.address`,"Address",""),F.date(`refs.r${i}.contacted`,"Date contacted"),
       F.seg(`refs.r${i}.method`,"Method",[["Phone","Phone"],["Email","Email"],["Text","Text"]]),F.date(`refs.r${i}.returned`,"Date received"),F.init(`refs.r${i}.init`)].join("")}</div></section>`).join("")}
   </div>`;
@@ -332,7 +333,7 @@ function renderOverview(){
 // mark the interview completed and sign off the Interview page. Firestore rules enforce the same thing.
 const INTERVIEW_FIELDS = new Set(["sched.completed", "sched.completedInit", "signoff.iv.init", "signoff.iv.done"]);
 const canEditPath = path => S.canEdit || path.startsWith("iv.") || INTERVIEW_FIELDS.has(path);
-const OWNER_ONLY = '[data-act="records"],[data-recrm],[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],#delBtn,#rqAdd';
+const OWNER_ONLY = '[data-act="records"],[data-recrm],[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],[data-refrep],#delBtn,#rqAdd';
 const ownerOnlyToast = () => toast("View only. You can fill in the Interview tab; everything else is changed by the owner.");
 
 /* ---------- page sign-off ---------- */
@@ -466,6 +467,12 @@ function syncRefs(a){
     badge.className = "badge " + (!name ? "" : ret ? "ok" : "wait"); badge.textContent = !name ? "" : ret ? "Received" : "Waiting";
     $("#refRcv" + i).textContent = !name ? "Enter a name first" : ret ? "Received " + fmtDate(ret) : "Waiting on this reference";
     const b = $("#refBtn" + i); b.textContent = ret ? "Undo" : "Mark received"; b.disabled = !name; b.classList.toggle("primary", !!name && !ret);
+    const rep = get(a,`refs.r${i}.replace`), was = get(a,`refs.r${i}.replacedFrom`), when = get(a,`refs.r${i}.replacedAt`);
+    if (rep) { badge.className = "badge bad"; badge.textContent = "Replacement asked"; }
+    $("#refRepNote" + i).textContent = rep ? `Asked ${fmtDate(rep)}. ${first(a.name) || "The applicant"} can send a new one from their portal; it replaces this reference automatically.`
+      : was ? `Sent by the applicant ${fmtDate(when)}, replacing ${was}.`
+      : !name ? "—" : get(a,"portal.invited") ? "The applicant gets a form in their portal to send someone else." : "They'll need portal access first (Application tab → invite).";
+    const rb = $("#refRepBtn" + i); rb.textContent = rep ? "Cancel request" : "Ask for a new one"; rb.disabled = !name && !rep;
   }
   const bn = $("#boardRefNote");
   if (bn) { bn.hidden = !(refs.length === 0 || waiting); bn.textContent = refs.length === 0 ? "No references entered yet. All references must be in before this goes to the board." : `Waiting on ${waiting} reference${waiting===1?"":"s"} (${refs.filter(x => !x.received).map(x => x.name).join(", ")}). All references must be in before this goes to the board.`; }
@@ -615,10 +622,11 @@ function renderHistory(){
 function portalPayload(a){
   return { email: lower(a.email), name: a.name || "", firstName: first(a.name), type: a.type || "",
     steps: applicantSteps(a), docs: requestedDocs(a).map(d => ({ key: d.key, label: d.label, received: d.received })),
-    refs: refList(a).map(r => ({ name: r.name, received: r.received })),
+    refs: refList(a).map(r => ({ slot: r.i, name: r.name, received: r.received, ...(r.replace ? { replace: true } : {}) })),
+    refReplace: refList(a).filter(r => r.replace).map(r => r.i),
     bookingOpen: get(a,"portal.bookingOpen") === "yes" && !isDeclined(a) };
 }
-const portalKey = p => JSON.stringify([p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.bookingOpen]);
+const portalKey = p => JSON.stringify([p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.refReplace || [], p.bookingOpen]);
 const portalTimers = {};
 function schedulePortal(id, delay = 1500){ if (!S.canEdit) return; clearTimeout(portalTimers[id]); portalTimers[id] = setTimeout(() => syncPortal(id), delay); }
 async function syncPortal(id, force = false){
@@ -1134,6 +1142,8 @@ async function deleteApplicant(id){
     delete logBuf[id]; clearTimeout(logTimers[id]);
     const ms = await getDocs(collection(db, "portal", id, "messages")).catch(() => null);
     if (ms) for (const m of ms.docs) await deleteDoc(m.ref).catch(() => {});
+    const rus = await getDocs(collection(db, "portal", id, "refUpdates")).catch(() => null);
+    if (rus) for (const u of rus.docs) await deleteDoc(u.ref).catch(() => {});
     const recs = await getDocs(collection(db, "applicants", id, "records")).catch(() => null);
     if (recs) for (const r0 of recs.docs) { if (r0.data().path) await deleteObject(ref(storage, r0.data().path)).catch(() => {}); await deleteDoc(r0.ref).catch(() => {}); }
     const hist = await getDocs(collection(db, "applicants", id, "history")).catch(() => null);
@@ -1284,6 +1294,13 @@ function bindEvents(){
       if (get(a, signPath(k, "done"))) { edit(S.sel, signPath(k, "done"), ""); return; }
       if (!String(get(a, signPath(k, "init")) || "").trim()) { toast("Enter your initials first."); $("#f-sign-" + k)?.focus(); return; }
       edit(S.sel, signPath(k, "done"), today()); toast(`${tabLabel(k)} page marked complete`); return; }
+    const rp = t.closest("[data-refrep]");
+    if (rp) { const a = S.apps.get(S.sel), i = rp.dataset.refrep;
+      if (get(a,`refs.r${i}.replace`)) { edit(S.sel, `refs.r${i}.replace`, ""); toast("Request cancelled"); return; }
+      if (!String(get(a,`refs.r${i}.name`) || "").trim()) return toast("Enter the reference's name first.");
+      edit(S.sel, `refs.r${i}.replace`, today());
+      toast(get(a,"portal.invited") ? `Asked ${first(a.name)} for a different reference. They'll see it in their portal.` : "Saved. Invite them to the portal so they can send a new reference.");
+      return; }
     const rr = t.closest("[data-refrcv]");
     if (rr) { const a = S.apps.get(S.sel), i = rr.dataset.refrcv; if (!String(get(a,`refs.r${i}.name`) || "").trim()) return toast("Enter the reference's name first.");
       edit(S.sel, `refs.r${i}.returned`, get(a,`refs.r${i}.returned`) ? "" : today()); return; }
@@ -1479,6 +1496,31 @@ async function importSubmission(snap){
     toast(`New online application from ${name}`);
   } catch (e) { console.error(e); importing.delete(snap.id); }
 }
+// New references applicants send when asked for a different one (owner's desk applies them to the file).
+let refUps = [];
+const applyingRefs = new Set();
+function watchRefUpdates(){
+  onSnapshot(collectionGroup(db, "refUpdates"), snap => { refUps = snap.docs; processRefUpdates(); }, e => console.error(e));
+}
+function processRefUpdates(){
+  for (const d of refUps) {
+    const u = d.data(), id = d.ref.parent.parent.id;
+    if (u.appliedAt || applyingRefs.has(d.ref.path) || !S.apps.has(id) || !S.secure.has(id)) continue;
+    applyingRefs.add(d.ref.path); applyRefUpdate(id, d.ref, u);
+  }
+}
+async function applyRefUpdate(id, ref0, u){
+  const a = S.apps.get(id), i = u.slot; if (![1,2,3,4].includes(i)) return;
+  const set = (k, v) => { if ((get(a,`refs.r${i}.${k}`) || "") !== v) edit(id, `refs.r${i}.${k}`, v); };
+  const old = String(get(a,`refs.r${i}.name`) || "").trim();
+  set("name", u.name || ""); set("email", lower(u.email)); set("phone", u.phone || ""); set("relationship", u.relationship || ""); set("address", u.address || "");
+  for (const k of ["contacted","method","returned","init","replace"]) set(k, "");
+  set("replacedFrom", old); set("replacedAt", today());
+  flushAll();
+  try { await updateDoc(ref0, { appliedAt: Date.now() }); } catch (e) { console.error(e); }
+  toast(`${a.name || "An applicant"} sent a new reference: ${u.name}`);
+  if (S.sel === id) syncDetail();
+}
 function watchSubmissions(){
   onSnapshot(query(collection(db, "submissions"), where("status", "==", "new")), snap => { snap.docs.forEach(importSubmission); }, e => console.error(e));
 }
@@ -1612,7 +1654,7 @@ export function startDesk({ email, role, owner, name }){
     onSnapshot(collectionGroup(db, "private"), snap => {
       const next = new Map();
       snap.docs.forEach(d => { if (d.id !== "main") return; const id = d.ref.parent.parent.id; const data = d.data(); merge(data, clone(inflight["sec|"+id] || {})); merge(data, clone(pending["sec|"+id] || {})); next.set(id, data); });
-      S.secure = next; rebuildAll(); renderList(); if (S.sel) syncDetail(); if (S.canEdit) { syncAllPortals(); mirrorStages(); }
+      S.secure = next; rebuildAll(); renderList(); if (S.sel) syncDetail(); if (S.canEdit) { syncAllPortals(); mirrorStages(); processRefUpdates(); }
     }, e => console.error(e));
     if (S.canEdit) onSnapshot(collection(db, "portalEmails"), snap => { peKnown = new Map(snap.docs.map(d => [d.id, d.data().id])); reconcilePortalEmails(); }, e => console.error(e));
     onSnapshot(collection(db, "portal"), snap => {
@@ -1624,7 +1666,7 @@ export function startDesk({ email, role, owner, name }){
     }, () => {});
     watchActivity();
     watchMessages();
-    if (S.owner) watchSubmissions();
+    if (S.owner) { watchSubmissions(); watchRefUpdates(); }
     $("#msgsBtn").hidden = false;
     if (S.owner) {
       let primed = false;
