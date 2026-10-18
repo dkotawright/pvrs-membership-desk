@@ -55,6 +55,23 @@ export function download(filename, text, type = "text/csv"){
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
+/* ---------- calendar invites (.ics) ---------- */
+const icsDate = ms => new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+const icsText = s => String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+// events: [{ uid, start (ms), duration (min), title, location, description }]. Opening the file on a Mac adds it to Calendar.
+export function icsFile(events){
+  const L = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Potsdam Volunteer Rescue Squad//Membership Desk//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH"];
+  for (const e of events) {
+    L.push("BEGIN:VEVENT", `UID:${e.uid}@pvrs-membership.web.app`, `DTSTAMP:${icsDate(Date.now())}`, `DTSTART:${icsDate(e.start)}`,
+      `DTEND:${icsDate(e.start + (e.duration || 30) * 6e4)}`, `SUMMARY:${icsText(e.title)}`);
+    if (e.location) L.push(`LOCATION:${icsText(e.location)}`);
+    if (e.description) L.push(`DESCRIPTION:${icsText(e.description)}`);
+    L.push("BEGIN:VALARM", "TRIGGER:-PT1H", "ACTION:DISPLAY", `DESCRIPTION:${icsText(e.title)}`, "END:VALARM", "END:VEVENT");
+  }
+  L.push("END:VCALENDAR");
+  return L.join("\r\n") + "\r\n";
+}
+
 /* ---------- PVRS process ---------- */
 export const TYPES = ["Regular","Associate","Auxiliary","Non-Operational","Driver Only","Non-Resident"];
 export const TYPE_INFO = {

@@ -46,6 +46,11 @@ Read this first. It's the full context from the original build conversation (Oct
 - [x] Firestore (nam5, production) and Storage (US-EAST1, production) created.
 - [x] **Deployed** Oct 16, 2026 (firebase-tools 15.34.0 in ~/.npm-global; logged in as dkota@pvrs.org). Redeploy: `firebase deploy` from this folder.
 - [x] **Mac redesign deployed Oct 18, 2026.** Sidebar + list + file layout, overview dashboard, keyboard shortcuts (⌘K, J/K, N, 1–6, [ ], E, ?), sort, header quick actions, modal focus/inert handling, PIN-listener leak fixed, `sched.completed` now counts as scheduled. Deploy with `firebase deploy` once Dkota OKs it.
+- [x] Version history: local git repo (Oct 18). `migration/` is git-ignored because it holds real applicant data. No GitHub remote yet.
+- [x] Firestore backups: daily (14-day retention, created Oct 18) + weekly Sunday (98-day retention, pre-existing).
+- [ ] **Oct 18 feature batch: built + tested, awaiting deploy** (`firebase deploy --only hosting,firestore:rules`): change history (applicants/{id}/history, append-only, admin-read), auto sign-out (settings.idleMinutes, default 30, shared across tabs), .ics calendar files (staff + applicant portal; interview.bookedAt), printable board packet, admin activity feed (collectionGroup files), Add to Dock manifest/icons, no-cache HTML.
+- [ ] Email alerts for uploads/bookings: needs a Cloud Function + an SMTP sender (decision pending with Dkota).
+- Testing: rules are tested in the emulator with @firebase/rules-unit-testing (needs a JDK; none is installed system-wide, so use a portable one). UI is tested with Playwright against an in-memory Firebase mock.
 - [ ] Optional: GitHub repo `pvrs-membership-desk` (private) + GitHub Actions auto-deploy with a service-account key, so Claude can update the app on demand.
 - [ ] After deploy: sign in at https://pvrs-membership.web.app as dkota@pvrs.org (Google), Settings (PIN 0508) → Import records → `migration/artifact-export.json`; set signature + default interview location; add team members.
 - [ ] Test end to end with a personal email as a fake applicant (invite, upload, book), then delete it.

@@ -1,9 +1,9 @@
 // Staff Desk: roster, applicant file, board, onboarding, interview times, settings.
 import { auth, db, storage, doc, collection, collectionGroup, setDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch,
-  sendSignInLinkToEmail, ref, getDownloadURL, deleteObject } from "./fb.js";
+  sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
-  progress, inBoardQueue, nextReview, onProbation, applicantSteps, checkSVG } from "./shared.js";
+  progress, inBoardQueue, nextReview, onProbation, applicantSteps, checkSVG, icsFile } from "./shared.js";
 import { portalHTML } from "./portal.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PIN_HASH } from "./config.js";
 
@@ -134,6 +134,7 @@ function tabHTML(tab){
       F.seg("board.result","Result",[["approved","Approved","good"],["tabled","Tabled","warn"],["denied","Denied","bad"]],true),
       F.note("Tabled keeps the applicant in the board queue for the next meeting.")])}
     ${group("Board notes",[F.area("board.notes","Discussion or conditions","Anything the board attached to the approval")])}
+    ${group("Board packet",[`<div class="row"><span class="lbl">Print this applicant's page<small>Checks, interview summary, committee decision and a blank vote record</small></span><button class="btn small" type="button" data-act="packet">Print</button></div>`])}
   </div>`;
   if (tab === "onb") return `<div class="cols">
     ${group("Notifications",[F.date("notify.applicant","Applicant notified"),F.init("notify.applicantInit"),F.date("notify.orientation","Orientation chair notified")])}
@@ -148,6 +149,7 @@ function tabHTML(tab){
     ${group("Admin notes",[`<label class="row stack"><span class="lbl">Only admins see these</span><textarea id="f-notes" data-k="notes" rows="10" placeholder="Anything about this applicant that should stay off the member view"></textarea></label>`])}
     ${group("Status",[F.seg("status","Override",[["open","In process"],["hold","On hold","warn"],["declined","Declined","bad"],["withdrawn","Withdrawn"]],true),
       F.note("“In process” lets the checklist set the stage automatically.")])}
+    <section class="group"><h3><span>Change history</span><small id="histNote" style="font-weight:500;color:var(--fg3)">Every edit, by whom and when</small></h3><div class="ios hist" id="histList"></div></section>
     <section class="group"><h3><span>Remove</span></h3><div class="ios"><div class="row"><span class="lbl">Delete this applicant, their portal and uploads</span><button class="btn small danger" type="button" id="delBtn">Delete</button></div>
       <div class="row" id="delConfirm" hidden><span class="lbl">This can't be undone.</span><button class="btn small" type="button" id="delCancel">Cancel</button><button class="btn small danger" type="button" id="delYes">Delete permanently</button></div></div></section>
   </div>`;
@@ -155,7 +157,7 @@ function tabHTML(tab){
 }
 
 /* ---------- state ---------- */
-const S = { shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[],
+const S = { shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[], hist:[], feedFiles:[],
   sel:null, tab:"app", filter:"all", q:"", admin:false, owner:false, me:"", settings:{}, unlocked:false, ready:false };
 const pending = {}, inflight = {}, timers = {};
 let filesUnsub = null;
@@ -209,7 +211,7 @@ function renderChips(rows){
   if (!keys.includes(S.filter) && !PSEUDO[S.filter]) S.filter = "all";
   $("#chips").innerHTML = keys.map(k => `<button class="nav-i" type="button" data-f="${k}" aria-pressed="${S.filter===k}" style="--stage-c:${filterColor(k)}"><span class="ndot"></span><span class="nl">${k==="all"?"All":filterLabel(k)}</span><b>${counts[k]||0}</b></button>`).join("");
   $("#chipsMini").innerHTML = keys.map(k => `<button class="chip" type="button" data-f="${k}" aria-pressed="${S.filter===k}">${k==="all"?"All":filterLabel(k)} <b>${counts[k]||0}</b></button>`).join("");
-  $("#agendaBtn").hidden = !(S.admin && counts.board);
+  $("#agendaBtn").hidden = $("#packetBtn").hidden = !(S.admin && counts.board);
   $("#rosterTitle").textContent = filterLabel(S.filter);
   S.counts = counts;
 }
@@ -302,15 +304,16 @@ function renderOverview(){
     ${total ? `<section class="ovcard"><h3>Pipeline<small>${total} total</small></h3>
       <div class="pipe" role="img" aria-label="${order.map(k => `${STAGES[k].label} ${c[k]}`).join(", ")}">${order.map(k => `<span style="flex:${c[k]};--stage-c:${stageVar(k)}" title="${STAGES[k].label}: ${c[k]}"></span>`).join("")}</div>
       <div class="legend">${order.map(k => `<button type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}">${STAGES[k].label} <b>${c[k]}</b></button>`).join("")}</div></section>` : ""}
-    <div class="ovgrid">
+    <div class="ovgrid cols">
       <section class="ovcard"><h3>Upcoming interviews${S.admin?`<button class="btn small" type="button" data-cmd="slots">Interview times</button>`:""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>
       <section class="ovcard"><h3>Waiting longest<small>in process</small></h3><div class="olist">${waiting || `<div class="oempty">Nobody in process.</div>`}</div></section>
+      ${activityCard()}
       ${S.admin ? `<section class="ovcard"><h3>Probation reviews<small>every 3 months</small></h3><div class="olist">${revList || `<div class="oempty">Nobody on probation.</div>`}</div></section>` : ""}
     </div>
     <p class="kbdhint">Tip: press <kbd>⌘K</kbd> to search, <kbd>J</kbd> <kbd>K</kbd> to move through applicants, <kbd>?</kbd> for all shortcuts.</p>
   </div></div>`;
   if (D.querySelector(".ov") && D._ovHTML === html) return;
-  D._ovHTML = html; D.innerHTML = html;
+  D._ovHTML = html; D.innerHTML = html; stackCols(D);
   const ov = D.querySelector(".ov"); if (ov) ov.scrollTop = keepScroll;
 }
 
@@ -387,9 +390,10 @@ function syncDetail(){
   const be = $("#bookedEcho");
   if (be) {
     be.textContent = a._booked ? `${slotLong(a._booked.start)}${a._booked.location ? " · " + a._booked.location : ""}` : "Not booked";
-    $("#bookedActs").innerHTML = S.admin ? (a._booked ? `<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "";
+    const cal = a._booked ? `<button class="btn small" type="button" data-act="ics" title="Add to Calendar">${ICON.cal}<span class="tl">Calendar</span></button>` : "";
+    $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
-  renderDocs(a);
+  renderDocs(a); renderHistory();
   document.querySelectorAll("#dbody [data-k]").forEach(el => {
     const k = el.dataset.k; let v = get(a, k);
     if (k === "status" && !v) v = "open";
@@ -430,6 +434,7 @@ function edit(id, path, value){
   const now = Date.now();
   const meta = kind === "pub" ? { updatedAt: now, updatedBy: S.me } : { secUpdatedAt: now, secUpdatedBy: S.me };
   const patch = merge(nest(path, value), meta);
+  logChange(id, path, get(S.apps.get(id), path), value);
   const store = kind === "pub" ? S.shared : S.secure;
   store.set(id, merge(store.get(id) || {}, clone(patch)));
   queue(kind, id, patch);
@@ -458,7 +463,67 @@ async function flush(key){
     if (S.sel === id) setSave("Not saved");
   } finally { delete inflight[key]; if (pending[key]) flush(key); }
 }
-function flushAll(){ Object.keys(pending).forEach(k => { clearTimeout(timers[k]); flush(k); }); }
+function flushAll(){ Object.keys(pending).forEach(k => { clearTimeout(timers[k]); flush(k); }); flushLogs(); }
+
+/* ---------- change history ---------- */
+// Edits are batched per applicant: each field keeps its value from before the first edit and its latest value,
+// and one history entry is written a few seconds after typing stops (or when you move on).
+const logBuf = {}, logTimers = {};
+const sameVal = (x, y) => JSON.stringify(x ?? "") === JSON.stringify(y ?? "");
+function logChange(id, path, from, to){
+  const b = logBuf[id] || (logBuf[id] = {});
+  if (!(path in b)) b[path] = { from: clone(from ?? "") };
+  b[path].to = clone(to ?? "");
+  clearTimeout(logTimers[id]); logTimers[id] = setTimeout(() => writeLog(id), 4000);
+}
+const logVal = v => { if (v == null || v === "") return ""; if (isObj(v)) return v.label ? String(v.label) : JSON.stringify(v).slice(0, 300); return String(v).slice(0, 300); };
+async function writeLog(id, extra){
+  clearTimeout(logTimers[id]);
+  const b = logBuf[id] || {}; delete logBuf[id];
+  const changes = Object.entries(b).filter(([, c]) => !sameVal(c.from, c.to)).map(([path, c]) => ({ path, from: logVal(c.from), to: logVal(c.to) }));
+  if (extra) changes.push(...extra);
+  if (!changes.length || !S.shared.has(id)) return;
+  try { await addDoc(collection(db, "applicants", id, "history"), { at: Date.now(), by: S.me, changes: changes.slice(0, 200) }); }
+  catch (e) { console.error(e); }
+}
+function flushLogs(){ Object.keys(logBuf).forEach(id => writeLog(id)); }
+let histUnsub = null;
+function watchHistory(id){
+  if (histUnsub) { histUnsub(); histUnsub = null; }
+  S.hist = [];
+  if (!S.admin || !id) return;
+  histUnsub = onSnapshot(collection(db, "applicants", id, "history"), s => {
+    S.hist = s.docs.map(d => d.data()).sort((x,y) => (y.at||0) - (x.at||0));
+    if (S.sel === id) renderHistory();
+  }, () => {});
+}
+let LABELS = null;
+const histLabel = path => {
+  if (path === "_created") return "Created file";
+  if (/^docs\.requested\.[^.]+$/.test(path)) return "Requested document";
+  if (/^docs\.requested\.[^.]+\.received$/.test(path)) return "Document received";
+  if (/^docs\.requested\.[^.]+\.removed$/.test(path)) return "Removed document request";
+  LABELS = LABELS || fieldLabels();
+  return (LABELS[path] || path).replace(/^\d+\.\s*/, "");
+};
+// Button labels for segmented fields, so history reads "Needs review" rather than the stored "review".
+let SEG_VALUES = null;
+function segValues(){
+  if (SEG_VALUES) return SEG_VALUES;
+  const box = document.createElement("div"), map = {};
+  box.innerHTML = TABS_ADMIN.map(t => tabHTML(t[0])).join("");
+  box.querySelectorAll(".seg[data-k]").forEach(sg => { const m = map[sg.dataset.k] = {}; sg.querySelectorAll("button[data-v]").forEach(b => { m[b.dataset.v] = b.textContent.trim(); }); });
+  return (SEG_VALUES = map);
+}
+const histVal = (v, path) => { if (v === "") return "blank"; const sv = segValues()[path]; if (sv && sv[v]) return sv[v];
+  return v === "yesbad" || v === "yes" || v === "true" ? "Yes" : v === "no" ? "No" : /^\d{4}-\d{2}-\d{2}$/.test(v) ? fmtDate(v) : v; };
+function renderHistory(){
+  const el = $("#histList"); if (!el) return;
+  if (!S.hist.length) { el.innerHTML = `<div class="row"><span class="lbl" style="color:var(--fg2)">No changes recorded yet. Edits made from now on show up here.</span></div>`; return; }
+  el.innerHTML = S.hist.slice(0, 100).map(h => `<div class="hrow"><div class="hwho"><b>${esc(personName(h.by) || h.by || "Someone")}</b><span title="${esc(new Date(h.at).toLocaleString())}">${esc(new Date(h.at).toLocaleString(undefined,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}))}</span></div>
+    <ul>${(h.changes||[]).map(c => `<li><span class="hl">${esc(histLabel(c.path))}</span> ${c.path === "_created" ? esc(c.to) : `<s>${esc(histVal(c.from, c.path))}</s> → <b>${esc(histVal(c.to, c.path))}</b>`}</li>`).join("")}</ul></div>`).join("")
+    + (S.hist.length > 100 ? `<div class="row"><span class="lbl" style="color:var(--fg3)">Showing the latest 100 of ${S.hist.length}.</span></div>` : "");
+}
 
 /* ---------- applicant portal sync (admins) ---------- */
 function portalPayload(a){
@@ -486,7 +551,8 @@ async function bookFor(id, slot){
   const b = writeBatch(db);
   if (old && old.slotId !== slot.id) b.update(doc(db, "slots", old.slotId), { bookedBy: null });
   b.update(doc(db, "slots", slot.id), { bookedBy: id });
-  b.set(doc(db, "portal", id), { interview: { slotId: slot.id, start: slot.start, duration: slot.duration || null, location: slot.location || "" } }, { merge: true });
+  S._selfBooked = id;
+  b.set(doc(db, "portal", id), { interview: { slotId: slot.id, start: slot.start, duration: slot.duration || null, location: slot.location || "", bookedAt: Date.now() } }, { merge: true });
   await b.commit();
 }
 async function releaseFor(id){
@@ -522,7 +588,7 @@ function openSlots(){
       <div class="field full"><label for="slLoc">Location</label><input id="slLoc" type="text" placeholder="PVRS building, room…" value="${esc(def)}"></div>
       <div class="full" style="display:flex;justify-content:flex-end"><button class="btn primary" type="submit">Add times</button></div></div></form>
     <div id="slotList"></div>
-    <div class="acts"><button class="btn" type="button" data-x>Done</button></div>`, true);
+    <div class="acts"><button class="btn" type="button" id="slIcs" title="Every booked interview as one calendar file">Add booked interviews to Calendar</button><button class="btn" type="button" data-x>Done</button></div>`, true);
   const paint = () => {
     const up = [...S.slots.values()].filter(s => s.start > Date.now() - 864e5).sort((x,y) => x.start - y.start);
     const days = {}; up.forEach(s => { const k = slotDay(s.start); (days[k] = days[k] || []).push(s); });
@@ -546,10 +612,18 @@ function openSlots(){
   };
   M.onclick = async e => {
     if (e.target.closest("[data-x]")) { S._slotPaint = null; return closeModal(); }
+    if (e.target.id === "slIcs") {
+      const ev = [...S.slots.values()].filter(s => s.bookedBy && s.start > Date.now() - 864e5 && S.apps.has(s.bookedBy)).map(s => icsEvent(S.apps.get(s.bookedBy), s));
+      if (!ev.length) return toast("No booked interviews to add.");
+      download(`PVRS-interviews-${today()}.ics`, icsFile(ev), "text/calendar"); toast(`Calendar file with ${ev.length} interview${ev.length===1?"":"s"} downloaded. Open it to add them.`); return;
+    }
     const del = e.target.closest("[data-del]"); if (del) { try { await deleteDoc(doc(db, "slots", del.dataset.del)); } catch { toast("Couldn't delete that time."); } return; }
     const rel = e.target.closest("[data-rel]"); if (rel) { const s = S.slots.get(rel.dataset.rel); try { await releaseFor(s.bookedBy); toast("Time released"); } catch (err) { console.error(err); toast("Couldn't release that time."); } }
   };
 }
+
+const icsEvent = (a, s) => ({ uid: "iv-" + (s.slotId || s.id), start: s.start, duration: s.duration || 30, title: `PVRS interview: ${a.name || "Applicant"}`, location: s.location || "",
+  description: [a.type ? a.type + " membership" : "", a.phone ? "Phone: " + a.phone : "", a.email ? "Email: " + a.email : "", location.origin].filter(Boolean).join("\n") });
 
 /* ---------- documents ---------- */
 function openRequestDocs(id){
@@ -705,6 +779,8 @@ function openSettings(){
       <label class="row stack"><span class="lbl">Email signature<small>Printed at the end of every email</small></span><textarea id="sSig" rows="4" placeholder="Name, credentials">${esc(s.signature||"")}</textarea></label>
       <label class="row stack"><span class="lbl">Documents and questions go to</span><input type="text" id="sDocs" placeholder="${esc(CONTACT_EMAIL)}" value="${esc(s.docsEmail||"")}"></label>
       <label class="row stack"><span class="lbl">Default interview location</span><input type="text" id="sLoc" placeholder="PVRS building" value="${esc(s.defaultLocation||"")}"></label></div></div>
+    <div class="group"><h3><span>Security</span></h3><div class="ios">
+      <label class="row"><span class="lbl">Sign out after inactivity<small>Minutes with no mouse or keyboard use, for everyone on the team (5–240)</small></span><input type="number" id="sIdle" min="5" max="240" placeholder="30" value="${esc(s.idleMinutes||"")}"></label></div></div>
     <div class="group"><h3><span>Applicant view</span></h3><div class="ios">
       <div class="row"><span class="lbl">See what applicants see<small>Their portal, for any applicant on the roster</small></span><button class="btn small" type="button" id="sPreview">Preview</button></div></div></div>
     <div class="group"><h3><span>Backups</span></h3><div class="ios">
@@ -731,7 +807,8 @@ function openSettings(){
       if (rm.dataset.confirm !== "1") { rm.dataset.confirm = "1"; rm.textContent = "Confirm remove"; return; }
       try { await deleteDoc(doc(db, "staff", rm.dataset.rmstaff)); toast("Removed"); } catch { toast("Couldn't remove."); } }
     if (id === "sSave") {
-      const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), updatedAt: Date.now() };
+      const idle = parseInt($("#sIdle").value, 10);
+      const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now() };
       try { await setDoc(doc(db, "settings", "main"), next, { merge: true }); closeModal(); toast("Settings saved"); } catch { toast("Couldn't save settings."); }
     }
   };
@@ -800,6 +877,9 @@ async function deleteApplicant(id){
     const files = await getDocs(collection(db, "portal", id, "files")).catch(() => null);
     if (files) for (const f of files.docs) { await deleteObject(ref(storage, f.data().path)).catch(() => {}); await deleteDoc(f.ref).catch(() => {}); }
     await deleteDoc(doc(db, "portal", id)).catch(() => {});
+    delete logBuf[id]; clearTimeout(logTimers[id]);
+    const hist = await getDocs(collection(db, "applicants", id, "history")).catch(() => null);
+    if (hist) for (const h of hist.docs) await deleteDoc(h.ref).catch(() => {});
     await deleteDoc(doc(db, "applicants", id, "private", "main"));
     await deleteDoc(doc(db, "applicants", id));
     S.sel = null; renderList(); renderDetail(); toast("Applicant deleted");
@@ -809,7 +889,7 @@ async function deleteApplicant(id){
 /* ---------- events ---------- */
 const prefs = { get(k){ try { return localStorage.getItem("pvrsDesk." + k); } catch { return null; } }, set(k, v){ try { localStorage.setItem("pvrsDesk." + k, v); } catch {} } };
 function switchTab(k){ flushAll(); S.tab = k; renderDetail(); const b = $("#dbody"); if (b) b.scrollTop = 0; }
-function deselect(){ flushAll(); S.sel = null; watchFiles(null); renderList(); renderDetail(); }
+function deselect(){ flushAll(); S.sel = null; watchFiles(null); watchHistory(null); renderList(); renderDetail(); }
 function setFilter(f, focusList){
   S.filter = f; renderList();
   if (focusList) { const L = $("#list"); L.scrollTop = 0; const first = L.querySelector(".arow"); if (first && innerWidth > 860) first.focus(); }
@@ -914,6 +994,8 @@ function bindEvents(){
       if (k === "preview") { flushAll(); return openPreview(S.sel); }
       if (k === "docs") return openRequestDocs(S.sel);
       if (k === "book") return openBook(S.sel);
+      if (k === "packet") { flushAll(); return printPacket([S.apps.get(S.sel)]); }
+      if (k === "ics") { const a = S.apps.get(S.sel); if (a && a._booked) { download(`PVRS-interview-${(a.name||"applicant").replace(/\W+/g,"-")}.ics`, icsFile([icsEvent(a, a._booked)]), "text/calendar"); toast("Calendar file downloaded. Open it to add the interview."); } return; }
       if (k === "release") { try { await releaseFor(S.sel); toast("Interview time released"); } catch { toast("Couldn't release that time."); } return; }
     }
     const rc = t.closest("[data-docrcv]"); if (rc) { const a = S.apps.get(S.sel); const k = rc.dataset.docrcv; edit(S.sel, `docs.requested.${k}.received`, get(a,`docs.requested.${k}.received`) === "yes" ? "" : "yes"); return; }
@@ -947,11 +1029,12 @@ function bindEvents(){
   $("#slotsBtn").addEventListener("click", openSlots);
   $("#newBtn").addEventListener("click", openNew);
   $("#agendaBtn").addEventListener("click", copyAgenda);
+  $("#packetBtn").addEventListener("click", () => { flushAll(); printPacket(sorted().filter(r => inBoardQueue(r.a)).map(r => r.a)); });
 }
 function select(id){
   if (!S.apps.has(id)) return;
   flushAll(); const same = S.sel === id; S.sel = id;
-  if (!same) watchFiles(id);
+  if (!same) { watchFiles(id); watchHistory(id); }
   renderList(); renderDetail();
   const b = $("#dbody"); if (b && !same) b.scrollTop = 0;
   if (S.admin) schedulePortal(id, 200);
@@ -972,7 +1055,7 @@ function openNew(){
     const name = $("#f-n-name").value.trim(); if (!name) { $("#f-n-name").focus(); return toast("Enter the applicant's name."); }
     const data = { name, phone:$("#f-n-phone").value.trim(), email:$("#f-n-email").value.trim(), type:draft.type, location:draft.location, ...(draft.location==="other"?{locationOther:$("#f-n-locationOther").value.trim()}:{}), stage:"screen",
       app:{ received:$("#f-n-received").value || today() }, createdAt:Date.now(), updatedAt:Date.now(), createdBy:S.me, updatedBy:S.me };
-    try { const r = doc(collection(db, "applicants")); await setDoc(r, data); S.shared.set(r.id, data); rebuild(r.id); closeModal(); S.tab = "app"; select(r.id); toast("Added " + name); }
+    try { const r = doc(collection(db, "applicants")); await setDoc(r, data); S.shared.set(r.id, data); rebuild(r.id); writeLog(r.id, [{ path: "_created", from: "", to: name }]); closeModal(); S.tab = "app"; select(r.id); toast("Added " + name); }
     catch (err) { console.error(err); toast("Couldn't add the applicant."); }
   };
 }
@@ -983,6 +1066,111 @@ async function copyAgenda(){
     return `${i+1}. ${a.name || "Unnamed"} (${bits.join(", ")})`; });
   const text = `PVRS Board: membership applications for approval${dates.length?`\nMeeting: ${longDate(dates[dates.length-1])}`:""}\n\nRecommended by the Membership Committee:\n${lines.join("\n")}`;
   toast((await copyText(text)) ? `Agenda copied (${q.length} applicant${q.length===1?"":"s"})` : "Couldn't copy the agenda");
+}
+
+/* ---------- board packet (print) ---------- */
+const yn = v => v === "yes" ? "Yes" : v === "no" ? "No" : v === "yesbad" ? "Yes" : "—";
+const d8 = v => v ? fmtDate(v) : "—";
+function packetPage(a){
+  const g = k => get(a, k);
+  const refs = [1,2,3,4].map(i => g("refs.r"+i) || {}).filter(x => x.name);
+  const panel = [1,2,3,4].map(i => g("iv.panel.m"+i)).filter(Boolean);
+  const row = (k, v, flag) => `<tr${flag ? ' class="flag"' : ""}><th>${k}</th><td>${v}</td></tr>`;
+  const ans = (q, k, alt) => { const v = g(k); return v ? `<div class="pq"><b>${q}</b><p>${esc(alt ? alt(v) : v)}</p></div>` : ""; };
+  const iv = a._booked ? slotLong(a._booked.start) : g("sched.scheduled") ? longDate(g("sched.scheduled")) + (g("sched.time") ? " at " + g("sched.time") : "") : "";
+  return `<section class="pk">
+    <header><img src="/img/logo.png" alt=""><div><div class="pk-k">Membership application · Board packet</div><h1>${esc(a.name || "Unnamed applicant")}</h1>
+      <div class="pk-s">${esc([a.type ? a.type + " membership" : "", loc(a), g("app.received") ? "Received " + longDate(g("app.received")) : ""].filter(Boolean).join(" · "))}</div></div></header>
+    <div class="pk-cols">
+      <div><h2>Screening</h2><table>
+        ${row("Application complete", yn(g("app.complete")), g("app.complete") === "no")}
+        ${row("Driving record (MVR)", g("mvr.completed") ? `Completed ${d8(g("mvr.completed"))} · violations: ${yn(g("mvr.violations"))}` : "Not completed", g("mvr.violations") === "yesbad")}
+        ${row("Driver's license", g("dl.date") ? `Verified ${d8(g("dl.date"))} · valid and unrestricted: ${yn(g("dl.valid"))}` : "Not verified", g("dl.valid") === "no")}
+        ${row("References", refs.length ? `${refs.filter(x => x.returned).length} of ${refs.length} returned` : "None entered")}
+        ${row("Background check (Sterling)", g("bg.sterDone") ? `Completed ${d8(g("bg.sterDone"))} · ${g("bg.sterResult") === "clear" ? "Clear" : g("bg.sterResult") === "review" ? "Needs review" : "Result not entered"}` : "Not completed", g("bg.sterResult") === "review")}
+      </table></div>
+      <div><h2>Interview and committee</h2><table>
+        ${row("Interview", g("sched.completed") ? "Completed " + d8(g("sched.completed")) : iv ? "Scheduled " + esc(iv) : "Not scheduled")}
+        ${row("Interviewers", panel.length ? esc(panel.join(", ")) : "—")}
+        ${row("Understands requirements", `${yn(g("iv.understands"))} · able to meet them: ${yn(g("iv.ableToMeet"))}`, g("iv.understands") === "no" || g("iv.ableToMeet") === "no")}
+        ${row("Committee recommendation", g("appr.committee") === "yes" ? "Approved" : g("appr.committee") === "no" ? "Not approved" : "Pending", g("appr.committee") === "no")}
+        ${g("board.result") === "tabled" ? row("Previous board meeting", "Tabled" + (g("board.date") ? " on " + d8(g("board.date")) : ""), true) : ""}
+      </table></div>
+    </div>
+    <h2>Interview highlights</h2>
+    ${ans("Why PVRS", "iv.why")}${ans("About them", "iv.about")}
+    ${ans("EMT status", "iv.isEmt", v => v === "yes" ? `Current EMT${g("iv.emtYears") ? ", " + g("iv.emtYears") : ""}` : v === "lapsed" ? "Lapsed / expired" : "Not certified" + (g("iv.emtClass") ? ` · can take a class within 12 months: ${yn(g("iv.emtClass"))}` : ""))}
+    ${ans("Availability", "iv.avail", v => v === "year" ? "Year round" : v === "semester" ? "Semester only" : g("iv.availOther") || "Other")}
+    ${ans("Other volunteer work", "iv.volunteer")}
+    ${g("iv.driving") === "yesbad" ? ans("Driving record restrictions or citations", "iv.drivingExplain", v => v || "Yes (no explanation recorded)") : ""}
+    ${g("iv.convicted") === "yesbad" ? ans("Criminal conviction disclosed", "iv.convictedExplain", v => v || "Yes (no explanation recorded)") : ""}
+    ${g("board.notes") ? ans("Notes for the board", "board.notes") : ""}
+    <h2>Board vote</h2>
+    <table class="vote"><tr><th>Meeting date</th><td>${g("board.date") && g("board.date") >= today() ? esc(longDate(g("board.date"))) : ""}</td><th>Motion</th><td></td><th>Second</th><td></td></tr>
+      <tr><th>For</th><td></td><th>Against</th><td></td><th>Abstain</th><td></td></tr></table>
+    <p class="pk-res">Result: ☐ Approved &nbsp;&nbsp; ☐ Tabled &nbsp;&nbsp; ☐ Denied</p>
+    <footer>Potsdam Volunteer Rescue Squad · Confidential: for the Board of Directors only · Printed ${esc(new Date().toLocaleDateString())}</footer>
+  </section>`;
+}
+function printPacket(list){
+  list = list.filter(Boolean);
+  if (!list.length) return toast("Nobody is in the board queue.");
+  let el = $("#print"); if (!el) { el = document.createElement("div"); el.id = "print"; document.body.appendChild(el); }
+  el.innerHTML = list.map(packetPage).join("");
+  document.body.classList.add("printing");
+  const done = () => { document.body.classList.remove("printing"); el.innerHTML = ""; removeEventListener("afterprint", done); };
+  addEventListener("afterprint", done);
+  const img = el.querySelector("img");
+  const go = () => setTimeout(() => window.print(), 50);
+  if (img && !img.complete) { img.onload = go; img.onerror = go; } else go();
+}
+
+/* ---------- activity feed (admins): uploads and bookings from applicants ---------- */
+function activity(){
+  const since = Date.now() - 14*864e5, out = [];
+  for (const f of S.feedFiles) if ((f.uploadedAt||0) > since && S.apps.has(f.appId)) out.push({ at: f.uploadedAt, id: f.appId, kind: "upload", text: `uploaded ${f.name}`, sub: f.label || "Document" });
+  for (const [id, pd] of S.portal) { const iv = pd.interview; if (iv && iv.bookedAt > since && S.apps.has(id)) out.push({ at: iv.bookedAt, id, kind: "book", text: `booked an interview`, sub: slotLong(iv.start) }); }
+  return out.sort((x,y) => y.at - x.at);
+}
+function activityCard(){
+  if (!S.admin) return "";
+  const items = activity().slice(0, 8);
+  const seen = S.seenBefore || 0;
+  return `<section class="ovcard"><h3>Applicant activity<small>last 14 days</small></h3><div class="olist">${items.length ? items.map(x => {
+    const a = S.apps.get(x.id);
+    return `<button class="oitem" type="button" data-open="${esc(x.id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name || "Applicant")} ${esc(x.text)}</b><small>${esc(x.sub)}</small></span><span class="when">${x.at > seen ? `<span class="newdot" title="New since your last visit"></span>` : ""}${esc(ago(x.at))}</span></button>`; }).join("")
+    : `<div class="oempty">No uploads or bookings yet.</div>`}</div></section>`;
+}
+let feedPrimed = false;
+function watchActivity(){
+  onSnapshot(collectionGroup(db, "files"), snap => {
+    const prev = new Set(S.feedFiles.map(f => f.key));
+    S.feedFiles = snap.docs.map(d => ({ key: d.ref.path, appId: d.ref.parent.parent.id, ...d.data() }));
+    if (feedPrimed) {
+      const fresh = S.feedFiles.filter(f => !prev.has(f.key) && f.uploadedBy && f.uploadedBy !== S.me);
+      if (fresh.length) { const a = S.apps.get(fresh[0].appId); toast(`${a ? a.name : "An applicant"} uploaded ${fresh.length === 1 ? fresh[0].name : fresh.length + " files"}`); }
+    }
+    feedPrimed = true;
+    if (!S.sel) renderOverview();
+  }, e => console.error(e));
+}
+
+/* ---------- auto sign-out after inactivity ---------- */
+function startIdleLock(){
+  // Sign-in is shared across tabs, so activity is too: the latest activity in any tab keeps everyone signed in.
+  let last = Date.now(), warned = false, shared = 0;
+  const bump = () => { last = Date.now(); warned = false; if (last - shared > 5000) { shared = last; prefs.set("active", String(last)); } };
+  ["pointerdown","pointermove","keydown","wheel","touchstart","scroll"].forEach(ev => addEventListener(ev, bump, { passive: true, capture: true }));
+  setInterval(async () => {
+    last = Math.max(last, +prefs.get("active") || 0);
+    const mins = Math.min(240, Math.max(5, +S.settings.idleMinutes || 30)), idle = Date.now() - last;
+    if (S.unlocked && idle > 10*6e4) S.unlocked = false;   // Settings PIN re-locks after 10 idle minutes
+    if (idle > mins*6e4) {
+      flushAll(); await new Promise(res => setTimeout(res, 1200));
+      try { sessionStorage.setItem("pvrsIdle", String(mins)); } catch {}
+      await signOut(auth).catch(() => {}); location.replace("/");
+    } else if (idle > (mins - 1)*6e4 && !warned) { warned = true; toast("You'll be signed out in about a minute. Move the mouse to stay signed in."); }
+  }, 15000);
 }
 
 /* ---------- start ---------- */
@@ -998,6 +1186,8 @@ export function startDesk({ email, role, owner, name }){
   $("#meAv").textContent = initials(S.name || email);
   if (S.owner) $("#settingsBtn").hidden = false;
   if (S.admin) $("#slotsBtn").hidden = false;
+  S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
+  startIdleLock();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
 
   onSnapshot(collection(db, "applicants"), snap => {
@@ -1019,7 +1209,13 @@ export function startDesk({ email, role, owner, name }){
       snap.docs.forEach(d => { if (d.id !== "main") return; const id = d.ref.parent.parent.id; const data = d.data(); merge(data, clone(inflight["sec|"+id] || {})); merge(data, clone(pending["sec|"+id] || {})); next.set(id, data); });
       S.secure = next; rebuildAll(); renderList(); if (S.sel) syncDetail(); syncAllPortals();
     }, e => console.error(e));
-    onSnapshot(collection(db, "portal"), snap => { S.portal = new Map(snap.docs.map(d => [d.id, d.data()])); }, () => {});
+    onSnapshot(collection(db, "portal"), snap => {
+      const before = S.portal; S.portal = new Map(snap.docs.map(d => [d.id, d.data()]));
+      if (before.size) for (const [id, pd] of S.portal) { const iv = pd.interview, old = before.get(id)?.interview;
+        if (iv && iv.bookedAt && iv.bookedAt !== old?.bookedAt && Date.now() - iv.bookedAt < 6e4 && S.apps.get(id) && S._selfBooked !== id) toast(`${S.apps.get(id).name} booked ${slotLong(iv.start)}`); }
+      if (!S.sel) renderOverview();
+    }, () => {});
+    watchActivity();
     onSnapshot(doc(db, "settings", "main"), s => { S.settings = s.exists() ? s.data() : {}; }, () => {});
     onSnapshot(collection(db, "staff"), snap => { S.staff = new Map(snap.docs.map(d => [d.id, d.data()])); if (S._teamPaint && !$("#modal").hidden) S._teamPaint(); if (S.sel) syncDetail(); }, () => {});
   }

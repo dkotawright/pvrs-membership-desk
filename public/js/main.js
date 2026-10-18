@@ -51,7 +51,12 @@ document.addEventListener("click", async e => { if (e.target.closest("[data-sign
 
 let started = false;
 onAuthStateChanged(auth, async user => {
-  if (!user) { if (!finishing) show("signin"); return; }
+  if (!user) {
+    if (!finishing) show("signin");
+    let idle = null; try { idle = sessionStorage.getItem("pvrsIdle"); sessionStorage.removeItem("pvrsIdle"); } catch {}
+    if (idle) toast(`Signed out after ${idle} minutes without activity, to protect applicant information.`);
+    return;
+  }
   if (started) return; started = true;
   show("loading");
   const email = lower(user.email);

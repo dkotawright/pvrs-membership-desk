@@ -1,6 +1,6 @@
 // Applicant portal: status, document uploads, interview booking.
 import { db, storage, doc, collection, onSnapshot, writeBatch, addDoc, ref, uploadBytes } from "./fb.js";
-import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong } from "./shared.js";
+import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download } from "./shared.js";
 import { CONTACT_EMAIL } from "./config.js";
 
 const DAY = 864e5, MAX = 15 * 1024 * 1024;
@@ -31,8 +31,8 @@ export function portalHTML({ pd, files = [], slots = [], preview = false, pick =
     const d = new Date(iv.start);
     ivBody = `<div class="booked"><div class="cal"><b>${esc(d.toLocaleDateString(undefined,{month:"short"}))}</b><span>${d.getDate()}</span></div>
       <div class="dt" style="min-width:0"><strong>${esc(slotDay(iv.start))}</strong><div class="info">${esc(slotTime(iv.start))}${iv.duration?` · ${iv.duration} min`:""}${iv.location?`<br>${esc(iv.location)}`:""}</div></div></div>
-      ${canChange ? `<div class="acts" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn small" type="button" data-cancel ${dis}>Cancel interview</button>${pd.bookingOpen && open.length?`<button class="btn small" type="button" data-change ${dis}>Change time</button>`:""}</div>`
-        : `<p class="info">Need to change it? It's less than 24 hours away, so email <b>${esc(CONTACT_EMAIL)}</b>.</p>`}`;
+      ${canChange ? `<div class="acts" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn small" type="button" data-ics ${dis}>Add to my calendar</button><button class="btn small" type="button" data-cancel ${dis}>Cancel interview</button>${pd.bookingOpen && open.length?`<button class="btn small" type="button" data-change ${dis}>Change time</button>`:""}</div>`
+        : `<div style="display:flex;justify-content:flex-end"><button class="btn small" type="button" data-ics ${dis}>Add to my calendar</button></div><p class="info">Need to change it? It's less than 24 hours away, so email <b>${esc(CONTACT_EMAIL)}</b>.</p>`}`;
   }
   else if (!pd.bookingOpen) ivBody = `<p class="info">Interview times will open here once your application review is underway. We'll let you know.</p>`;
   else if (!open.length) ivBody = `<p class="info">No interview times are open right now. Check back soon, or email <b>${esc(CONTACT_EMAIL)}</b>.</p>`;
@@ -102,6 +102,12 @@ export function startPortal(id, email){
 
   root.addEventListener("click", async e => {
     const t = e.target;
+    if (t.closest("[data-ics]")) {
+      const iv = P.pd.interview; if (!iv) return;
+      download("PVRS-interview.ics", icsFile([{ uid: "iv-" + iv.slotId, start: iv.start, duration: iv.duration || 30, title: "PVRS membership interview",
+        location: iv.location || "Potsdam Volunteer Rescue Squad", description: `Membership interview with the Potsdam Volunteer Rescue Squad Membership Committee.\nQuestions or need to reschedule? Email ${CONTACT_EMAIL}.` }]), "text/calendar");
+      return;
+    }
     const up = t.closest("[data-upload]"); if (up) { uploadKey = up.dataset.upload; picker.click(); return; }
     const sl = t.closest("[data-slot]"); if (sl) { P.pick = sl.dataset.slot; render(); return; }
     if (t.closest("[data-unpick]")) { P.pick = null; render(); return; }
@@ -114,7 +120,7 @@ export function startPortal(id, email){
         const b = writeBatch(db);
         if (P.pd.interview && P.pd.interview.slotId !== s.id) b.update(doc(db, "slots", P.pd.interview.slotId), { bookedBy: null });
         b.update(doc(db, "slots", s.id), { bookedBy: id });
-        b.update(doc(db, "portal", id), { interview: { slotId: s.id, start: s.start, duration: s.duration || null, location: s.location || "" } });
+        b.update(doc(db, "portal", id), { interview: { slotId: s.id, start: s.start, duration: s.duration || null, location: s.location || "", bookedAt: Date.now() } });
         await b.commit();
         P.pick = null; P.changing = false; toast("Interview booked for " + slotLong(s.start));
       } catch (err) { console.error(err); toast("That time was just taken or is too soon. Pick another."); }

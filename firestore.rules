@@ -35,9 +35,25 @@ service cloud.firestore {
       match /private/{doc} {
         allow read, write: if isAdmin();
       }
+
+      // Change history: append-only. Any staff member's edits are logged under their own email; only admins read it.
+      match /history/{entryId} {
+        allow read: if isAdmin();
+        allow create: if isStaff()
+          && request.resource.data.keys().hasOnly(['at','by','changes'])
+          && request.resource.data.by == myEmail()
+          && request.resource.data.at is int
+          && request.resource.data.at > nowMs() - 300000 && request.resource.data.at < nowMs() + 300000
+          && request.resource.data.changes is list && request.resource.data.changes.size() <= 200;
+        allow delete: if isAdmin();
+      }
     }
     // Lets the Desk load every private record in one query
     match /{path=**}/private/{doc} {
+      allow read: if isAdmin();
+    }
+    // Lets admins see every applicant upload in one query (the Overview activity feed)
+    match /{path=**}/files/{fileId} {
       allow read: if isAdmin();
     }
 
