@@ -1,0 +1,9 @@
+{
+  "name": "pvrs-membership-desk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "emulators": "firebase emulators:start --project demo-pvrs-membership --only auth,firestore,storage,hosting"
+  }
+}

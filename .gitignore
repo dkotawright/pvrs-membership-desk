@@ -3,3 +3,9 @@ node_modules/
 .DS_Store
 *.log
 migration/
+.env
+.env.*
+*.pem
+*.key
+*service-account*.json
+*serviceAccount*.json

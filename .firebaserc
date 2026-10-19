@@ -1,1 +1,1 @@
-{ "projects": { "default": "pvrs-membership" } }
+{ "projects": { "default": "pvrs-membership-test", "test": "pvrs-membership-test", "production": "pvrs-membership" } }

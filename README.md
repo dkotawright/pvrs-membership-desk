@@ -1,5 +1,61 @@
 # PVRS Membership Desk: setup guide
 
+## Safe development and previews
+
+The CLI defaults to **pvrs-membership-test**. The `production` alias points to
+**pvrs-membership**. Always name the target project explicitly when deploying.
+Production publishing requires the owner's explicit approval.
+
+The website selects its backend by hostname:
+
+| Address | Backend |
+|---|---|
+| `pvrs-membership.web.app`, `pvrs-membership.firebaseapp.com` | Production |
+| `pvrs-membership-test.web.app`, `pvrs-membership-test.firebaseapp.com`, test-project preview channels | Test project |
+| `localhost`, `127.0.0.1`, `[::1]` | Local emulators using `demo-pvrs-membership` |
+| Any other address, including production preview channels | Blocked |
+
+Add any future custom domain deliberately to `public/js/environment.js`, with
+a test for its intended backend. Do not add a fallback to production.
+
+Run `npm test` for environment isolation checks. GitHub's Checks workflow also
+checks JavaScript syntax. These checks do not yet test security rules or browser
+workflows. No automatic deployment workflow or deployment credentials are included.
+
+For local development, install the Firebase CLI and the Java runtime required by
+its emulators, then run `npm run emulators`. Local Firebase services do not fall
+back to the online database. Use synthetic users and records only.
+
+Before sharing cloud previews, finish these steps in **pvrs-membership-test**:
+
+1. Enable Firestore in production mode, Authentication providers matching the
+   live app, and Storage. Storage may require billing; approve that separately.
+2. Deploy the checked-in Firestore indexes and Firestore/Storage rules to the
+   test project only. Do not deploy the email function or copy its SMTP secret;
+   use a mail sink or separate test mailbox before testing notifications.
+3. Create synthetic test accounts for owner, admin, member, applicant, and
+   paperwork roles. Verify both allowed access and denied cross-applicant,
+   private-record, and confidential-document access. Never import live exports.
+4. Deploy a preview with an explicit test target, for example:
+   `firebase hosting:channel:deploy pr-1 --project pvrs-membership-test --expires 7d`.
+   Authorize its exact hostname in test Authentication for Google/email-link
+   sign-in. Preview URLs are shareable; only fake data belongs here.
+5. For automated PR previews later, scope a separate deployment identity to the
+   test project only. Keep production credentials out of PR workflows. Do not
+   run untrusted fork code with deployment secrets.
+
+Use a feature branch and pull request for every change. Merge after checks and
+review; this does not deploy. Before an approved production release, check its
+diff and back up production data if it includes migrations. Deploy Hosting only
+with `firebase deploy --only hosting --project pvrs-membership`; rules, indexes,
+and functions need their own explicit review and approval. Rebuild/select the
+production backend deliberately: do not clone a staging artifact that embeds
+test-only configuration. The previous Hosting release can be restored in the
+Firebase console; a Hosting rollback does not restore rules or data.
+
+The older setup and handoff notes below describe the original installation;
+the explicit project targets and approval requirements above take precedence.
+
 The Membership Desk is a web app hosted on Firebase. It has three kinds of access:
 
 | Who | Signs in with | Sees |
@@ -45,7 +101,7 @@ npm install -g firebase-tools
 firebase login                    # sign in as dkota@pvrs.org
 cd path/to/pvrs-membership-desk   # this folder
                                   # (project is already set to pvrs-membership)
-firebase deploy
+firebase deploy --only hosting --project pvrs-membership # only after production approval
 ```
 
 On the first deploy, Firebase asks whether Storage rules can read Firestore. Answer **Y**. Uploads depend on it.
