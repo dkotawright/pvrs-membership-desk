@@ -56,7 +56,7 @@ Read this first. It's the full context from the original build conversation (Oct
 - [x] Firestore (nam5, production) and Storage (US-EAST1, production) created.
 - [x] **Deployed** Oct 16, 2026 (firebase-tools 15.34.0 in ~/.npm-global; logged in as dkota@pvrs.org). Redeploy: `firebase deploy` from this folder.
 - [x] **Mac redesign deployed Oct 18, 2026.** Sidebar + list + file layout, overview dashboard, keyboard shortcuts (⌘K, J/K, N, 1–6, [ ], E, ?), sort, header quick actions, modal focus/inert handling, PIN-listener leak fixed, `sched.completed` now counts as scheduled. Deploy with `firebase deploy` once Dkota OKs it.
-- [x] Version history: local git repo (Oct 18). `migration/` is git-ignored because it holds real applicant data. No GitHub remote yet.
+- [x] Version history: local git repo (Oct 18). `migration/` is git-ignored because it holds real applicant data. Pushed to a PRIVATE GitHub repo: https://github.com/dkotawright/pvrs-membership-desk (origin, branch main; gh CLI at ~/.local/bin/gh, logged in as dkotawright). Push after each commit with `git push`.
 - [x] Firestore backups: daily (14-day retention, created Oct 18) + weekly Sunday (98-day retention, pre-existing).
 - [x] **Oct 18 feature batch + liquid-glass look: deployed Oct 18**: change history (applicants/{id}/history, append-only, admin-read), auto sign-out (settings.idleMinutes, default 30, shared across tabs), .ics calendar files (staff + applicant portal; interview.bookedAt), printable board packet, admin activity feed (collectionGroup files), Add to Dock manifest/icons, no-cache HTML.
 - [x] Oct 18 (later): password sign-in, owner-only editing (rules deployed), page sign-offs, references tab, tuck-away list, compact tab bar: all deployed. Dkota still needs to set his password via the key button.
@@ -64,7 +64,7 @@ Read this first. It's the full context from the original build conversation (Oct
 - [x] Oct 18 (night): online application + home page, license number, probation removed, confidential paperwork vault, owner-only header Delete: deployed (hosting, firestore + storage rules). NOT yet deployed: functions (waiting on Dkota to set SMTP_PASSWORD).
 - [ ] Email alerts for uploads/bookings: the function + SMTP setup now exists for confidential paperwork; other alerts not built.
 - Testing: rules are tested in the emulator with @firebase/rules-unit-testing (needs a JDK; none is installed system-wide, so use a portable one). UI is tested with Playwright against an in-memory Firebase mock.
-- [ ] Optional: GitHub repo `pvrs-membership-desk` (private) + GitHub Actions auto-deploy with a service-account key, so Claude can update the app on demand.
+- [ ] Optional: GitHub Actions auto-deploy (repo exists) with a service-account key, so Claude can update the app on demand.
 - [ ] After deploy: sign in at https://pvrs-membership.web.app as dkota@pvrs.org (Google), Settings → Import records → `migration/artifact-export.json`; set signature + default interview location; add team members.
 - [ ] Test end to end with a personal email as a fake applicant (invite, upload, book), then delete it.
 - [ ] Later: add dkota@pvrs.org as project Owner (Project settings → Users and permissions); get board/chief OK before real applicant data.
