@@ -1,0 +1,21 @@
+name: Checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
+      - name: Check JavaScript syntax
+        run: |
+          for file in public/js/*.js functions/index.js; do
+            node --check "$file"
+          done
