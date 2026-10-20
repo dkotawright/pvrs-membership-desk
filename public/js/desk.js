@@ -494,7 +494,7 @@ function renderDocs(a){
   const el = $("#docList"); if (!el) return;
   const docs = requestedDocs(a), files = S.files;
   const fileRow = f => f.confidential
-    ? `<div class="row"><span class="lbl">🔒 Private document<small>${esc(f.label || "Medical / Social Security paperwork")} · ${new Date(f.uploadedAt).toLocaleDateString()} · sent to ${esc(PAPERWORK_EMAIL)}</small></span></div>`
+    ? `<div class="row"><span class="lbl">🔒 Secure document<small>${esc(f.label || "Secure document")} · ${new Date(f.uploadedAt).toLocaleDateString()} · sent to ${esc(PAPERWORK_EMAIL)}</small></span></div>`
     : `<div class="row"><span class="lbl"><button class="filelink" type="button" data-file="${esc(f.id)}">${esc(f.name)}</button><small>${esc(f.label || "Other")} · ${new Date(f.uploadedAt).toLocaleDateString()} · ${Math.max(1, Math.round((f.size||0)/1024))} KB</small></span></div>`;
   const rows = docs.map(d => { const up = files.filter(f => f.docKey === d.key).length;
     return `<div class="row"><span class="lbl">${esc(d.label)}${isConfidential(d.label) ? " 🔒" : ""}<small>${d.received ? "Received" : up ? `${up} file${up>1?"s":""} uploaded · not marked received` : "Waiting on applicant"}${isConfidential(d.label) ? ` · goes privately to ${esc(PAPERWORK_EMAIL)}` : ""}</small></span>
@@ -510,7 +510,7 @@ function renderRecords(){
   const el = $("#recList"); if (!el) return;
   const recs = S.records;
   el.innerHTML = `<div class="note">Squad records · staff only, never shown to the applicant${recs.length ? ` · ${recs.length} file${recs.length===1?"":"s"}` : ""}</div>`
-    + (recs.length ? recs.map(r => r.confidential ? `<div class="row"><span class="lbl">🔒 Private document<small>${esc(r.label || "Confidential")} · ${esc(new Date(r.uploadedAt).toLocaleDateString())} · only ${esc(PAPERWORK_EMAIL)} can open it</small></span>
+    + (recs.length ? recs.map(r => r.confidential ? `<div class="row"><span class="lbl">🔒 Secure document<small>${esc(r.label || "Confidential")} · ${esc(new Date(r.uploadedAt).toLocaleDateString())} · only ${esc(PAPERWORK_EMAIL)} can open it</small></span>
         <button class="copy" type="button" data-recrm="${esc(r.id)}" aria-label="Remove this entry">Remove</button></div>`
       : `<div class="row"><span class="lbl"><button class="filelink" type="button" data-rec="${esc(r.id)}" title="Open (then ⌘P to print)">${esc(r.name)}</button>
         <small>${esc(r.label || "Other")} · ${esc(new Date(r.uploadedAt).toLocaleDateString())} · ${Math.max(1, Math.round((r.size||0)/1024))} KB${r.uploadedBy ? " · " + esc(personName(r.uploadedBy)) : ""}</small></span>
@@ -753,7 +753,7 @@ function openRequestDocs(id){
   const picked = new Set(), custom = [];
   const M = openModal(`<h3>Request documents</h3><p class="help">They'll see these in their portal with an upload button.</p>
     <div class="chips" style="flex-wrap:wrap" id="rqChips">${DOC_ITEMS.map((d,i) => `<button class="chip" type="button" data-i="${i}" aria-pressed="${have.includes(d)}" ${have.includes(d)?"disabled":""}>${have.includes(d)?"✓ ":""}${esc(d)}${isConfidential(d)?" 🔒":""}</button>`).join("")}</div>
-    <p class="help">🔒 Medical and Social Security items upload privately to ${esc(PAPERWORK_EMAIL)}. You'll see that they arrived, not what's in them.</p>
+    <p class="help">🔒 Medical and Social Security items go through secure document upload to ${esc(PAPERWORK_EMAIL)}. You'll see that they arrived, not what's in them.</p>
     <div class="ios"><div class="row"><input id="rqCustom" class="inlinefield" type="text" placeholder="Something else…" aria-label="Another document" style="flex:1"><button class="btn small" type="button" id="rqAdd">Add</button></div><div id="rqCustomList"></div></div>
     ${!get(a,"portal.invited") ? `<p class="help">${a.email ? "They don't have portal access yet. An invite will be sent to " + esc(a.email) + "." : "Add their email on the Application tab so they can get portal access."}</p>` : ""}
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="rqSave">Request</button></div>`, true);
@@ -869,7 +869,7 @@ function openUploadRecords(id){
   const a = S.apps.get(id); if (!a) return;
   const M = openModal(`<h3>Upload records</h3><p class="help">For ${esc(a.name || "this applicant")}. Staff only: admins can open and print these; the applicant never sees them. PDFs or photos, up to 25 MB each.</p>
     <div class="field"><label for="recLabel">What is it?</label><select id="recLabel">${RECORD_LABELS.map(l => `<option>${esc(l)}${isConfidential(l) ? " 🔒" : ""}</option>`).join("")}</select></div>
-    <p class="help lockline" id="recConf" hidden>🔒 Private: this goes only to ${esc(PAPERWORK_EMAIL)}. Once uploaded, you won't be able to open it.</p>
+    <p class="help lockline" id="recConf" hidden>🔒 Secure document: this goes only to ${esc(PAPERWORK_EMAIL)}. Once uploaded, you won't be able to open it.</p>
     <label class="dropzone" id="recDrop" for="recFiles"><input type="file" id="recFiles" accept="application/pdf,image/*" multiple hidden>
       <b>Drop files here</b><span>or click to choose from your Mac</span></label>
     <div id="recQueue" class="ios" hidden></div>
@@ -891,7 +891,7 @@ function openUploadRecords(id){
           await uploadBytes(ref(storage, path), f, { contentType: f.type });
           await addDoc(collection(db, "vault"), { appId: id, appName: a.name || "", label, name: f.name, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: S.me, from: "staff" });
           await addDoc(collection(db, "applicants", id, "records"), { name: "Private document", label, path: "", size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: S.me, confidential: true });
-          note.textContent = `Sent privately to ${PAPERWORK_EMAIL}`;
+          note.textContent = `Sent securely to ${PAPERWORK_EMAIL}`;
         } else {
           const path = `records/${id}/${safe}`;
           await uploadBytes(ref(storage, path), f, { contentType: f.type });
@@ -1131,7 +1131,7 @@ function confirmDelete(id){
   const a = S.apps.get(id); if (!a) return;
   const M = openModal(`<h3>Delete ${esc(a.name || "this applicant")}?</h3>
     <p class="help">Removes their file, interview answers, references, notes, history, portal, messages, uploads, staff records and their online application. This can't be undone.</p>
-    <p class="help">🔒 Private medical or Social Security paperwork stays with ${esc(PAPERWORK_EMAIL)}, who can delete it there.</p>
+    <p class="help">🔒 Secure documents (medical, Social Security) stay with ${esc(PAPERWORK_EMAIL)}, who can delete it there.</p>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn danger" type="button" id="delGo">Delete permanently</button></div>`);
   $("#delGo").focus();
   M.onclick = async e => {
@@ -1617,7 +1617,7 @@ function watchSubmissions(){
 /* ---------- activity feed (admins): uploads and bookings from applicants ---------- */
 function activity(){
   const since = Date.now() - 14*864e5, out = [];
-  for (const f of S.feedFiles) if ((f.uploadedAt||0) > since && S.apps.has(f.appId)) out.push({ at: f.uploadedAt, id: f.appId, kind: "upload", text: f.confidential ? "sent private paperwork 🔒" : `uploaded ${f.name}`, sub: f.label || "Document" });
+  for (const f of S.feedFiles) if ((f.uploadedAt||0) > since && S.apps.has(f.appId)) out.push({ at: f.uploadedAt, id: f.appId, kind: "upload", text: f.confidential ? "sent a secure document 🔒" : `uploaded ${f.name}`, sub: f.label || "Document" });
   for (const a of S.apps.values()) if (get(a, "app.source") === "online" && (a.createdAt || 0) > since) out.push({ at: a.createdAt, id: a._id, kind: "apply", text: "applied online", sub: [a.type, loc(a)].filter(Boolean).join(" · ") || "New application" });
   for (const [id, pd] of S.portal) { const iv = pd.interview; if (iv && iv.bookedAt > since && S.apps.has(id)) out.push({ at: iv.bookedAt, id, kind: "book", text: `booked an interview`, sub: slotLong(iv.start) }); }
   return out.sort((x,y) => y.at - x.at);
@@ -1638,7 +1638,7 @@ function watchActivity(){
     S.feedFiles = snap.docs.map(d => ({ key: d.ref.path, appId: d.ref.parent.parent.id, ...d.data() }));
     if (feedPrimed) {
       const fresh = S.feedFiles.filter(f => !prev.has(f.key) && f.uploadedBy && f.uploadedBy !== S.me);
-      if (fresh.length) { const a = S.apps.get(fresh[0].appId); toast(`${a ? a.name : "An applicant"} uploaded ${fresh.length === 1 ? (fresh[0].confidential ? "private paperwork 🔒" : fresh[0].name) : fresh.length + " files"}`); }
+      if (fresh.length) { const a = S.apps.get(fresh[0].appId); toast(`${a ? a.name : "An applicant"} uploaded ${fresh.length === 1 ? (fresh[0].confidential ? "a secure document 🔒" : fresh[0].name) : fresh.length + " files"}`); }
     }
     feedPrimed = true;
     if (!S.sel) renderOverview();

@@ -210,6 +210,13 @@ try {
     if (!/already an account/.test(await page.locator("#toast").textContent())) fail("existing email message"); else ok("an email that already has an account gets a clear message");
     await ctx.close();
   }
+  { // applicant portal: the secure upload button
+    const { ctx, page } = await open(browser, { user: { email: "marcus.bell@example.com", displayName: "" } });
+    const b = page.locator('[data-upload="_private"]');
+    if (!/Secure document upload/.test(await b.textContent()) || /Social Security paperwork/.test(await page.locator("#portal").textContent())) fail("secure upload wording"); else ok("portal says 'Secure document upload'");
+    await b.scrollIntoViewIfNeeded(); await snap(page, "10-portal-secure-upload");
+    await ctx.close();
+  }
   // ---- the rest of the app still loads cleanly
   for (const [url, user, sel, label] of [["/", null, "#home", "home page"], ["/apply", null, "#apply", "online application"], ["/signin", null, "#signin", "sign-in"],
     ["/", OWNER, "#app", "owner desk"], ["/", { email: "marcus.bell@example.com", displayName: "" }, "#portal", "applicant portal"], ["/", { email: "orientationpaperwork@pvrs.org", displayName: "" }, "#vault", "paperwork page"]]) {
