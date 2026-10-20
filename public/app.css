@@ -1006,3 +1006,38 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 @media (prefers-reduced-motion:reduce){ .welcome{animation:none} }
 .gate .sheet .help a{color:var(--accent);font-weight:600;text-decoration:none}
 .gate .sheet .help a:hover{text-decoration:underline}
+
+/* Apply stands out: featured card on the sign-in page + red "Apply" pill in the top bar */
+.joincta{display:flex;align-items:center;gap:16px;max-width:470px;margin:0 0 16px;padding:16px 18px;border-radius:22px;text-decoration:none;color:#c9d4ea;
+  border:1.5px solid transparent;
+  background:linear-gradient(135deg,rgba(40,16,30,.92),rgba(14,26,58,.92)) padding-box,linear-gradient(120deg,#ff4d5e,#a45cff 55%,#4c8dff) border-box;
+  box-shadow:0 18px 50px -24px rgba(255,77,94,.55),0 0 0 1px rgba(255,255,255,.04);transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s}
+.joincta:hover{transform:translateY(-2px);box-shadow:0 26px 60px -22px rgba(255,77,94,.7),0 0 0 1px rgba(255,255,255,.06)}
+.joincta:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.jc-ic{flex:none;width:48px;height:48px;border-radius:15px;display:grid;place-items:center;color:#fff;background:linear-gradient(140deg,#ff4d5e,#c8102e);box-shadow:0 8px 22px -8px rgba(255,77,94,.8)}
+.jc-ic svg{width:26px;height:26px}
+.jc-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.jc-body b{color:#fff;font-size:17px;letter-spacing:-.01em}
+.jc-sub{font-size:13px;line-height:1.4;color:#b4c1df}
+.jc-pill{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9ff0c0;
+  background:rgba(60,220,140,.12);border:1px solid rgba(60,220,140,.3);padding:2px 8px;border-radius:999px}
+.jc-pill i{width:6px;height:6px;border-radius:50%;background:#3ddc8c;box-shadow:0 0 0 0 rgba(61,220,140,.6);animation:jcpulse 2.2s ease-out infinite}
+@keyframes jcpulse{0%{box-shadow:0 0 0 0 rgba(61,220,140,.55)}70%{box-shadow:0 0 0 7px rgba(61,220,140,0)}100%{box-shadow:0 0 0 0 rgba(61,220,140,0)}}
+.jc-go{flex:none;display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:14px;color:#fff;padding:9px 14px;border-radius:999px;background:rgba(255,255,255,.1);transition:background .2s}
+.jc-go svg{width:14px;height:14px;transition:transform .2s}
+.joincta:hover .jc-go{background:rgba(255,255,255,.18)}
+.joincta:hover .jc-go svg{transform:translateX(3px)}
+@media (max-width:480px){ .jc-go{display:none} .joincta{padding:14px} }
+@media (prefers-reduced-motion:reduce){ .jc-pill i{animation:none} .joincta,.joincta:hover{transform:none} }
+.publinks a#navApply{color:#fff;background:linear-gradient(135deg,#ff4d5e,#c8102e);box-shadow:0 6px 18px -8px rgba(255,77,94,.9)}
+.publinks a#navApply:hover{background:linear-gradient(135deg,#ff6372,#d81c3a)}
+.publinks a#navApply.on{color:#0a1730;background:#fff;box-shadow:none}
+/* Home: the Apply card is the featured one */
+.homecard.featured{border:1.5px solid transparent;background:linear-gradient(var(--pane),var(--pane)) padding-box,linear-gradient(120deg,#ff4d5e,#a45cff 55%,#4c8dff) border-box;
+  box-shadow:0 26px 64px -28px rgba(255,77,94,.7)}
+.homecard.featured:hover{box-shadow:0 34px 76px -26px rgba(255,77,94,.85)}
+.homecard.featured .hc-ic{background:linear-gradient(140deg,#ff4d5e,#c8102e)}
+.homecard .jc-pill{font-size:11px;color:var(--s-act);background:color-mix(in srgb,var(--s-act) 12%,transparent);border-color:color-mix(in srgb,var(--s-act) 32%,transparent);line-height:1.6}
+.homecard.featured em{align-self:flex-start;color:#fff;background:linear-gradient(135deg,#ff4d5e,#c8102e);padding:9px 18px;border-radius:999px;box-shadow:0 8px 20px -10px rgba(255,77,94,.9);transition:filter .15s}
+.homecard.featured:hover em{filter:brightness(1.08)}
+.homecard .hc-ic{color:#fff}
