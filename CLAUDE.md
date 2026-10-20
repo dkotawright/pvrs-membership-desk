@@ -63,6 +63,7 @@ Read this first. It's the full context from the original build conversation (Oct
 - [x] Oct 18 (later): password sign-in, owner-only editing (rules deployed), page sign-offs, references tab, tuck-away list, compact tab bar: all deployed. Dkota still needs to set his password via the key button.
 - [x] Oct 18 (evening): access requests, staff records, messaging, hidden declines, sign-in redesign, interview-times lockdown: deployed. After deploy the owner must open the desk once so portalEmails backfills for already-invited applicants.
 - [x] Oct 18 (night): online application + home page, license number, probation removed, confidential paperwork vault, owner-only header Delete: deployed (hosting, firestore + storage rules). NOT yet deployed: functions (waiting on Dkota to set SMTP_PASSWORD).
+- [x] Oct 19: reference forms (/ref/{code}) + fade-in flicker fix: deployed (hosting + firestore rules).
 - [ ] Email alerts for uploads/bookings: the function + SMTP setup now exists for confidential paperwork; other alerts not built.
 - Testing: see `tests/README.md`. Tests live in the repo (`tests/`) since Oct 19 — the old scratchpad copies were wiped by macOS. `node tests/browser.test.mjs` (Playwright + `tests/mockfb.js`) and `tests/run-rules.sh` (emulators; Java in ~/.local/jdk21).
 - [ ] Optional: GitHub Actions auto-deploy (repo exists) with a service-account key, so Claude can update the app on demand.
