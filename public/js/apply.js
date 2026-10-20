@@ -208,8 +208,10 @@ function problems(step){
 
 /* ---------- render ---------- */
 const root = () => $("#applyRoot");
+let animated = false;   // the card fades in once, not on every redraw
 function render(){
   const R = root(); if (!R) return;
+  const settled = animated; animated = true;
   if (A.done) {
     R.innerHTML = `<div class="applycard glass done"><div class="donemark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h1>Application received</h1>
@@ -221,7 +223,7 @@ function render(){
     return;
   }
   const n = STEPS.length, st = STEPS[A.step];
-  R.innerHTML = `<div class="applycard glass">
+  R.innerHTML = `<div class="applycard glass${settled ? " noanim" : ""}">
     <div class="applyhead"><div><div class="eyebrow">Membership application · Step ${A.step + 1} of ${n}</div><h1>${esc(st.title)}</h1></div>
       <span class="saved" id="apSaved">Saved on this device</span></div>
     <ol class="apsteps" aria-label="Progress">${STEPS.map((s, i) => `<li class="${i < A.step ? "done" : i === A.step ? "cur" : ""}"><button type="button" data-goto="${i}" ${i > A.maxStep ? "disabled" : ""} aria-current="${i === A.step ? "step" : "false"}"><span>${i + 1}</span><em>${esc(s.title)}</em></button></li>`).join("")}</ol>

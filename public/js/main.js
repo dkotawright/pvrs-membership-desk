@@ -6,15 +6,16 @@ import { startDesk } from "./desk.js";
 import { startPortal } from "./portal.js";
 import { startApply } from "./apply.js";
 import { startVault } from "./vault.js";
+import { startReference } from "./reference.js";
 
 const LINK_KEY = "pvrsEmailForSignIn";
-const VIEWS = ["loading","home","apply","signin","confirm","noaccess","app","portal","vault"];
+const VIEWS = ["loading","home","apply","signin","confirm","noaccess","app","portal","vault","reference"];
 const PUBLIC = ["home","apply","signin","confirm"];
 const show = id => {
   VIEWS.forEach(v => { $("#" + v).hidden = v !== id; });
   $("#pubnav").hidden = !PUBLIC.includes(id);
   $("#navApply").classList.toggle("on", id === "apply"); $("#navSignin").classList.toggle("on", id === "signin");
-  document.title = id === "apply" ? "Apply · PVRS Membership" : id === "home" ? "PVRS Membership" : id === "vault" ? "Confidential paperwork · PVRS" : "PVRS Membership Desk";
+  document.title = id === "apply" ? "Apply · PVRS Membership" : id === "home" ? "PVRS Membership" : id === "vault" ? "Confidential paperwork · PVRS" : id === "reference" ? "Reference · Potsdam Volunteer Rescue Squad" : "PVRS Membership Desk";
 };
 
 // Public pages: / (choose), /apply (the application form, also the link for the squad website), /signin.
@@ -24,6 +25,7 @@ const pathNow = () => (location.pathname.replace(/\/+$/, "") || "/");
 function routePublic(){
   const p = pathNow();
   if (p === "/apply") { show("apply"); startApply(); return; }
+  if (p.startsWith("/ref/")) { show("reference"); startReference(p.slice(5)); return; }   // a reference's private link
   if (currentUser) { if (homeView) show(homeView); else startFor(currentUser); return; }
   show(p === "/signin" ? "signin" : "home");
 }
@@ -152,6 +154,7 @@ onAuthStateChanged(auth, async user => {
     return;
   }
   if (pathNow() === "/apply") { show("apply"); startApply(); return; }   // the form, even when signed in
+  if (pathNow().startsWith("/ref/")) { routePublic(); return; }
   startFor(user);
 });
 async function startFor(user){

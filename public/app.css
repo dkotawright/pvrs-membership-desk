@@ -951,3 +951,18 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 /* Applicant portal: send a different reference */
 .refform{display:flex;flex-direction:column;gap:10px;padding:12px 14px;margin:2px 0 10px;border-radius:16px;background:color-mix(in srgb,var(--box) 70%,transparent);border:1px solid var(--glass-edge)}
 .refform .acts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+/* Reference form (/ref/{code}) */
+.rate{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--sep)}
+.rate:last-child{border-bottom:0}
+.rate .rl{font-weight:600;font-size:14.5px}
+.rscale{display:flex;align-items:center;gap:8px}
+.rscale small{font-size:12px;color:var(--fg3)}
+.rate .choice button{padding:8px 14px;min-width:40px}
+.rate.bad .choice{border-color:var(--s-dec)!important;box-shadow:0 0 0 3px color-mix(in srgb,var(--s-dec) 18%,transparent)}
+.rdate{padding:10px 0;font-size:15px;color:var(--fg2)}
+.refanswers dt{font-weight:650;margin-top:12px}
+.refanswers dd{margin:4px 0 0;white-space:pre-wrap;color:var(--fg2);line-height:1.5}
+.refanswers .stars{font-variant-numeric:tabular-nums}
+.rfbtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.applycard.noanim{animation:none}
+.refcard .lead2{margin:6px 0 18px}

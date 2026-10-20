@@ -104,6 +104,40 @@ service cloud.firestore {
             || (request.resource.data.from == 'staff' && isOwner()));
     }
 
+    // Reference forms. The owner makes a private link for each reference (refLinks/{token}, an unguessable code);
+    // anyone holding the exact code can open it (no listing) and send ONE response (refResponses/{token}) before it
+    // expires. Only the owner reads responses; the desk files them in the applicant's private record.
+    match /refLinks/{token} {
+      allow get: if true;
+      allow list, create, delete: if isOwner();
+      allow update: if isOwner() || (
+        onlyChanged(['submittedAt']) && resource.data.get('submittedAt', null) == null
+        && request.resource.data.submittedAt is int
+        && existsAfter(/databases/$(database)/documents/refResponses/$(token)));
+    }
+    function validRefResponse(token) {
+      let link = get(/databases/$(database)/documents/refLinks/$(token)).data;
+      let d = request.resource.data;
+      let a = d.answers;
+      let r = a.ratings;
+      return link.expiresAt > nowMs() && link.get('submittedAt', null) == null
+        && d.keys().hasOnly(['v', 'answers', 'submittedAt', 'hp']) && d.v == 1 && d.hp == ''
+        && d.submittedAt is int && d.submittedAt > nowMs() - 600000 && d.submittedAt < nowMs() + 600000
+        && a is map && a.keys().hasOnly(['known', 'skills', 'getAlong', 'criticism', 'ratings', 'trustworthy', 'reservations', 'other', 'others', 'signName', 'signDate'])
+        && a.known is string && a.known.size() > 0 && a.known.size() <= 4000 && a.skills is string && a.skills.size() > 0 && a.skills.size() <= 4000
+        && a.getAlong is string && a.getAlong.size() > 0 && a.getAlong.size() <= 4000 && a.criticism is string && a.criticism.size() > 0 && a.criticism.size() <= 4000
+        && a.reservations is string && a.reservations.size() > 0 && a.reservations.size() <= 4000 && a.other is string && a.other.size() > 0 && a.other.size() <= 4000
+        && a.others is string && a.others.size() >= 0 && a.others.size() <= 4000
+        && a.signName is string && a.signName.size() > 1 && a.signName.size() <= 200 && a.signDate is string && a.signDate.size() <= 20
+        && a.trustworthy in ['yes', 'no']
+        && r is map && r.keys().hasOnly(['reliability', 'flexibility', 'timeManagement', 'communication', 'responsibility', 'appearance', 'disposition']) && r.keys().hasAll(['reliability', 'flexibility', 'timeManagement', 'communication', 'responsibility', 'appearance', 'disposition'])
+        && r.reliability is int && r.reliability >= 1 && r.reliability <= 5 && r.flexibility is int && r.flexibility >= 1 && r.flexibility <= 5 && r.timeManagement is int && r.timeManagement >= 1 && r.timeManagement <= 5 && r.communication is int && r.communication >= 1 && r.communication <= 5 && r.responsibility is int && r.responsibility >= 1 && r.responsibility <= 5 && r.appearance is int && r.appearance >= 1 && r.appearance <= 5 && r.disposition is int && r.disposition >= 1 && r.disposition <= 5;
+    }
+    match /refResponses/{token} {
+      allow create: if exists(/databases/$(database)/documents/refLinks/$(token)) && validRefResponse(token);
+      allow read, update, delete: if isOwner();
+    }
+
     // Which email addresses have an applicant portal (lets the rules recognise invited applicants).
     match /portalEmails/{email} {
       allow read: if isOwner() || (verified() && email == myEmail());
