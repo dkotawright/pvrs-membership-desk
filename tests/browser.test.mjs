@@ -27,7 +27,7 @@ async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark 
   });
   const page = await ctx.newPage();
   page.on("pageerror", e => errors.push(`[pageerror ${url}] ${e.message}`));
-  page.on("console", m => { if (m.type() === "error") errors.push(`[console ${url}] ${m.text()}`); });
+  page.on("console", m => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(`[console ${url}] ${m.text()}`); });   // outside requests (weather) are blocked on purpose
   await page.goto("http://localhost:5999" + url); await page.waitForTimeout(700);
   return { ctx, page };
 }
@@ -122,6 +122,47 @@ try {
     await page.locator('.tabdock [data-tab="refs"]').click(); await wait(page, 300);
     if (await page.locator("#refView1").isHidden()) fail("admin can't view answers"); else ok("admins can view answers");
     if (await page.locator("#refMail2").isVisible() || await page.locator("#refCopy2").isVisible()) fail("admin sees link buttons"); else ok("admins can't send links");
+    await ctx.close();
+  }
+  // ---- 4 references listed, 3 required
+  {
+    const { ctx, page } = await open(browser);
+    const setRefs = n => page.evaluate(n => { const d = window.__mock.docs, p = d.get("applicants/a1/private/main");
+      p.refs = { r1: { name: "Ann Lee" }, r2: { name: "Sam Ortiz" }, r3: { name: "Kim Park" }, r4: { name: "Lee Chu" } };
+      ["r1", "r2", "r3", "r4"].slice(0, n).forEach(k => { p.refs[k].returned = "2026-10-10"; }); window.__mock.emit(); }, n);
+    await setRefs(2); await pickApplicant(page, "Georgia Thurmond");
+    await page.locator('.tabdock [data-tab="refs"]').click(); await wait(page, 300);
+    let t = await page.locator("#refSummary").textContent();
+    if (!/2 of 3 required references received · need 1 more/.test(t)) fail("2 of 4 in: " + t); else ok("4 listed, 2 in → 'need 1 more' (not 2)");
+    await setRefs(3); await wait(page, 300);
+    t = await page.locator("#refSummary").textContent();
+    if (!/3 of 4 references received · requirement met/.test(t) || /need/.test(t.split("·")[1] || "")) fail("3 of 4 in: " + t); else ok("4 listed, 3 in → requirement met");
+    await wait(page, 1800);
+    const pr = await page.evaluate(() => window.__mock.docs.get("portal/a1"));
+    const steps = JSON.stringify(pr && pr.steps || []);
+    if (!pr) fail("portal not synced");
+    await snap(page, "07-refs-3-of-4");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { user: { email: "marcus.bell@example.com", displayName: "" } });
+    const setP = n => page.evaluate(n => { const d = window.__mock.docs, p = d.get("portal/a2");
+      p.refs = [1, 2, 3, 4].map(i => ({ slot: i, name: "Ref " + i, received: i <= n })); d.set("portal/a2", p); window.__mock.emit(); }, n);
+    await setP(2); await wait(page, 300);
+    let t = await page.locator("#refCard").textContent();
+    if (!/We've heard from 2 so far, so we need 1 more/.test(t)) fail("portal 2 of 4: " + t); else ok("portal: 2 of 4 in → 'need 1 more'");
+    await setP(3); await wait(page, 300);
+    t = await page.locator("#refCard").textContent();
+    if (!/received the references we need/.test(t) || !/Not needed/.test(t) || /Waiting/.test(t)) fail("portal 3 of 4: " + t); else ok("portal: 3 of 4 in → done, the 4th shows 'Not needed'");
+    await ctx.close();
+  }
+  // ---- sign-in page: wording, greeting, weather hides itself if the service is unreachable
+  {
+    const { ctx, page } = await open(browser, { url: "/signin", user: null });   // weather requests are blocked here
+    if (!/Good (morning|afternoon|evening)/.test(await page.locator("#greet").textContent())) fail("no greeting"); else ok("sign-in greets by time of day");
+    if (await page.locator("#wx").isVisible()) fail("weather card shown with no data"); else ok("weather card stays hidden when the weather service is unreachable");
+    const txt = await page.locator("#signin").textContent();
+    if (/Dkota/.test(txt) || !/Squad member/.test(txt) || !/Continue with Google/.test(txt)) fail("sign-in wording"); else ok("sign-in wording is professional (no first names)");
     await ctx.close();
   }
   // ---- the rest of the app still loads cleanly

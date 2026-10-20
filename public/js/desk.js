@@ -4,7 +4,7 @@ import { auth, db, storage, doc, collection, collectionGroup, getDoc, setDoc, up
   GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
-  progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, isDeclined, isConfidential } from "./shared.js";
+  progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
@@ -456,12 +456,12 @@ function syncDetail(){
   document.querySelectorAll("#dbody [data-show]").forEach(el => { el.hidden = !SHOW[el.dataset.show](a); });
 }
 function syncRefs(a){
-  const refs = refList(a), got = refs.filter(x => x.received).length, waiting = refs.length - got;
+  const rs = refStatus(a), refs = rs.list, got = rs.got, waiting = rs.short;
   const sum = $("#refSummary");
   if (sum) {
     sum.className = "refsum " + (!refs.length ? "" : waiting ? "warn" : "ok");
-    sum.innerHTML = `<b>${!refs.length ? "No references entered yet" : waiting ? `${got} of ${refs.length} references received · waiting on ${waiting}` : `All ${refs.length} references received`}</b>
-      <span>All references must be in before the application goes to the board. The applicant sees each name with Received or Waiting in their portal; email addresses, dates and initials stay private.</span>`;
+    sum.innerHTML = `<b>${!refs.length ? "No references entered yet" : waiting ? `${got} of ${REFS_NEEDED} required references received · need ${waiting} more` : `${got} of ${refs.length} references received · requirement met`}</b>
+      <span>${REFS_NEEDED} references must be in before the application goes to the board${refs.length > REFS_NEEDED ? "; any " + REFS_NEEDED + " of the " + refs.length + " listed will do" : ""}. The applicant sees each name with Received or Waiting in their portal; email addresses, dates and initials stay private.</span>`;
   }
   for (const i of [1,2,3,4]) {
     const badge = $("#refBadge" + i); if (!badge) continue;
@@ -484,7 +484,7 @@ function syncRefs(a){
     for (const id0 of ["#refMail", "#refCopy"]) { const x = $(id0 + i); x.hidden = !!form || !S.canEdit; x.disabled = !name; }
   }
   const bn = $("#boardRefNote");
-  if (bn) { bn.hidden = !(refs.length === 0 || waiting); bn.textContent = refs.length === 0 ? "No references entered yet. All references must be in before this goes to the board." : `Waiting on ${waiting} reference${waiting===1?"":"s"} (${refs.filter(x => !x.received).map(x => x.name).join(", ")}). All references must be in before this goes to the board.`; }
+  if (bn) { bn.hidden = !(refs.length === 0 || waiting); bn.textContent = refs.length === 0 ? `No references entered yet. ${REFS_NEEDED} references must be in before this goes to the board.` : `Need ${waiting} more reference${waiting===1?"":"s"} (${got} of ${REFS_NEEDED} received${rs.pending.length ? "; still out: " + rs.pending.map(x => x.name).join(", ") : ""}). ${REFS_NEEDED} references must be in before this goes to the board.`; }
 }
 function requestedDocs(a){
   return Object.entries(get(a,"docs.requested") || {}).filter(([,v]) => v && v.label && !v.removed)
@@ -950,7 +950,7 @@ const TEMPLATES = {
   docs: (a, list = []) => ({ subject: "PVRS application: documents needed",
     body: `Hi ${first(a.name)},\n\nTo keep your application moving, please upload the following in your applicant portal:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\n${location.origin}\n\nIf the upload gives you trouble, email them to ${S.settings.docsEmail || CONTACT_EMAIL} instead.\n\nThank you,\n${sig()}` }),
   refs: (a, list = []) => ({ subject: "PVRS application: references still needed",
-    body: `Hi ${first(a.name)},\n\nWe're still waiting to hear from ${list.length === 1 ? "one of your references" : "some of your references"}:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\nWe need all of your references before your application can go to the board. If you can, please check in with them, or let us know if one of them is hard to reach and you'd like to suggest someone else.\n\nYou can see which references we've heard from in your applicant portal:\n${location.origin}\n\nThank you,\n${sig()}` }),
+    body: `Hi ${first(a.name)},\n\nWe're still waiting to hear from ${list.length === 1 ? "one of your references" : "some of your references"}:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\nWe need ${REFS_NEEDED} references before your application can go to the board. If you can, please check in with them, or let us know if one of them is hard to reach and you'd like to suggest someone else.\n\nYou can see which references we've heard from in your applicant portal:\n${location.origin}\n\nThank you,\n${sig()}` }),
   interview: a => ({ subject: "PVRS interview: pick a time",
     body: `Hi ${first(a.name)},\n\nThe next step in your application is an interview with the Membership Committee. Interview times are now open in your applicant portal. Sign in and pick the one that works best for you:\n\n${location.origin}\n\nIf none of the times work, reply to this email and we'll find another.\n\nThank you,\n${sig()}` }),
 };
@@ -1020,7 +1020,7 @@ function openSettings(){
   const s = S.settings;
   const M = openModal(`<h3>Settings</h3>
     <div class="group"><h3><span>Team</span></h3><div class="ios" id="reqList">${requestsHTML()}</div><div class="ios" id="teamList">${teamHTML()}</div>
-      <p class="help" style="margin:4px 4px 0"><b>Members</b> can view the Application and Interview tabs. <b>Admins</b> can view every tab except Settings. Both can only fill in and complete the interview questionnaire; everything else is yours to change. They sign in on the PVRS staff tab with this address.</p></div>
+      <p class="help" style="margin:4px 4px 0"><b>Members</b> can view the Application and Interview tabs. <b>Admins</b> can view every tab except Settings. Both can only fill in and complete the interview questionnaire; everything else is yours to change. They sign in on the Squad member tab with this address.</p></div>
     <div class="group"><h3><span>Emails</span></h3><div class="ios">
       <label class="row stack"><span class="lbl">Email signature<small>Printed at the end of every email</small></span><textarea id="sSig" rows="4" placeholder="Name, credentials">${esc(s.signature||"")}</textarea></label>
       <label class="row stack"><span class="lbl">Documents and questions go to</span><input type="text" id="sDocs" placeholder="${esc(CONTACT_EMAIL)}" value="${esc(s.docsEmail||"")}"></label>
@@ -1413,7 +1413,7 @@ function packetPage(a){
         ${row("Application complete", yn(g("app.complete")), g("app.complete") === "no")}
         ${row("Driving record (MVR)", g("mvr.completed") ? `Completed ${d8(g("mvr.completed"))} · violations: ${yn(g("mvr.violations"))}` : "Not completed", g("mvr.violations") === "yesbad")}
         ${row("Driver's license", g("dl.date") ? `Verified ${d8(g("dl.date"))} · valid and unrestricted: ${yn(g("dl.valid"))}` : "Not verified", g("dl.valid") === "no")}
-        ${row("References", refs.length ? `${refs.filter(x => x.returned).length} of ${refs.length} received` + (refs.some(x => !x.returned) ? " · NOT ALL IN" : "") : "None entered", !refs.length || refs.some(x => !x.returned))}
+        ${row("References", refs.length ? `${refStatus(a).got} of ${refs.length} received` + (refStatus(a).done ? "" : ` · NEED ${REFS_NEEDED}`) : "None entered", !refStatus(a).done)}
       </table></div>
       <div><h2>Interview and committee</h2><table>
         ${row("Interview", g("sched.completed") ? "Completed " + d8(g("sched.completed")) + (g("sched.completedInit") ? " · " + esc(g("sched.completedInit")) : "") : iv ? "Scheduled " + esc(iv) : "Not scheduled")}
@@ -1651,7 +1651,7 @@ function openPassword(){
   const user = auth.currentUser; if (!user) return;
   const has = user.providerData.some(p => p.providerId === "password");
   const M = openModal(`<form id="pwSetForm" style="display:contents" novalidate><h3>${has ? "Change" : "Set"} your sign-in password</h3>
-    <p class="help">Then sign in on the <b>PVRS staff</b> tab with <b>${esc(user.email)}</b> and this password.${has ? "" : " Google sign-in keeps working as a backup."}</p>
+    <p class="help">Then sign in on the <b>Squad member</b> tab with <b>${esc(user.email)}</b> and this password.${has ? "" : " Google sign-in keeps working as a backup."}</p>
     <div class="field"><label for="pwNew">New password</label><input id="pwNew" type="password" autocomplete="new-password" minlength="10" required>
       <label for="pwAgain">Type it again</label><input id="pwAgain" type="password" autocomplete="new-password" required>
       <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="pwShow" style="width:auto"> Show password</label></div>
@@ -1678,7 +1678,7 @@ function openPassword(){
           await reauthenticateWithPopup(user, new GoogleAuthProvider()); await save(pw);
         } else throw err;
       }
-      closeModal(); toast("Password saved. Use it on the PVRS staff sign-in tab.");
+      closeModal(); toast("Password saved. Use it on the Squad member sign-in tab.");
     } catch (err) {
       console.error(err);
       const c = err && err.code;

@@ -87,13 +87,13 @@ function refsBody(refs, { ups = [], form = null, draft = {}, sending = false, di
   if (!refs.length) return `<p class="info" style="margin:0">Once we start contacting your references, you'll see here which ones we've heard from.</p>`;
   const pending = slot => ups.find(u => u.slot === slot && !u.appliedAt);
   const asks = refs.filter(r => r.replace && !pending(r.slot));
-  const waiting = refs.filter(r => !r.received).length;
+  const got = refs.filter(r => r.received).length, need = Math.max(0, 3 - got);   // 3 received is enough (REFS_NEEDED)
   const intro = asks.length
     ? `We need a different reference in place of ${asks.map(r => `<b>${esc(r.name)}</b>`).join(" and ")}. Please give us someone else who knows you well.`
-    : waiting ? `We need to hear from all of your references before your application goes to the board. Still waiting on ${waiting} of ${refs.length}. It can help to give them a quick reminder.` : "All of your references are in. Thank you!";
+    : need ? `We need 3 references before your application goes to the board. We've heard from ${got} so far, so we need ${need} more. It can help to give your references a quick reminder.` : "We've received the references we need. Thank you!";
   return `<p class="info" style="margin:0">${intro}</p>
     <div>${refs.map(r => {
-      if (!r.replace) return `<div class="doc"><div class="dt">${esc(r.name)}</div><span class="badge ${r.received ? "ok" : "wait"}">${r.received ? "Received" : "Waiting"}</span></div>`;
+      if (!r.replace) return `<div class="doc"><div class="dt">${esc(r.name)}</div>${r.received ? `<span class="badge ok">Received</span>` : need ? `<span class="badge wait">Waiting</span>` : `<span class="badge">Not needed</span>`}</div>`;
       const p = pending(r.slot);
       return `<div class="doc"><div class="dt">${esc(r.name)}<small>${p ? `New reference sent: ${esc(p.name)}. We'll update this shortly.` : "Please give us a different reference in place of this one."}</small></div>
         ${p ? `<span class="badge ok">Sent</span>` : form === r.slot ? "" : `<span class="badge wait">Please replace</span><button class="btn small primary" type="button" data-refnew="${r.slot}" ${dis}>Give a new reference</button>`}</div>

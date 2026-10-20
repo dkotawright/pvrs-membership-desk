@@ -7,6 +7,7 @@ import { startPortal } from "./portal.js";
 import { startApply } from "./apply.js";
 import { startVault } from "./vault.js";
 import { startReference } from "./reference.js";
+import { startWeather } from "./weather.js";
 
 const LINK_KEY = "pvrsEmailForSignIn";
 const VIEWS = ["loading","home","apply","signin","confirm","noaccess","app","portal","vault","reference"];
@@ -15,8 +16,17 @@ const show = id => {
   VIEWS.forEach(v => { $("#" + v).hidden = v !== id; });
   $("#pubnav").hidden = !PUBLIC.includes(id);
   $("#navApply").classList.toggle("on", id === "apply"); $("#navSignin").classList.toggle("on", id === "signin");
+  if (id === "signin") paintWelcome();
   document.title = id === "apply" ? "Apply · PVRS Membership" : id === "home" ? "PVRS Membership" : id === "vault" ? "Confidential paperwork · PVRS" : id === "reference" ? "Reference · Potsdam Volunteer Rescue Squad" : "PVRS Membership Desk";
 };
+
+// Sign-in welcome panel: time-of-day greeting, today's date, Potsdam weather.
+function paintWelcome(){
+  const h = new Date().getHours();
+  $("#greet").textContent = h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  $("#todayLine").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) + " · Potsdam, New York";
+  startWeather($("#wx"));
+}
 
 // Public pages: / (choose), /apply (the application form, also the link for the squad website), /signin.
 // Signed-in people go to their own area, except on /apply, which always shows the form.
@@ -109,7 +119,7 @@ function showNoAccess(user, email, req){
   B.innerHTML = "";
   if (req && req.status === "pending") {
     T.textContent = "Access requested";
-    M.textContent = `Thanks${req.name ? ", " + req.name.split(" ")[0] : ""}. Dkota will review your request for ${email}. This page opens the desk automatically once you're approved.`;
+    M.textContent = `Thank you${req.name ? ", " + req.name.split(" ")[0] : ""}. The membership coordinator will review your request for ${email}. This page opens the desk automatically once you're approved.`;
     B.innerHTML = `<button class="copy" type="button" id="reqWithdraw">Withdraw request</button>`;
     $("#reqWithdraw").onclick = async () => { try { await deleteDoc(doc(db, "accessRequests", email)); showNoAccess(user, email, null); } catch { toast("Couldn't withdraw. Try again."); } };
     onSnapshot(doc(db, "staff", email), s => { if (s.exists()) location.reload(); }, () => {});
@@ -118,7 +128,7 @@ function showNoAccess(user, email, req){
     M.textContent = `Your request for ${email} wasn't approved. If you think that's a mistake, contact ${CONTACT_EMAIL}.`;
   } else {
     T.textContent = wantsAccess ? "Request team access" : "No application or team access found";
-    M.textContent = wantsAccess ? `Dkota approves every request. You're signed in as ${email}.`
+    M.textContent = wantsAccess ? `Each request is reviewed by the membership coordinator. You're signed in as ${email}.`
       : `Applicants: sign in with the email address on your application, or contact ${CONTACT_EMAIL}. PVRS team members: request access below.`;
     B.innerHTML = `<form id="reqForm" class="field" novalidate>
         <label for="reqName">Your name</label><input id="reqName" type="text" maxlength="100" autocomplete="name" required>
@@ -132,7 +142,7 @@ function showNoAccess(user, email, req){
       try {
         if (req) await deleteDoc(doc(db, "accessRequests", email)).catch(() => {});   // an old approved request from before they were removed
         await setDoc(doc(db, "accessRequests", email), data);
-        showNoAccess(user, email, data); toast("Request sent to Dkota.");
+        showNoAccess(user, email, data); toast("Request sent. You'll be let in once it's approved.");
       } catch (err) { console.error(err); toast("Couldn't send the request. Try again."); }
     };
   }
