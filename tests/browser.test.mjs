@@ -165,6 +165,51 @@ try {
     if (/Dkota/.test(txt) || !/Squad member/.test(txt) || !/Continue with Google/.test(txt)) fail("sign-in wording"); else ok("sign-in wording is professional (no first names)");
     await ctx.close();
   }
+  // ---- create an account with email + password → confirm email → request access (approval still required)
+  {
+    const { ctx, page } = await open(browser, { url: "/signin", user: null });
+    await page.evaluate(() => localStorage.setItem("pvrsWho", "staff")); await page.reload(); await wait(page, 700);
+    await page.locator("#reqEmailBtn").click(); await wait(page, 300);
+    if (await page.locator("#newForm").isHidden() || !(await page.locator("#manualSignin").evaluate(d => d.open))) fail("Request with email didn't open Create account"); else ok("'With email' opens Create account");
+    await snap(page, "08-create-account");
+    await page.locator("#newName").fill("Pat Rivera"); await page.locator("#newEmail").fill("Pat.Rivera@Example.com");
+    await page.locator("#newPass").fill("short"); await page.locator("#newPass2").fill("short");
+    await page.locator("#newForm button[type=submit]").click(); await wait(page, 200);
+    if (await page.evaluate(() => window.__mock.created)) fail("weak password accepted"); else ok("passwords under 10 characters are refused");
+    await page.locator("#newPass").fill("a-long-password-1"); await page.locator("#newPass2").fill("a-long-password-2");
+    await page.locator("#newForm button[type=submit]").click(); await wait(page, 200);
+    if (await page.evaluate(() => window.__mock.created)) fail("mismatched passwords accepted"); else ok("mismatched passwords are refused");
+    await page.locator("#newPass2").fill("a-long-password-1");
+    await page.locator("#newForm button[type=submit]").click(); await wait(page, 700);
+    const st = await page.evaluate(() => ({ c: window.__mock.created, v: window.__mock.verifySent, u: window.__MOCK_USER }));
+    if (!st.c || st.c.email !== "pat.rivera@example.com" || st.u.displayName !== "Pat Rivera") fail("account not created: " + JSON.stringify(st)); else ok("account created (email lowercased, name saved)");
+    if (!st.v || !st.v.length || !/\/signin$/.test(st.v[0].url)) fail("no confirmation email"); else ok("confirmation email sent");
+    if (await page.locator("#verify").isHidden() || !/pat\.rivera@example\.com/.test(await page.locator("#verifyMsg").textContent())) fail("verify screen not shown"); else ok("'Confirm your email' screen shown");
+    const reads = await page.evaluate(() => (window.__mock.writes || []).length);
+    if (await page.locator("#app").isVisible() || await page.locator("#noaccess").isVisible()) fail("unconfirmed account got past the confirm screen"); else ok("an unconfirmed account goes no further");
+    await snap(page, "09-verify");
+    await page.locator("#verifyDone").click(); await wait(page, 300);
+    if (!/Not confirmed yet/.test(await page.locator("#toast").textContent())) fail("no 'not confirmed yet' message");
+    await page.evaluate(() => { window.__MOCK_USER.emailVerified = true; });   // they click the link in the email
+    await wait(page, 4800);
+    if (await page.locator("#noaccess").isHidden()) fail("didn't continue after confirming"); else ok("continues on its own once the email is confirmed");
+    if (!/Request team access/.test(await page.locator("#noaccessTitle").textContent()) || await page.locator("#reqName").inputValue() !== "Pat Rivera") fail("request form not shown/prefilled"); else ok("then shows the access request form, name filled in");
+    await page.locator("#reqForm button[type=submit]").click(); await wait(page, 400);
+    const req = await page.evaluate(() => window.__mock.docs.get("accessRequests/pat.rivera@example.com"));
+    if (!req || req.status !== "pending" || req.name !== "Pat Rivera") fail("request not filed: " + JSON.stringify(req)); else ok("request filed as pending for approval");
+    if (await page.locator("#app").isVisible()) fail("got into the desk without approval"); else ok("no desk access until approved");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { url: "/signin", user: null });
+    await page.evaluate(() => localStorage.setItem("pvrsWho", "staff")); await page.reload(); await wait(page, 700);
+    await page.locator("#reqEmailBtn").click(); await wait(page, 200);
+    await page.locator("#newName").fill("Dkota W"); await page.locator("#newEmail").fill("dkota@pvrs.org");
+    await page.locator("#newPass").fill("a-long-password-1"); await page.locator("#newPass2").fill("a-long-password-1");
+    await page.locator("#newForm button[type=submit]").click(); await wait(page, 400);
+    if (!/already an account/.test(await page.locator("#toast").textContent())) fail("existing email message"); else ok("an email that already has an account gets a clear message");
+    await ctx.close();
+  }
   // ---- the rest of the app still loads cleanly
   for (const [url, user, sel, label] of [["/", null, "#home", "home page"], ["/apply", null, "#apply", "online application"], ["/signin", null, "#signin", "sign-in"],
     ["/", OWNER, "#app", "owner desk"], ["/", { email: "marcus.bell@example.com", displayName: "" }, "#portal", "applicant portal"], ["/", { email: "orientationpaperwork@pvrs.org", displayName: "" }, "#vault", "paperwork page"]]) {

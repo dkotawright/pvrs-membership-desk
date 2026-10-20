@@ -1,4 +1,5 @@
 import { auth, db, onAuthStateChanged, setDoc, deleteDoc, onSnapshot, signOut, GoogleAuthProvider, signInWithPopup, sendSignInLinkToEmail,
+  createUserWithEmailAndPassword, sendEmailVerification, updateProfile,
   isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, sendPasswordResetEmail, doc, getDoc, getDocs, collection, query, where, limit } from "./fb.js";
 import { $, lower, toast } from "./shared.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
@@ -10,7 +11,7 @@ import { startReference } from "./reference.js";
 import { startWeather } from "./weather.js";
 
 const LINK_KEY = "pvrsEmailForSignIn";
-const VIEWS = ["loading","home","apply","signin","confirm","noaccess","app","portal","vault","reference"];
+const VIEWS = ["loading","home","apply","signin","confirm","verify","noaccess","app","portal","vault","reference"];
 const PUBLIC = ["home","apply","signin","confirm"];
 const show = id => {
   VIEWS.forEach(v => { $("#" + v).hidden = v !== id; });
@@ -101,7 +102,7 @@ $("#pwForm").addEventListener("submit", async e => {
     const c = err && err.code;
     toast(c === "auth/too-many-requests" ? "Too many tries. Wait a few minutes, or use Forgot password."
       : c === "auth/network-request-failed" ? "No connection. Check your internet and try again."
-      : "Email or password is incorrect. No password yet? Sign in with Google, then click the key next to your name.");
+      : "Email or password is incorrect. New here? Choose Create account.");
     $("#pwPass").select();
   } finally { btn.disabled = false; }
 });
@@ -111,9 +112,66 @@ $("#pwForgot").addEventListener("click", async () => {
   try { await sendPasswordResetEmail(auth, email); } catch {}
   toast(`If ${email} has a password, a reset link is on its way.`);
 });
+// Email + password: sign in, or create an account. New accounts confirm their email first (the rules ignore unconfirmed
+// addresses), then request access like Google users; nobody sees anything until the owner approves them.
+function setPwMode(m){
+  $("#pwMode").querySelectorAll("[data-pwmode]").forEach(b => { const on = b.dataset.pwmode === m; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+  $("#pwForm").hidden = m !== "in"; $("#newForm").hidden = m !== "new";
+}
+$("#pwMode").addEventListener("click", e => { const b = e.target.closest("[data-pwmode]"); if (b) { setPwMode(b.dataset.pwmode); (b.dataset.pwmode === "new" ? $("#newName") : $("#pwEmail")).focus(); } });
+const verifySettings = () => ({ url: location.origin + "/signin" });
+$("#newForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("#newName").value.trim(), email = lower($("#newEmail").value), pw = $("#newPass").value;
+  if (name.length < 2) { $("#newName").focus(); return toast("Enter your full name."); }
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $("#newEmail").focus(); return toast("Enter a valid email address."); }
+  if (pw.length < 10) { $("#newPass").focus(); return toast("Use at least 10 characters for your password."); }
+  if (pw !== $("#newPass2").value) { $("#newPass2").select(); return toast("The two passwords don't match."); }
+  const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true;
+  wantsAccess = true;
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email, pw);
+    pref.set("pvrsStaffEmail", email);
+    await updateProfile(cred.user, { displayName: name.slice(0, 100) }).catch(() => {});
+    await sendEmailVerification(cred.user, verifySettings());
+    $("#newPass").value = $("#newPass2").value = "";
+    showVerify(cred.user);
+  } catch (err) {
+    const c = err && err.code;
+    toast(c === "auth/email-already-in-use" ? "There's already an account with that email. Sign in instead (or Continue with Google if that's how you joined), or use Forgot your password."
+      : c === "auth/weak-password" ? "Choose a stronger password."
+      : c === "auth/too-many-requests" ? "Too many tries. Wait a few minutes and try again."
+      : c === "auth/network-request-failed" ? "No connection. Check your internet and try again."
+      : "Couldn't create the account. Check your details and try again.");
+  } finally { btn.disabled = false; }
+});
+// Waiting for the new account's email to be confirmed: checks every few seconds and carries on by itself.
+let verifyTimer = null, lastResend = 0;
+function showVerify(user){
+  $("#verifyMsg").textContent = `We sent a link to ${user.email}. Open it to confirm your address, then come back to this page. It can take a minute, and may land in spam.`;
+  show("verify");
+  clearInterval(verifyTimer);
+  verifyTimer = setInterval(() => checkVerified(false), 4000);
+}
+async function checkVerified(manual){
+  const u = auth.currentUser; if (!u) { clearInterval(verifyTimer); return; }
+  try { await u.reload(); } catch {}
+  if (!auth.currentUser || !auth.currentUser.emailVerified) { if (manual) toast("Not confirmed yet. Open the link in the email we sent, then try again."); return; }
+  clearInterval(verifyTimer);
+  await auth.currentUser.getIdToken(true);   // the security rules read the confirmed status from a fresh token
+  started = false; startFor(auth.currentUser);
+}
+$("#verifyDone").addEventListener("click", () => checkVerified(true));
+$("#verifyResend").addEventListener("click", async () => {
+  if (Date.now() - lastResend < 30000) return toast("Just sent. Give it a minute and check your spam folder.");
+  lastResend = Date.now();
+  try { await sendEmailVerification(auth.currentUser, verifySettings()); toast("Sent again. Check your inbox."); }
+  catch (err) { toast(err && err.code === "auth/too-many-requests" ? "Too many emails for now. Try again in a few minutes." : "Couldn't send the email. Try again."); }
+});
 // Not on the team, not an applicant: offer to request team access (the owner approves in Settings → Team).
 let wantsAccess = false;
 $("#reqAccessBtn").addEventListener("click", () => { wantsAccess = true; $("#googleBtn").click(); });
+$("#reqEmailBtn").addEventListener("click", () => { $("#manualSignin").open = true; setPwMode("new"); $("#newName").focus(); $("#newForm").scrollIntoView({ block: "center", behavior: "smooth" }); });
 function showNoAccess(user, email, req){
   const T = $("#noaccessTitle"), M = $("#noaccessMsg"), B = $("#accessBox");
   B.innerHTML = "";
@@ -170,6 +228,7 @@ onAuthStateChanged(auth, async user => {
 async function startFor(user){
   if (started) return; started = true;
   show("loading");
+  if (!user.emailVerified) return showVerify(user);   // a new email/password account that hasn't confirmed its address yet
   const email = lower(user.email);
   try {
     if (email === lower(PAPERWORK_EMAIL)) { homeView = "vault"; show("vault"); return startVault(email); }

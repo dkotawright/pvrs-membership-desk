@@ -1000,7 +1000,11 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 @media (max-width:880px){
   .gate.signin{padding-top:84px}
   .signwrap{grid-template-columns:1fr;gap:28px;width:min(420px,100%)}
-  .signwrap .sheet{order:-1}
+  /* phones: greeting, weather, then the application card, then sign-in */
+  .welcome{display:flex;flex-direction:column}
+  .welcome .wx{order:1;margin-bottom:16px}
+  .welcome .joincta{order:2;margin-bottom:0}
+  .welcome .welcome-links{order:3;margin-top:16px}
   .welcome .greet{font-size:30px}
 }
 @media (prefers-reduced-motion:reduce){ .welcome{animation:none} }
@@ -1041,3 +1045,10 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .homecard.featured em{align-self:flex-start;color:#fff;background:linear-gradient(135deg,#ff4d5e,#c8102e);padding:9px 18px;border-radius:999px;box-shadow:0 8px 20px -10px rgba(255,77,94,.9);transition:filter .15s}
 .homecard.featured:hover em{filter:brightness(1.08)}
 .homecard .hc-ic{color:#fff}
+/* Email + password: Sign in / Create account */
+.manual .pwbody{padding:2px 16px 14px;display:flex;flex-direction:column;gap:12px}
+.manual .pwbody form{padding:0}
+.gate .seg.pwmode{display:grid;grid-template-columns:1fr 1fr;border-radius:999px}
+.gate .seg.pwmode button{height:30px;font-size:13px}
+.reqbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.reqbtns .reqbtn{width:100%;justify-content:center}

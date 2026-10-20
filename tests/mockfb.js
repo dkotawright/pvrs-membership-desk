@@ -3,12 +3,21 @@
 const M = window.__mock || (window.__mock = { docs: new Map(), listeners: new Set(), seq: 0 });
 const user = () => window.__MOCK_USER || null;
 export const initializeApp = cfg => ({ cfg });
-const AUTH = { get currentUser(){ const u = user(); return u ? { ...u, providerData: [{ providerId: "google.com" }] } : null; } };
+const AUTH = { get currentUser(){ const u = user(); return u ? { ...u, emailVerified: u.emailVerified !== false, providerData: [{ providerId: u.provider || "google.com" }],
+  reload: async () => {}, getIdToken: async () => "token" } : null; } };
 M.authCbs = M.authCbs || [];
 export const getAuth = () => AUTH;
 export const onAuthStateChanged = (_a, cb) => { M.authCbs.push(cb); setTimeout(() => cb(AUTH.currentUser), 30); return () => {}; };
 export const signInWithEmailAndPassword = async () => { throw Object.assign(new Error("bad"), { code: "auth/invalid-credential" }); };
 export const sendPasswordResetEmail = async () => {};
+// Email + password accounts: new ones start unconfirmed; a test flips window.__MOCK_USER.emailVerified to "click the link".
+export const createUserWithEmailAndPassword = async (_a, email, pw) => {
+  if ((M.existingEmails || ["dkota@pvrs.org"]).includes(email)) throw Object.assign(new Error("in use"), { code: "auth/email-already-in-use" });
+  window.__MOCK_USER = { email, displayName: "", emailVerified: false, provider: "password" }; M.created = { email, pw };
+  M.authCbs.forEach(cb => cb(AUTH.currentUser)); return { user: AUTH.currentUser };
+};
+export const sendEmailVerification = async (u, settings) => { (M.verifySent = M.verifySent || []).push({ email: u.email, url: settings && settings.url }); };
+export const updateProfile = async (u, p) => { if (window.__MOCK_USER) Object.assign(window.__MOCK_USER, p); };
 export const EmailAuthProvider = { credential: (email, password) => ({ email, password }) };
 export const linkWithCredential = async () => {};
 export const updatePassword = async () => {};
