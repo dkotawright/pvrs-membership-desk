@@ -1052,3 +1052,4 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .gate .seg.pwmode button{height:30px;font-size:13px}
 .reqbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .reqbtns .reqbtn{width:100%;justify-content:center}
+.welcome .greet{overflow:visible;line-height:1.12;padding-bottom:2px}   /* room for descenders (the g in "evening") */
