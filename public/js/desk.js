@@ -1,5 +1,5 @@
 // Staff Desk: roster, applicant file, board, onboarding, interview times, settings.
-import { auth, db, storage, doc, collection, collectionGroup, getDoc, setDoc, updateDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch, query, where,
+import { auth, db, storage, doc, collection, collectionGroup, getDoc, setDoc, runTransaction, updateDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch, query, where,
   sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut, uploadBytes,
   GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
@@ -1502,11 +1502,18 @@ async function importSubmission(snap){
   const refs = {}; (f.references || []).slice(0, 4).forEach((r, i) => { refs["r" + (i + 1)] = { name: r.name || "", email: lower(r.email), phone: r.phone || "", relationship: r.relationship || "", address: r.address || "" }; });
   const form = { ...f }; delete form.hp; delete form.status;
   try {
-    const b = writeBatch(db);
-    b.set(doc(db, "applicants", id), shared);
-    b.set(doc(db, "applicants", id, "private", "main"), { refs, form, secUpdatedAt: now, secUpdatedBy: S.me });
-    b.update(doc(db, "submissions", snap.id), { status: "imported", applicantId: id, importedAt: now });
-    await b.commit();
+    // Claim it against the live database: if the desk is open in several places (another tab, the Dock app, a laptop
+    // waking up with an out-of-date copy), only the first one imports it; the rest see it's taken and skip.
+    const subRef = doc(db, "submissions", snap.id);
+    const claimed = await runTransaction(db, async tx => {
+      const cur = await tx.get(subRef);
+      if (!cur.exists() || cur.data().status !== "new") return false;
+      tx.set(doc(db, "applicants", id), shared);
+      tx.set(doc(db, "applicants", id, "private", "main"), { refs, form, secUpdatedAt: now, secUpdatedBy: S.me });
+      tx.update(subRef, { status: "imported", applicantId: id, importedAt: now });
+      return true;
+    });
+    if (!claimed) return;
     addDoc(collection(db, "applicants", id, "history"), { at: Date.now(), by: S.me, changes: [{ path: "_created", from: "", to: "Online application from " + name }] }).catch(() => {});
     toast(`New online application from ${name}`);
   } catch (e) { console.error(e); importing.delete(snap.id); }

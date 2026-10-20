@@ -1,6 +1,6 @@
 // Security-rule tests against the Firestore + Storage emulators. Run with tests/run-rules.sh.
 import { initializeTestEnvironment, assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, collection, collectionGroup, writeBatch } from "firebase/firestore";
+import { doc, setDoc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, collection, collectionGroup, writeBatch, runTransaction, query, where } from "firebase/firestore";
 import { ref, uploadBytes, getBytes } from "firebase/storage";
 import fs from "node:fs";
 
@@ -84,6 +84,23 @@ await t("an applicant can send a replacement reference we asked for", addDoc(col
 await t("…but not for one we didn't ask about", addDoc(collection(applicant, "portal/a1/refUpdates"), { slot: 1, name: "New", relationship: "Coach", email: "n@example.com", phone: "", address: "", at: now(), by: "app@example.com" }), false);
 await t("the owner reads replacement references", getDocs(collectionGroup(owner, "refUpdates")), true);
 await t("a stranger can't see interview times", getDocs(collection(stranger, "slots")), false);
+
+console.log("Online application imported once, even with several desks open");
+{
+  const subId = (await addDoc(collection(anon, "submissions"), sub())).id;
+  const desks = [fsOf("dkota@pvrs.org"), fsOf("dkota@pvrs.org"), fsOf("dkota@pvrs.org")];   // three separate connections, like tab + Dock app + laptop
+  const claim = (db, n) => runTransaction(db, async tx => {
+    const ref0 = doc(db, "submissions", subId), cur = await tx.get(ref0);
+    if (cur.data().status !== "new") return false;
+    tx.set(doc(db, "applicants", "race" + n), { name: "Race Test" });
+    tx.update(ref0, { status: "imported", applicantId: "race" + n, importedAt: now() });
+    return true;
+  });
+  const res = await Promise.all(desks.map(claim));
+  let made = 0; await env.withSecurityRulesDisabled(async c => { made = (await getDocs(query(collection(c.firestore(), "applicants"), where("name", "==", "Race Test")))).size; });
+  if (res.filter(Boolean).length === 1 && made === 1) { pass++; console.log("  ✓ 3 desks importing the same application at once → exactly 1 applicant"); }
+  else { fail++; console.log("  ✗ race produced", made, "applicants", JSON.stringify(res)); }
+}
 
 console.log("Storage");
 const st = email => ctx(email).storage(), pdf = new Uint8Array([37, 80, 68, 70]), meta = { contentType: "application/pdf" };

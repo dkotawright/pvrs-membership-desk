@@ -217,6 +217,26 @@ try {
     await b.scrollIntoViewIfNeeded(); await snap(page, "10-portal-secure-upload");
     await ctx.close();
   }
+  // ---- an online application is imported exactly once, even if several desks see it
+  {
+    const { ctx, page } = await open(browser); await wait(page, 800);
+    const count = () => page.evaluate(() => [...window.__mock.docs.entries()].filter(([k, v]) => /^applicants\/[^/]+$/.test(k) && v.name === "Test Online").length);
+    if (await count() !== 1) fail("online application not imported once: " + await count()); else ok("online application imported into the desk");
+    const st = await page.evaluate(() => window.__mock.docs.get("submissions/sub1"));
+    if (st.status !== "imported" || !st.applicantId) fail("submission not marked imported"); else ok("submission marked imported");
+    // two more desks wake up with an out-of-date copy that still says "new" and try to import it at the same moment
+    await page.evaluate(async () => {
+      const fb = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const claim = () => fb.runTransaction({}, async tx => { const cur = await tx.get(fb.doc({}, "submissions/sub1"));
+        if (cur.data().status !== "new") return false; tx.set(fb.doc({}, "applicants/dupe" + Math.random()), { name: "Test Online" }); tx.update(fb.doc({}, "submissions/sub1"), { status: "imported" }); return true; });
+      const d = window.__mock.docs.get("submissions/sub1"); d.status = "new"; delete d.applicantId;   // pretend it was never imported, then race 3 desks
+      [...window.__mock.docs.keys()].filter(k => /^applicants\//.test(k) && window.__mock.docs.get(k).name === "Test Online").forEach(k => window.__mock.docs.delete(k));
+      window.__race = await Promise.all([claim(), claim(), claim()]);
+    });
+    const race = await page.evaluate(() => window.__race);
+    if (race.filter(Boolean).length !== 1 || await count() !== 1) fail("race made duplicates: " + JSON.stringify(race) + " count " + await count()); else ok("3 desks racing for one application → exactly 1 applicant");
+    await ctx.close();
+  }
   // ---- the rest of the app still loads cleanly
   for (const [url, user, sel, label] of [["/", null, "#home", "home page"], ["/apply", null, "#apply", "online application"], ["/signin", null, "#signin", "sign-in"],
     ["/", OWNER, "#app", "owner desk"], ["/", { email: "marcus.bell@example.com", displayName: "" }, "#portal", "applicant portal"], ["/", { email: "orientationpaperwork@pvrs.org", displayName: "" }, "#vault", "paperwork page"]]) {

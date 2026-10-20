@@ -65,6 +65,7 @@ const emit = () => { for (const l of [...M.listeners]) fire(l); };
 M.emit = emit;
 const tick = () => new Promise(r => setTimeout(r, 5));
 function write(path, data, doMerge){
+  (M.ver = M.ver || {})[path] = (M.ver[path] || 0) + 1;
   const d = clone(data);
   if (doMerge && M.docs.has(path)) { const cur = M.docs.get(path); for (const k in d) { if (d[k] === null) cur[k] = null; else if (isObj(d[k]) && isObj(cur[k])) merge(cur[k], d[k]); else cur[k] = d[k]; } }
   else M.docs.set(path, d);
@@ -82,6 +83,22 @@ export const writeBatch = () => { const ops = []; return {
   update(r, d){ ops.push(() => { log("update", r.path, d); write(r.path, d, true); }); return this; },
   delete(r){ ops.push(() => { log("delete", r.path); M.docs.delete(r.path); }); return this; },
   async commit(){ await tick(); ops.forEach(f => f()); emit(); } }; };
+// Transactions: like Firestore, if a document read inside the transaction changed before it commits, run it again.
+M.ver = M.ver || {};
+const bump = path => { M.ver[path] = (M.ver[path] || 0) + 1; };
+export const runTransaction = async (_db, fn) => {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const seen = {}, ops = [];
+    const tx = { get: async r => { await tick(); seen[r.path] = M.ver[r.path] || 0; return snapDoc(r.path); },
+      set(r, d, o){ ops.push(() => { log("set", r.path, d); write(r.path, d, o && o.merge); bump(r.path); }); return tx; },
+      update(r, d){ ops.push(() => { log("update", r.path, d); write(r.path, d, true); bump(r.path); }); return tx; },
+      delete(r){ ops.push(() => { log("delete", r.path); M.docs.delete(r.path); bump(r.path); }); return tx; } };
+    const res = await fn(tx);
+    if (Object.entries(seen).some(([p, v]) => (M.ver[p] || 0) !== v)) continue;   // someone else changed it first: retry
+    ops.forEach(f => f()); emit(); return res;
+  }
+  throw Object.assign(new Error("contention"), { code: "aborted" });
+};
 export const getStorage = () => ({});
 export const ref = (_s, path) => ({ path });
 export const uploadBytes = async () => ({});
@@ -105,5 +122,8 @@ if (!M.seeded) {
   put("refLinks/linkGoodToken123456789", { appId: "a1", slot: 1, applicant: "Georgia Thurmond", first: "Georgia", refName: "Ann Lee", createdAt: now - day, expiresAt: now + 59 * day, by: "dkota@pvrs.org" });
   put("refLinks/linkOldToken1234567890", { appId: "a1", slot: 2, applicant: "Georgia Thurmond", first: "Georgia", refName: "Sam Ortiz", createdAt: now - 90 * day, expiresAt: now - day, by: "dkota@pvrs.org" });
   put("refLinks/linkUsedToken12345678", { appId: "a1", slot: 2, applicant: "Georgia Thurmond", first: "Georgia", refName: "Sam Ortiz", createdAt: now - 9 * day, expiresAt: now + 50 * day, by: "dkota@pvrs.org", submittedAt: now - day });
+  put("submissions/sub1", { v: 1, status: "new", submittedAt: now - 6e4, hp: "", person: { first: "Test", last: "Online", email: "test.online@example.com", phone: "315-555-0100", dob: "2004-01-01", birthplace: "", permAddr: { street: "1 Main", city: "Potsdam", state: "NY", zip: "13676" }, localAddr: null, dlState: "NY", dlNumber: "T-1", type: "Regular" },
+    education: {}, experience: { certs: [] }, employment: { jobs: [] }, background: { convicted: "no" }, references: [{ name: "R One", relationship: "Coach", email: "r1@example.com", phone: "1", address: "" }, { name: "R Two", relationship: "Boss", email: "r2@example.com", phone: "2", address: "" }, { name: "R Three", relationship: "Teacher", email: "r3@example.com", phone: "3", address: "" }],
+    signature: { confirmed: true, name: "Test Online" } });
   put("vault/v1", { appId: "a2", appName: "Marcus Bell", label: "Medical documentation", name: "physical.pdf", path: "confidential/a2/1.pdf", size: 1000, uploadedAt: now - 36e5, uploadedBy: "marcus.bell@example.com", from: "applicant" });
 }
