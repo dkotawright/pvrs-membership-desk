@@ -1358,7 +1358,7 @@ function bindEvents(){
     const rcp = t.closest("[data-refcopy]");
     if (rcp) { const url = await refLink(S.sel, +rcp.dataset.refcopy); if (url) toast((await copyText(url)) ? "Link copied. It's private to this reference and works once." : url); return; }
     const rml = t.closest("[data-refmail]"); if (rml) return emailRefLink(S.sel, +rml.dataset.refmail);
-    const rrm = t.closest("[data-refremind]"); if (rrm) return remindRefLink(S.sel, +rrm.dataset.refremind);
+    const rrem = t.closest("[data-refremind]"); if (rrem) return remindRefLink(S.sel, +rrem.dataset.refremind);
     const rp = t.closest("[data-refrep]");
     if (rp) { const a = S.apps.get(S.sel), i = rp.dataset.refrep;
       if (get(a,`refs.r${i}.replace`)) { edit(S.sel, `refs.r${i}.replace`, ""); toast("Request cancelled"); return; }

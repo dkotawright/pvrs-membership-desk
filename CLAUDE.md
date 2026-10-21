@@ -58,7 +58,7 @@ Read this first. It's the full context from the original build conversation (Oct
 
 ## IN PROGRESS (Oct 21) — "do it all" batch, deploy after each feature (Dkota's instruction)
 Done + deployed: phone bottom menu; (1) Checks tab = Screening + References; (2) phone Actions button in file header.
-(3) Reference nudges: CODE WRITTEN, NOT TESTED/DEPLOYED (refNudge/remindRefLink in desk.js, "Send reminder" on Checks + Email-all window). Next: add tests, run `node tests/browser.test.mjs` + `tests/run-rules.sh`, commit, deploy.
+(3) Reference nudges: deployed (refNudge/remindRefLink; 7 days, once a week; refs.rN.reminded).
 Still to build, in order: (4) Overview "To do" list (each in-process applicant's next step + one-tap action, uses STEP_TAB/MILESTONES + nudges); (5) Interview mode (full-screen, section by section); (6) Board meeting mode (one applicant per screen, record vote) which also (7) merges Copy agenda + Print packet into one "Board meeting" button; (8) ⌘K command palette (applicants + commands); (9) celebrations (confetti on board approval / onboarding complete, milestone chip); (10) monthly stats card (load the dataviz skill first).
 
 ## Setup status (as of Oct 16, 2026, evening)

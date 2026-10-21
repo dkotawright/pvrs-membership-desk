@@ -315,6 +315,29 @@ try {
     if (!/Request documents/.test(await page.locator("#modal h3").textContent())) fail("Actions → Request documents didn't open"); else ok("picking an action opens it");
     await ctx.close();
   }
+  // ---- nudges: references emailed 7+ days ago with no answer get a reminder
+  {
+    const { ctx, page } = await open(browser);
+    const iso = d => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+    await page.evaluate(([old, recent]) => { const d = window.__mock.docs, p = d.get("applicants/a1/private/main");
+      p.refs = { r1: { name: "Ann Lee", email: "ann.lee@example.com", contacted: old, method: "Email" }, r2: { name: "Sam Ortiz", email: "sam@example.com", contacted: recent }, r3: { name: "Kim Park", email: "kim@example.com" } };
+      window.__mock.emit(); }, [iso(10), iso(3)]);
+    await pickApplicant(page, "Georgia Thurmond");
+    await page.locator('.tabdock [data-tab="checks"]').click(); await wait(page, 300);
+    if (await page.locator("#refRemind1").isHidden() || !/no answer after 10 days/.test(await page.locator("#refFormNote1").textContent())) fail("no reminder for a 10-day-old reference"); else ok("a reference emailed 10 days ago is flagged with Send reminder");
+    if (await page.locator("#refRemind2").isVisible()) fail("reminder offered too early (3 days)"); else ok("no reminder before 7 days");
+    await page.locator('[data-act="refsall"]').click(); await wait(page, 300);
+    const rows = await page.locator("#rallList .row").evaluateAll(r => r.map(x => x.textContent.replace(/\s+/g, " ").trim()));
+    if (!/Ann Lee.*Send reminder/.test(rows[0]) || !/Sam Ortiz.*waiting for their answers/.test(rows[1]) || !/Kim Park.*Open email/.test(rows[2])) fail("email-all rows: " + JSON.stringify(rows)); else ok("Email-all window: reminder for Ann, waiting for Sam, first email for Kim");
+    await page.locator('[data-allmail="1"]').click(); await wait(page, 1500);
+    const mail = decodeURIComponent((await page.evaluate(() => window.__clicked || [])).filter(h => h.startsWith("mailto:")).pop() || "");
+    const p = await priv(page, "a1");
+    if (!/Reminder: reference for Georgia Thurmond/.test(mail) || !/friendly reminder/.test(mail) || !mail.includes("/ref/" + p.refs.r1.link)) fail("reminder email: " + mail.slice(0, 160)); else ok("reminder email is polite and carries the same private link");
+    if (!p.refs.r1.reminded) fail("reminded date not saved"); else ok("reminder date recorded");
+    await page.locator("#modal [data-x]").click(); await wait(page, 300);
+    if (await page.locator("#refRemind1").isVisible()) fail("reminder offered again right away"); else ok("no second reminder within a week");
+    await ctx.close();
+  }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);
