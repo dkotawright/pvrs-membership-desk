@@ -1054,3 +1054,35 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .reqbtns .reqbtn{width:100%;justify-content:center}
 .welcome .greet{overflow:visible;line-height:1.12;padding-bottom:2px}   /* room for descenders (the g in "evening") */
 .refsum-act{display:flex;justify-content:flex-start;margin-top:8px}
+
+/* Phones and narrow windows: floating glass menu at the bottom instead of the sidebar strip */
+.mnav{display:none}
+@media (max-width:860px){
+  .app>.side{display:none}
+  .app{grid-template-rows:minmax(0,1fr)}
+  .mnav{display:flex;align-items:center;gap:2px;position:fixed;z-index:40;left:50%;bottom:calc(12px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+    padding:6px;border-radius:999px;max-width:calc(100% - 20px);transition:transform .3s cubic-bezier(.2,.8,.2,1),opacity .2s}
+  .mnav button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:64px;height:52px;padding:4px 8px;border:0;border-radius:999px;
+    background:transparent;color:var(--fg2);font:inherit;font-size:10.5px;font-weight:650;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s,color .15s}
+  .mnav button svg{width:23px;height:23px}
+  .mnav button.on{color:var(--accent);background:color-mix(in srgb,var(--accent) 13%,transparent)}
+  .mnav button:active{transform:scale(.94)}
+  .mnav .mnew{min-width:52px;width:52px;height:52px;margin:0 4px;border-radius:50%;color:#fff;background:linear-gradient(140deg,#ff4d5e,#c8102e);box-shadow:0 10px 24px -8px rgba(200,16,46,.75)}
+  .mnav .mnew.on{background:linear-gradient(140deg,#ff4d5e,#c8102e);color:#fff}
+  .mnav .navbadge{position:absolute;top:3px;right:12px;min-width:17px;height:17px;font-size:10px}
+  .app.open .mnav{transform:translate(-50%,170%);opacity:0;pointer-events:none}
+  .app.ovopen .detail{transform:none}
+  .app .ov{display:block;padding:18px 14px calc(110px + env(safe-area-inset-bottom,0px))}
+  .list{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(86px + env(safe-area-inset-bottom,0px))}
+}
+@media (max-width:380px){ .mnav button{min-width:56px;padding:4px 4px} }
+/* More sheet */
+.moreme{display:flex;align-items:center;gap:12px;padding:2px 2px 4px}
+.moreme .av{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;background:var(--accent);flex:none}
+.moreme small{display:block;color:var(--fg2);font-size:12.5px}
+.morelist .row{width:100%;border:0;background:transparent;font:inherit;color:var(--fg);text-align:left;cursor:pointer;gap:12px}
+.morelist .row:hover{background:var(--fill)}
+.morelist .mi{width:22px;display:grid;place-items:center;color:var(--fg2)}
+.morelist .mi svg{width:18px;height:18px}
+.morelist .chev{color:var(--fg3);font-size:18px}

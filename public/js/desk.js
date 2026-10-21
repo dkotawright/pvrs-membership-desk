@@ -385,7 +385,8 @@ function renderDetail(){
   const fk = focusKey();
   try { paintDetail(); } finally { restoreFocus(fk); }
   const narrow = matchMedia("(max-width:860px)").matches;
-  [".roster", ".side"].forEach(s => { const el = $(s); if (el) el.inert = !!S.sel && narrow && $("#modal").hidden; });
+  [".roster", ".side"].forEach(s => { const el = $(s); if (el) el.inert = (!!S.sel || !!S.mOv) && narrow && $("#modal").hidden; });
+  paintMnav();
 }
 function paintDetail(){
   const D = $("#detail"), a = S.apps.get(S.sel);
@@ -820,6 +821,7 @@ function updateMsgBadges(){
   const n = unreadTotal(), b = $("#msgsBtn"); if (!b) return;
   let badge = b.querySelector(".navbadge"); if (!badge) { badge = document.createElement("b"); badge.className = "navbadge"; b.appendChild(badge); }
   badge.textContent = n || ""; badge.hidden = !n; b.title = n ? `Messages · ${n} unread` : "Messages from applicants";
+  const mb = $("#mnav [data-m=msgs] .navbadge"); if (mb) { mb.textContent = n || ""; mb.hidden = !n; }
   const tb = document.querySelector('.tabdock [data-tab="msgs"]'); if (tb && S.sel) tb.classList.toggle("unread", unreadOf(S.sel) > 0);
 }
 function openInbox(){
@@ -1171,6 +1173,34 @@ async function deleteApplicant(id){
 /* ---------- events ---------- */
 const prefs = { get(k){ try { return localStorage.getItem("pvrsDesk." + k); } catch { return null; } }, set(k, v){ try { localStorage.setItem("pvrsDesk." + k, v); } catch {} } };
 function switchTab(k){ flushAll(); S.tab = k; renderDetail(); const b = $("#dbody"); if (b) b.scrollTop = 0; }
+/* ---------- phone menu (floating glass bar at the bottom) ---------- */
+// It mirrors the sidebar: each item is shown only when the matching sidebar button is, so roles stay the same.
+function paintMnav(){
+  const m = $("#mnav"); if (!m) return;
+  m.querySelector('[data-m="new"]').hidden = $("#newBtn").hidden;
+  m.querySelector('[data-m="msgs"]').hidden = $("#msgsBtn").hidden;
+  m.querySelectorAll("[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === (S.mOv ? "ov" : "list")));
+  $("#app").classList.toggle("ovopen", !!S.mOv && !S.sel);
+}
+function mnavGo(k){
+  if (k === "new") return openNew();
+  if (k === "msgs") return openInbox();
+  if (k === "more") return openMore();
+  S.mOv = k === "ov";
+  if (S.sel) deselect(); else renderDetail();
+  if (k === "list") { const l = $("#list"); if (l) l.scrollTop = 0; }
+  paintMnav();
+}
+function openMore(){
+  const tools = [["slotsBtn", "Interview times"], ["agendaBtn", "Copy board agenda"], ["packetBtn", "Print board packet"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+    .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
+  const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
+  const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
+    <div class="ios morelist">${tools.map(([id, label]) => `<button class="row" type="button" data-more="${id}"><span class="mi">${icon(id)}</span><span class="lbl">${esc(label)}</span><span class="chev" aria-hidden="true">›</span></button>`).join("")}
+      <button class="row" type="button" data-signout><span class="mi">${$(".me [data-signout] svg")?.outerHTML || ""}</span><span class="lbl" style="color:var(--s-dec)">Sign out</span></button></div>
+    <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`);
+  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const b = e.target.closest("[data-more]"); if (b) { closeModal(); setTimeout(() => $("#" + b.dataset.more).click(), 60); } };
+}
 function deselect(){ flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
 function setFilter(f, focusList){
   S.filter = f; renderList();
@@ -1266,6 +1296,7 @@ function bindEvents(){
   $(".rhandle").addEventListener("mouseenter", () => R.classList.remove("nohover"));
   const sortSel = $("#sort"); sortSel.value = S.sort; sortSel.addEventListener("change", e => { S.sort = e.target.value; prefs.set("sort", S.sort); renderList(); });
   $("#overviewBtn").addEventListener("click", () => { if (S.sel) deselect(); else { S.filter = "all"; renderList(); } });
+  $("#mnav").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) mnavGo(b.dataset.m); });
   $("#kbdBtn").addEventListener("click", openShortcuts);
   addEventListener("keydown", onKeys);
   const D = $("#detail");
@@ -1759,7 +1790,7 @@ export function startDesk({ email, role, owner, name }){
   $("#meAv").textContent = initials(S.name || email);
   if (S.owner) $("#settingsBtn").hidden = false;
   if (S.canEdit) $("#slotsBtn").hidden = false;
-  $("#newBtn").hidden = !S.canEdit;
+  $("#newBtn").hidden = !S.canEdit; paintMnav();
   if (!S.canEdit) document.body.classList.add("viewonly-user");
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
   startIdleLock();
@@ -1795,7 +1826,7 @@ export function startDesk({ email, role, owner, name }){
     watchActivity();
     watchMessages();
     if (S.owner) { watchSubmissions(); watchRefUpdates(); watchRefResponses(); }
-    $("#msgsBtn").hidden = false;
+    $("#msgsBtn").hidden = false; paintMnav();
     if (S.owner) {
       let primed = false;
       onSnapshot(collection(db, "accessRequests"), snap => {
