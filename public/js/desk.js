@@ -262,7 +262,7 @@ function paintList(){
       <span class="av" aria-hidden="true">${esc(initials(a.name))}</span>
       <span class="ab">
         <span class="r1"><span class="nm">${hl(a.name||"Unnamed applicant", q)}</span><span class="pill">${STAGES[p.stage].label}</span></span>
-        <span class="meta">${get(a,"app.source") === "online" ? `<span class="srctag" title="Applied online">Online</span>` : ""}${[a.type,loc(a),inProc?`${d} day${d===1?"":"s"}`:null].filter(Boolean).map(esc).join(" · ")||"Details not entered"}</span>
+        <span class="meta">${milestoneChip(a)}${get(a,"app.source") === "online" ? `<span class="srctag" title="Applied online">Online</span>` : ""}${[a.type,loc(a),inProc?`${d} day${d===1?"":"s"}`:null].filter(Boolean).map(esc).join(" · ")||"Details not entered"}</span>
         <span class="next">${nextLine}</span>
         ${S.admin?`<span class="bar" title="${p.n} of ${MILESTONES.length} steps"><span style="width:${(p.n/MILESTONES.length*100).toFixed(1)}%"></span></span>`:""}
       </span>
@@ -597,6 +597,7 @@ function edit(id, path, value){
   const now = Date.now();
   const meta = kind === "pub" ? { updatedAt: now, updatedBy: S.me } : { secUpdatedAt: now, secUpdatedBy: S.me };
   const patch = merge(nest(path, value), meta);
+  const before = S.apps.get(id), wasApproved = get(before, "board.result") === "approved", wasActive = progress(before).stage === "act";
   logChange(id, path, get(S.apps.get(id), path), value);
   const store = kind === "pub" ? S.shared : S.secure;
   store.set(id, merge(store.get(id) || {}, clone(patch)));
@@ -606,6 +607,9 @@ function edit(id, path, value){
     const st = progress(S.apps.get(id)).stage;
     if (S.shared.get(id).stage !== st) { S.shared.get(id).stage = st; queue("pub", id, { stage: st }); rebuild(id); }
     schedulePortal(id);
+    const a = S.apps.get(id);
+    if (!wasActive && st === "act") celebrate(`🎉 ${first(a.name) || "They"} ${a.name ? "is" : "are"} now an active member!`);
+    else if (!wasApproved && get(a, "board.result") === "approved") celebrate(`🎉 ${a.name || "Applicant"} approved by the board!`);
   }
   setSave("Editing…");
   renderList(); syncDetail();
@@ -1233,6 +1237,35 @@ async function deleteApplicant(id){
 /* ---------- events ---------- */
 const prefs = { get(k){ try { return localStorage.getItem("pvrsDesk." + k); } catch { return null; } }, set(k, v){ try { localStorage.setItem("pvrsDesk." + k, v); } catch {} } };
 function switchTab(k){ flushAll(); if (S.ivMode && k !== "iv") exitIvMode(); S.tab = k; renderDetail(); const b = $("#dbody"); if (b) b.scrollTop = 0; }
+/* ---------- celebrations ---------- */
+// A short confetti burst in squad colours (skipped when the system asks for reduced motion) plus a toast.
+function celebrate(msg){
+  toast(msg);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const c = document.createElement("canvas"); c.className = "confetti"; c.setAttribute("aria-hidden", "true");
+  const dpr = Math.min(2, devicePixelRatio || 1); c.width = innerWidth * dpr; c.height = innerHeight * dpr; document.body.appendChild(c);
+  const x = c.getContext("2d"); x.scale(dpr, dpr);
+  const colors = ["#c8102e", "#ff4d5e", "#1f5fff", "#4c8dff", "#ffd66b", "#ffffff"];
+  const P = Array.from({ length: 140 }, () => ({ x: innerWidth / 2 + (Math.random() - .5) * 120, y: innerHeight * .35, vx: (Math.random() - .5) * 13, vy: -Math.random() * 12 - 4,
+    r: 4 + Math.random() * 5, a: Math.random() * 6, va: (Math.random() - .5) * .35, c: colors[Math.floor(Math.random() * colors.length)] }));
+  const t0 = performance.now();
+  const frame = t => {
+    const k = (t - t0) / 2400; x.clearRect(0, 0, innerWidth, innerHeight);
+    for (const p of P) { p.vy += .32; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.a += p.va;
+      x.save(); x.globalAlpha = Math.max(0, 1 - k); x.translate(p.x, p.y); x.rotate(p.a); x.fillStyle = p.c; x.fillRect(-p.r / 2, -p.r / 4, p.r, p.r / 2); x.restore(); }
+    if (k < 1) requestAnimationFrame(frame); else c.remove();
+  };
+  requestAnimationFrame(frame);
+}
+// A small badge on the applicant's card for a few weeks after a big moment.
+function milestoneChip(a){
+  if (!S.admin) return "";
+  const st = progress(a).stage, bd = get(a, "board.date"), recent = d => d && daysSince(d) <= 30;
+  if (st === "act" && recent(get(a, "notify.tech") || get(a, "notify.chief") || bd)) return `<span class="mschip act" title="Finished onboarding">⭐ New member</span>`;
+  if (get(a, "board.result") === "approved" && st !== "act" && recent(bd)) return `<span class="mschip" title="Approved by the board ${esc(fmtDate(bd))}">🎉 Approved</span>`;
+  return "";
+}
+
 /* ---------- ⌘K: search applicants and run commands ---------- */
 function openPalette(){
   const narrow = matchMedia("(max-width:860px)").matches;

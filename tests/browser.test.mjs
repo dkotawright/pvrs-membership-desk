@@ -431,6 +431,24 @@ try {
     if (await page.locator("#boardMtg").isHidden()) fail("'board' command didn't open the meeting"); else ok("commands work (board → Board meeting)");
     await ctx.close();
   }
+  // ---- celebrations
+  for (const reduce of [false, true]) {
+    const { ctx, page } = await open(browser);
+    if (reduce) await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.locator("#boardBtn").click(); await wait(page, 400);
+    await page.locator('#boardMtg [data-bres="approved"]').click(); await wait(page, 200);
+    const canvas = await page.locator("canvas.confetti").count(), msg = await page.locator("#toast").textContent();
+    if (!/approved by the board/.test(msg)) fail("no approval message: " + msg);
+    if (!reduce && canvas !== 1) fail("no confetti on board approval"); else if (!reduce) ok("board approval sets off confetti and a 🎉 message");
+    if (reduce && canvas) fail("confetti shown despite reduced motion"); else if (reduce) ok("reduced motion: message only, no confetti");
+    if (!reduce) {
+      await page.screenshot({ path: path.join(OUT, "17-celebrate.png") });
+      await page.locator('#boardMtg [data-bm="close"]').click(); await wait(page, 2600);
+      if (await page.locator("canvas.confetti").count()) fail("confetti not cleaned up"); else ok("confetti clears itself");
+      if (!/🎉 Approved/.test(await page.locator(".arow", { hasText: "Georgia Thurmond" }).textContent())) fail("no Approved badge on the card"); else ok("approved applicant gets a 🎉 Approved badge in the list");
+    }
+    await ctx.close();
+  }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);

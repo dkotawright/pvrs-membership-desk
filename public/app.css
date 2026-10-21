@@ -1187,3 +1187,8 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .paltag{color:var(--fg3);font-size:11px}
 .palhint{margin:0;text-align:center;font-size:12px}
 .palhint kbd{margin:0 1px}
+/* Celebrations */
+.confetti{position:fixed;inset:0;width:100vw;height:100vh;z-index:80;pointer-events:none}
+.mschip{display:inline-flex;align-items:center;font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:1px 7px;border-radius:999px;margin-right:6px;vertical-align:1px;
+  color:var(--s-appr);background:color-mix(in srgb,var(--s-appr) 14%,transparent)}
+.mschip.act{color:var(--s-act);background:color-mix(in srgb,var(--s-act) 14%,transparent)}
