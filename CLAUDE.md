@@ -60,7 +60,8 @@ Read this first. It's the full context from the original build conversation (Oct
 Done + deployed: phone bottom menu; (1) Checks tab = Screening + References; (2) phone Actions button in file header.
 (3) Reference nudges: deployed (refNudge/remindRefLink; 7 days, once a week; refs.rN.reminded).
 (4) Overview "To do": deployed (todoItems/todoCard; data-todo/data-totab/data-todoact — don't use data-tab, it switches tabs).
-Still to build, in order: (5) Interview mode (full-screen, section by section); (6) Board meeting mode (one applicant per screen, record vote) which also (7) merges Copy agenda + Print packet into one "Board meeting" button; (8) ⌘K command palette (applicants + commands); (9) celebrations (confetti on board approval / onboarding complete, milestone chip); (10) monthly stats card (load the dataviz skill first).
+(5) Interview mode: deployed (enterIvMode/applyIvMode/ivSteps; `.app.ivmode`; sections in question order via style.order from stackCols).
+Still to build, in order: (6) Board meeting mode (one applicant per screen, record vote) which also (7) merges Copy agenda + Print packet into one "Board meeting" button; (8) ⌘K command palette (applicants + commands); (9) celebrations (confetti on board approval / onboarding complete, milestone chip); (10) monthly stats card (load the dataviz skill first).
 
 ## Setup status (as of Oct 16, 2026, evening)
 - [x] Firebase project created (pvrs-membership), web app registered, config in `public/js/config.js`, `.firebaserc` set.

@@ -80,7 +80,8 @@ function tabHTML(tab){
       F.text(`refs.r${i}.email`,"Email","name@example.com","email"),F.text(`refs.r${i}.relationship`,"Relationship",""),F.text(`refs.r${i}.phone`,"Phone","","tel"),F.text(`refs.r${i}.address`,"Address",""),F.date(`refs.r${i}.contacted`,"Date contacted"),
       F.seg(`refs.r${i}.method`,"Method",[["Phone","Phone"],["Email","Email"],["Text","Text"]]),F.date(`refs.r${i}.returned`,"Date received"),F.init(`refs.r${i}.init`)].join("")}</div></section>`).join("")}
   </div>`;
-  if (tab === "iv") return `<div class="cols">
+  if (tab === "iv") return `<div class="ivstart"><button class="btn primary" type="button" data-act="ivmode"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>Start interview mode</button>
+    <span class="help">Full screen, one section at a time, big enough to read across the table. Answers save as you go.</span></div><div class="cols">
     ${group("Scheduling",[
       `<div class="row"><span class="lbl">Booked time<small id="bookedEcho">—</small></span><span id="bookedActs" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"></span></div>`,
       F.date("sched.contacted","Applicant contacted"),F.date("sched.scheduled","Interview date (if not booked above)"),F.text("sched.time","Interview time","6:30 PM"),F.date("sched.completed","Interview completed"),F.init("sched.completedInit","Completed by (initials)")])}
@@ -510,6 +511,7 @@ function syncDetail(){
     else { const sv = v == null ? "" : String(v); if (el !== document.activeElement && el.value !== sv) el.value = sv; }
   });
   document.querySelectorAll("#dbody [data-show]").forEach(el => { el.hidden = !SHOW[el.dataset.show](a); });
+  if (S.ivMode) applyIvMode();
 }
 function syncRefs(a){
   const rs = refStatus(a), refs = rs.list, got = rs.got, waiting = rs.short;
@@ -1229,7 +1231,56 @@ async function deleteApplicant(id){
 
 /* ---------- events ---------- */
 const prefs = { get(k){ try { return localStorage.getItem("pvrsDesk." + k); } catch { return null; } }, set(k, v){ try { localStorage.setItem("pvrsDesk." + k, v); } catch {} } };
-function switchTab(k){ flushAll(); S.tab = k; renderDetail(); const b = $("#dbody"); if (b) b.scrollTop = 0; }
+function switchTab(k){ flushAll(); if (S.ivMode && k !== "iv") exitIvMode(); S.tab = k; renderDetail(); const b = $("#dbody"); if (b) b.scrollTop = 0; }
+/* ---------- interview mode ---------- */
+// The Interview tab, full screen and one section at a time. Sections that don't apply (hidden by SHOW) are skipped;
+// the page sign-off is the last step. Inputs are the normal ones, so everything saves exactly as usual.
+function enterIvMode(){
+  const a = S.apps.get(S.sel); if (!a) return;
+  if (S.tab !== "iv") switchTab("iv");
+  S.ivMode = true; S.ivStep = 0;
+  $("#app").classList.add("ivmode");
+  applyIvMode();
+}
+function exitIvMode(){
+  S.ivMode = false;
+  $("#app").classList.remove("ivmode");
+  document.querySelectorAll("#dpanel .ivcur").forEach(g => g.classList.remove("ivcur"));
+  $("#ivBar")?.remove(); $("#ivTop")?.remove();
+  const b = $("#dbody"); if (b) b.scrollTop = 0;
+}
+// In question order: stackCols() splits sections into two columns (keeping style.order), so sort by that, then the sign-off.
+const ivSteps = () => {
+  const out = [];
+  document.querySelectorAll("#dpanel .cols").forEach(c => out.push(...[...c.querySelectorAll(".group")].sort((x, y) => (+x.style.order || 0) - (+y.style.order || 0))));
+  document.querySelectorAll("#dpanel > .group").forEach(g => out.push(g));
+  return out.filter(g => !g.hidden && !g.closest("[hidden]"));
+};
+function applyIvMode(){
+  if (!S.ivMode || S.tab !== "iv" || !S.sel) return exitIvMode();
+  const steps = ivSteps(); if (!steps.length) return;
+  S.ivStep = Math.max(0, Math.min(S.ivStep || 0, steps.length - 1));
+  document.querySelectorAll("#dpanel .group").forEach(g => g.classList.toggle("ivcur", g === steps[S.ivStep]));
+  const D = $("#detail"), a = S.apps.get(S.sel), cur = steps[S.ivStep];
+  const title = cur.querySelector("h3 span")?.textContent || "Section";
+  if (!$("#ivTop")) D.insertAdjacentHTML("beforeend", `<div class="ivtop glass" id="ivTop"><span class="ivwho"></span><button class="btn small" type="button" data-iv="exit">Done</button></div>`);
+  if (!$("#ivBar")) D.insertAdjacentHTML("beforeend", `<div class="ivbar glass" id="ivBar"><button class="btn" type="button" data-iv="prev">‹ Back</button><div class="ivpos"><b></b><small></small><span class="ivprog"><i></i></span></div><button class="btn primary" type="button" data-iv="next">Next ›</button></div>`);
+  $("#ivTop .ivwho").textContent = `Interview · ${a.name || "Applicant"}`;
+  $("#ivBar .ivpos b").textContent = title;
+  $("#ivBar .ivpos small").textContent = `${S.ivStep + 1} of ${steps.length}`;
+  $("#ivBar .ivprog i").style.width = `${Math.round((S.ivStep + 1) / steps.length * 100)}%`;
+  $("#ivBar [data-iv=prev]").disabled = S.ivStep === 0;
+  const last = S.ivStep === steps.length - 1, nb = $("#ivBar [data-iv=next]");
+  nb.textContent = last ? "Finish" : "Next ›";
+}
+function ivGo(d){
+  const steps = ivSteps();
+  if (d > 0 && S.ivStep >= steps.length - 1) { exitIvMode(); toast("Interview mode closed. Everything is saved."); return; }
+  flushAll(); S.ivStep = Math.max(0, S.ivStep + d); applyIvMode();
+  const b = $("#dbody"); if (b) b.scrollTop = 0;
+  const f = steps[S.ivStep] && ivSteps()[S.ivStep]?.querySelector("textarea,input:not([type=hidden]),.seg button"); if (f && matchMedia("(min-width:861px)").matches) f.focus({ preventScroll: true });
+}
+
 /* ---------- phone menu (floating glass bar at the bottom) ---------- */
 // It mirrors the sidebar: each item is shown only when the matching sidebar button is, so roles stay the same.
 function paintMnav(){
@@ -1267,7 +1318,7 @@ function openMore(){
     <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`);
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const b = e.target.closest("[data-more]"); if (b) { closeModal(); setTimeout(() => $("#" + b.dataset.more).click(), 60); } };
 }
-function deselect(){ flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
+function deselect(){ if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
 function setFilter(f, focusList){
   S.filter = f; renderList();
   if (focusList) { const L = $("#list"); $(".roster").scrollTop = 0; const first = L.querySelector(".arow"); if (first && innerWidth > 860) first.focus(); }
@@ -1325,6 +1376,7 @@ function onKeys(e){
   if (e.key === "Escape") {
     if (modalOpen) return;   // the modal handles its own Escape
     if (tg && tg.id === "q") { if (S.q) { S.q = ""; tg.value = ""; renderList(); } else tg.blur(); return; }
+    if (S.ivMode) { if (typing) tg.blur(); exitIvMode(); return; }
     if (typing) { tg.blur(); return; }
     if (S.sel) { const prev = S.sel; deselect(); const el = document.querySelector(`#list .arow[data-id="${CSS.escape(prev)}"]`); if (el) el.focus({ preventScroll: true }); }
     return;
@@ -1373,6 +1425,7 @@ function bindEvents(){
   D.addEventListener("keydown", e => { if (e.target.id === "replyText" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendReply(); } });
   D.addEventListener("click", async e => {
     const t = e.target;
+    const ivb = t.closest("[data-iv]"); if (ivb) { const k = ivb.dataset.iv; if (k === "exit") exitIvMode(); else ivGo(k === "next" ? 1 : -1); return; }
     const tab = t.closest("[data-tab]");
     if (tab) { switchTab(tab.dataset.tab); return; }
     const op = t.closest("[data-open]"); if (op) return select(op.dataset.open);
@@ -1398,6 +1451,7 @@ function bindEvents(){
       if (k === "delete") return confirmDelete(S.sel);
       if (k === "refsall") return openRefsAll(S.sel);
       if (k === "actions") return openActions();
+      if (k === "ivmode") return enterIvMode();
       if (k === "docs") return openRequestDocs(S.sel);
       if (k === "records") return openUploadRecords(S.sel);
       if (k === "viewform") return openForm(S.sel);

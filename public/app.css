@@ -1105,3 +1105,30 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .todomain .ot small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .todoitem .btn{flex:none}
 .oitem.showall{justify-content:center;color:var(--accent);font-weight:600}
+
+/* Interview mode: the Interview tab full screen, one section at a time, larger type */
+.ivstart{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 4px 18px}
+.ivstart .help{margin:0;color:var(--fg2);font-size:13px}
+.ivtop,.ivbar{display:none}
+.app.ivmode .detail{position:fixed;inset:0;z-index:45;border-radius:0;transform:none;background:color-mix(in srgb,var(--bg) 82%,transparent);-webkit-backdrop-filter:blur(30px);backdrop-filter:blur(30px)}
+.app.ivmode .dhead,.app.ivmode .tabdock,.app.ivmode .ivstart,.app.ivmode .viewonly,.app.ivmode .mnav{display:none!important}
+.app.ivmode #dpanel .group:not(.ivcur){display:none}
+.app.ivmode #dpanel .cols{display:block}
+.app.ivmode .dbody{padding:84px max(18px,calc(50% - 380px)) 140px}
+.app.ivmode #dpanel .group.ivcur{font-size:17px;max-width:760px;margin:0 auto}
+.app.ivmode #dpanel .group.ivcur h3{font-size:24px;letter-spacing:-.02em;color:var(--fg);text-transform:none;margin:0 4px 16px;font-family:var(--font-display)}
+.app.ivmode #dpanel .group.ivcur .row{padding:14px 18px}
+.app.ivmode #dpanel .group.ivcur .lbl{font-size:16px}
+.app.ivmode #dpanel .group.ivcur textarea,.app.ivmode #dpanel .group.ivcur input{font-size:17px}
+.app.ivmode #dpanel .group.ivcur textarea{min-height:5.5em}
+.app.ivmode #dpanel .group.ivcur .seg button{font-size:15px;min-height:40px}
+.app.ivmode .ivtop{display:flex;position:fixed;z-index:46;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:min(760px,calc(100% - 24px));align-items:center;justify-content:space-between;gap:12px;padding:8px 8px 8px 18px;border-radius:999px}
+.ivtop .ivwho{font-weight:650;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app.ivmode .ivbar{display:flex;position:fixed;z-index:46;bottom:calc(14px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);width:min(760px,calc(100% - 24px));align-items:center;gap:12px;padding:8px;border-radius:999px}
+.ivbar .btn{height:44px;padding:0 20px;font-size:15px}
+.ivpos{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center}
+.ivpos b{font-size:14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ivpos small{font-size:12px;color:var(--fg2)}
+.ivprog{display:block;width:70%;height:4px;border-radius:4px;background:var(--fill);overflow:hidden}
+.ivprog i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .25s}
+@media (max-width:520px){ .ivbar .btn{padding:0 14px} .app.ivmode .dbody{padding-left:12px;padding-right:12px} }

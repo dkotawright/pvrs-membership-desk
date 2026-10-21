@@ -352,6 +352,37 @@ try {
     if (!/Marcus Bell/.test(await page.locator("#dName").textContent()) || !(await page.locator('.tabdock [data-tab="checks"][aria-selected="true"]').count())) fail("to do row didn't open Marcus on Checks"); else ok("tapping a to-do opens the file on the right tab");
     await ctx.close();
   }
+  // ---- Interview mode
+  for (const [w, h, who] of [[1440, 900, OWNER], [390, 844, { email: "alex@pvrs.org", displayName: "Alex" }]]) {
+    const { ctx, page } = await open(browser, { w, h, user: who });
+    await pickApplicant(page, "Georgia Thurmond");
+    await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
+    await page.locator('[data-act="ivmode"]').click(); await wait(page, 400);
+    const vis = await page.locator("#dpanel .group:visible").count(), pos = await page.locator("#ivBar .ivpos").textContent();
+    if (vis !== 1 || !/1 of \d+/.test(pos)) fail(`interview mode at ${w}: ${vis} sections visible, ${pos}`); else ok(`interview mode shows one section at a time (${w}px${who === OWNER ? "" : ", member"})`);
+    const total = +pos.match(/of (\d+)/)[1];
+    let i = 0; while (i < 3) { await page.locator('#ivBar [data-iv="next"]').click(); await wait(page, 150); i++; }
+    const title = await page.locator("#ivBar .ivpos b").textContent();
+    const order = []; await page.locator('#ivBar [data-iv="prev"]').click(); await page.locator('#ivBar [data-iv="prev"]').click(); await page.locator('#ivBar [data-iv="prev"]').click(); await wait(page, 150);
+    for (let k = 0; k < 5; k++) { order.push(await page.locator("#ivBar .ivpos b").textContent()); await page.locator('#ivBar [data-iv="next"]').click(); await wait(page, 120); }
+    if (order.slice(0, 4).join("|") !== "Scheduling|Who was at the interview|About the applicant|EMS questions") fail("interview order: " + order.join(" → ")); else ok("interview mode follows the question order");
+    for (let k = 0; k < 2; k++) { await page.locator('#ivBar [data-iv="prev"]').click(); await wait(page, 100); }
+    const ta = page.locator("#dpanel .group.ivcur textarea").first();
+    if (await ta.count()) { await ta.fill("Grew up in Potsdam; nursing student."); await wait(page, 1200); }
+    const saved = await page.evaluate(() => JSON.stringify(window.__mock.docs.get("applicants/a1").iv || {}));
+    if (!/Grew up in Potsdam; nursing student/.test(saved)) fail("interview mode answer not saved (" + title + ")"); else ok("answers typed in interview mode save normally");
+    // answering "Member of another organization?" adds or removes the Past experience section
+    await page.evaluate(() => { const d = window.__mock.docs, a = d.get("applicants/a1"); a.iv = { ...(a.iv || {}), otherOrg: "yes" }; window.__mock.emit(); }); await wait(page, 400);
+    const total2 = +(await page.locator("#ivBar .ivpos small").textContent()).match(/of (\d+)/)[1];
+    await page.evaluate(() => { const d = window.__mock.docs, a = d.get("applicants/a1"); a.iv = { ...(a.iv || {}), otherOrg: "no" }; window.__mock.emit(); }); await wait(page, 400);
+    const total3 = +(await page.locator("#ivBar .ivpos small").textContent()).match(/of (\d+)/)[1];
+    if (total2 === total3) fail(`sections don't follow answers (${total2} vs ${total3})`); else ok("sections that don't apply are skipped as answers change");
+    if (w === 1440) await page.screenshot({ path: path.join(OUT, "14-interview-mode.png") });
+    else await page.screenshot({ path: path.join(OUT, "15-interview-mode-phone.png") });
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    if (await page.locator("#app").evaluate(a => a.classList.contains("ivmode")) || await page.locator("#ivBar").count()) fail("Escape didn't leave interview mode"); else ok("Escape leaves interview mode");
+    await ctx.close();
+  }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);
