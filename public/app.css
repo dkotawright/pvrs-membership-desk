@@ -1172,3 +1172,18 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .bmbar small{color:var(--fg2);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .bmbar .btn{height:44px;padding:0 20px}
 @media (max-width:760px){ .bmbody{grid-template-columns:1fr} .bmchecks{grid-template-columns:1fr} .bmtop{border-radius:20px} .bmtg{padding-top:calc(130px + env(safe-area-inset-top,0px))} }
+/* ⌘K palette */
+.pal{display:flex;flex-direction:column;gap:10px}
+.pal input{border:1px solid var(--sep);background:var(--box);border-radius:12px;padding:12px 14px;font:inherit;font-size:16px;color:var(--fg);outline:none;width:100%;box-sizing:border-box}
+.pal input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.pallist{display:flex;flex-direction:column;max-height:min(52vh,420px);overflow-y:auto;border-radius:14px;background:var(--fill);padding:4px}
+.palitem{display:flex;align-items:center;gap:11px;width:100%;border:0;background:transparent;font:inherit;color:var(--fg);text-align:left;padding:8px 10px;border-radius:10px;cursor:pointer}
+.palitem.on{background:var(--box);box-shadow:0 1px 4px var(--shadow)}
+.palitem .av{width:30px;height:30px;font-size:11.5px;flex:none}
+.palic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--box);color:var(--fg2);flex:none;font-size:13px}
+.palitem .ot{flex:1;min-width:0}
+.palitem .ot b{display:block;font-size:14px;font-weight:600}
+.palitem .ot small{display:block;color:var(--fg2);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.paltag{color:var(--fg3);font-size:11px}
+.palhint{margin:0;text-align:center;font-size:12px}
+.palhint kbd{margin:0 1px}

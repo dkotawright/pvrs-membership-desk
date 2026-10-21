@@ -378,7 +378,7 @@ function renderOverview(){
       ${activityCard()}
 
     </div>
-    <p class="kbdhint">Tip: press <kbd>⌘K</kbd> to search, <kbd>J</kbd> <kbd>K</kbd> to move through applicants, <kbd>?</kbd> for all shortcuts.</p>
+    <p class="kbdhint">Tip: press <kbd>⌘K</kbd> to find anyone or run a command, <kbd>J</kbd> <kbd>K</kbd> to move through applicants, <kbd>?</kbd> for all shortcuts.</p>
   </div></div>`;
   if (D.querySelector(".ov") && D._ovHTML === html) return;
   D._ovHTML = html; D.innerHTML = html; stackCols(D);
@@ -1233,6 +1233,61 @@ async function deleteApplicant(id){
 /* ---------- events ---------- */
 const prefs = { get(k){ try { return localStorage.getItem("pvrsDesk." + k); } catch { return null; } }, set(k, v){ try { localStorage.setItem("pvrsDesk." + k, v); } catch {} } };
 function switchTab(k){ flushAll(); if (S.ivMode && k !== "iv") exitIvMode(); S.tab = k; renderDetail(); const b = $("#dbody"); if (b) b.scrollTop = 0; }
+/* ---------- ⌘K: search applicants and run commands ---------- */
+function openPalette(){
+  const narrow = matchMedia("(max-width:860px)").matches;
+  const go = fn => () => { closeModal(); setTimeout(fn, 60); };
+  const openFile = (id, tab) => go(() => { select(id); if (tab && tab !== S.tab) switchTab(tab); });
+  const commands = [
+    { label: "New applicant", hint: "N", show: S.canEdit, words: "new add create applicant", run: go(openNew) },
+    { label: "Overview", show: true, words: "overview home dashboard to do", run: go(() => narrow ? mnavGo("ov") : (S.sel ? deselect() : renderOverview())) },
+    { label: "Board meeting", show: S.admin, words: "board meeting agenda packet vote", run: go(openBoardMtg) },
+    { label: "Interview times", show: S.canEdit, words: "interview times slots schedule calendar", run: go(openSlots) },
+    { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(openInbox) },
+    { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
+    { label: "Sign-in password", show: true, words: "password key sign in", run: go(openPassword) },
+    { label: "Keyboard shortcuts", hint: "?", show: true, words: "keyboard shortcuts help keys", run: go(openShortcuts) },
+    { label: "Sign out", show: true, words: "sign out log out logout", run: go(() => document.querySelector("[data-signout]").click()) },
+  ].filter(c => c.show);
+  const M = openModal(`<div class="pal"><input id="palQ" type="search" placeholder="Find an applicant or type a command…" autocomplete="off" spellcheck="false" aria-label="Find an applicant or run a command" aria-controls="palList">
+    <div class="pallist" id="palList" role="listbox"></div><p class="help palhint"><kbd>↑</kbd><kbd>↓</kbd> to move · <kbd>↩</kbd> to open · <kbd>esc</kbd> to close</p></div>`);
+  let items = [], cur = 0;
+  // Every typed word must start some word in the text ("board" matches "Board meeting", not "dashboard").
+  const has = (hay, q) => { const words = hay.split(/[^a-z0-9@.]+/).filter(Boolean); return q.split(/\s+/).filter(Boolean).every(w => words.some(x => x.startsWith(w))); };
+  const build = () => {
+    const q = $("#palQ").value.trim().toLowerCase(), out = [];
+    const people = sorted().map(r => r.a).filter(a => !q || has(`${a.name || ""} ${a.email || ""} ${a.phone || ""} ${String(a.phone || "").replace(/\D/g, "")}`.toLowerCase(), q));
+    people.slice(0, q ? 6 : 5).forEach(a => out.push({ label: a.name || "Unnamed applicant", sub: [STAGES[view(a).stage]?.label, a.type].filter(Boolean).join(" · "), av: a, run: openFile(a._id) }));
+    const top = q && people[0];
+    if (top && people.length <= 3) {
+      const fn = top.name || "applicant", id = top._id;
+      out.push({ label: `Interview mode`, sub: fn, icon: "▶", run: go(() => { select(id); enterIvMode(); }) });
+      if (S.admin) out.push({ label: "Open Checks", sub: fn, icon: "✓", run: openFile(id, "checks") });
+      if (S.canEdit && refList(top).length) out.push({ label: "Email reference forms", sub: fn, icon: "✉", run: go(() => openRefsAll(id)) });
+      if (S.canEdit && !get(top, "portal.invited") && okEmail(top.email)) out.push({ label: "Send portal invite", sub: fn, icon: "✉", run: go(() => inviteToPortal(id)) });
+      if (S.canEdit && okEmail(top.email)) out.push({ label: `Email ${first(top.name)}`, sub: top.email, icon: "✉", run: go(() => { select(id); openEmailPicker(); }) });
+    }
+    commands.filter(c => !q || has(`${c.label.toLowerCase()} ${c.words}`, q))
+      .sort((x, y) => (q && !x.label.toLowerCase().startsWith(q)) - (q && !y.label.toLowerCase().startsWith(q)))
+      .forEach(c => out.push({ ...c, cmd: true }));
+    items = out; cur = Math.min(cur, Math.max(0, items.length - 1));
+    $("#palList").innerHTML = items.length ? items.map((x, i) => `<button type="button" class="palitem${i === cur ? " on" : ""}" role="option" aria-selected="${i === cur}" data-pi="${i}">
+        ${x.av ? `<span class="av" style="--stage-c:${stageVar(view(x.av).stage)}" aria-hidden="true">${esc(initials(x.av.name))}</span>` : `<span class="palic" aria-hidden="true">${esc(x.icon || "›")}</span>`}
+        <span class="ot"><b>${esc(x.label)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</span>${x.hint ? `<kbd>${esc(x.hint)}</kbd>` : x.cmd ? `<small class="paltag">Command</small>` : ""}</button>`).join("")
+      : `<div class="oempty">Nothing matches “${esc(q)}”.</div>`;
+    $("#palList .palitem.on")?.scrollIntoView({ block: "nearest" });
+  };
+  const q = $("#palQ");
+  q.addEventListener("input", () => { cur = 0; build(); });
+  q.addEventListener("keydown", e => {
+    if (e.key === "ArrowDown") { e.preventDefault(); cur = (cur + 1) % Math.max(1, items.length); build(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); cur = (cur - 1 + items.length) % Math.max(1, items.length); build(); }
+    else if (e.key === "Enter") { e.preventDefault(); items[cur]?.run(); }
+  });
+  M.onclick = e => { const b = e.target.closest("[data-pi]"); if (b) items[+b.dataset.pi]?.run(); };
+  build(); q.focus();
+}
+
 /* ---------- interview mode ---------- */
 // The Interview tab, full screen and one section at a time. Sections that don't apply (hidden by SHOW) are skipped;
 // the page sign-off is the last step. Inputs are the normal ones, so everything saves exactly as usual.
@@ -1349,7 +1404,8 @@ function openEmailPicker(){
 function openShortcuts(){
   const k = (...keys) => `<span>${keys.map(x => `<kbd>${x}</kbd>`).join("")}</span>`;
   const M = openModal(`<h3>Keyboard shortcuts</h3><div class="keys">
-    ${k("⌘","K")}<span>Search applicants</span>
+    ${k("⌘","K")}<span>Search applicants or run a command</span>
+    ${k("/")}<span>Filter the applicant list</span>
     ${k("J")}<span>Next applicant (or <kbd>↓</kbd> in the list)</span>
     ${k("K")}<span>Previous applicant (or <kbd>↑</kbd> in the list)</span>
     ${k("/")}<span>Search</span>
@@ -1371,8 +1427,7 @@ function onKeys(e){
   const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey;
   if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
     e.preventDefault(); if (modalOpen) return;
-    if (innerWidth <= 860 && S.sel) deselect();
-    const q = $("#q"); q.focus(); q.select(); return;
+    return openPalette();
   }
   if (e.key === "Escape") {
     if (modalOpen) return;   // the modal handles its own Escape

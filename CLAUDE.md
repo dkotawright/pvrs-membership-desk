@@ -62,7 +62,8 @@ Done + deployed: phone bottom menu; (1) Checks tab = Screening + References; (2)
 (4) Overview "To do": deployed (todoItems/todoCard; data-todo/data-totab/data-todoact — don't use data-tab, it switches tabs).
 (5) Interview mode: deployed (enterIvMode/applyIvMode/ivSteps; `.app.ivmode`; sections in question order via style.order from stackCols).
 (6+7) Board meeting mode: deployed (#boardBtn → openBoardMtg/paintBoardMtg; list fixed at open; Copy agenda + Print packet live inside it; sidebar agenda/packet buttons removed).
-Still to build, in order: (8) ⌘K command palette (applicants + commands); (9) celebrations (confetti on board approval / onboarding complete, milestone chip); (10) monthly stats card (load the dataviz skill first).
+(8) ⌘K palette: deployed (openPalette; word-prefix matching; `/` still filters the list).
+Still to build, in order: (9) celebrations (confetti on board approval / onboarding complete, milestone chip); (10) monthly stats card (load the dataviz skill first).
 
 ## Setup status (as of Oct 16, 2026, evening)
 - [x] Firebase project created (pvrs-membership), web app registered, config in `public/js/config.js`, `.firebaserc` set.

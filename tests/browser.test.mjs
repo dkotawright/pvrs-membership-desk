@@ -410,6 +410,27 @@ try {
     if (!(await page.locator('#boardMtg [data-bk="board.motion"]').isDisabled())) fail("admin can edit the vote"); else ok("admins see the meeting view-only");
     await ctx.close();
   }
+  // ---- ⌘K: find anyone, run commands
+  {
+    const { ctx, page } = await open(browser);
+    await page.keyboard.press("Meta+k"); await wait(page, 300);
+    if (await page.locator("#palQ").count() !== 1) fail("⌘K didn't open the palette"); else ok("⌘K opens search and commands");
+    await page.locator("#palQ").fill("georg"); await wait(page, 150);
+    const items = await page.locator(".palitem").evaluateAll(b => b.map(x => x.textContent.replace(/\s+/g, " ").trim()));
+    if (!/^GT Georgia Thurmond/.test(items[0]) || !items.some(t => /Interview mode/.test(t)) || !items.some(t => /Email reference forms/.test(t))) fail("palette items: " + JSON.stringify(items)); else ok("typing a name finds them, with quick actions");
+    await page.keyboard.press("Enter"); await wait(page, 500);
+    if (!/Georgia Thurmond/.test(await page.locator("#dName").textContent())) fail("Enter didn't open Georgia"); else ok("Enter opens the applicant");
+    await page.keyboard.press("Meta+k"); await wait(page, 300);
+    await page.locator("#palQ").fill("georgia"); await page.keyboard.press("ArrowDown"); await wait(page, 100);
+    const sel = await page.locator(".palitem.on").textContent();
+    await page.keyboard.press("Enter"); await wait(page, 500);
+    if (!/Interview mode/.test(sel) || !(await page.locator("#app").evaluate(a => a.classList.contains("ivmode")))) fail("arrow + Enter didn't start interview mode: " + sel); else ok("arrow keys + Enter run an action (interview mode)");
+    await page.keyboard.press("Escape"); await wait(page, 200); await page.keyboard.press("Escape"); await wait(page, 300);
+    await page.keyboard.press("Meta+k"); await wait(page, 300);
+    await page.locator("#palQ").fill("board"); await page.keyboard.press("Enter"); await wait(page, 500);
+    if (await page.locator("#boardMtg").isHidden()) fail("'board' command didn't open the meeting"); else ok("commands work (board → Board meeting)");
+    await ctx.close();
+  }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);
