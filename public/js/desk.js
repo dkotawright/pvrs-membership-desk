@@ -75,7 +75,7 @@ function tabHTML(tab){
   <div class="cols">${[1,2,3,4].map(i => `<section class="group ref"><h3><span class="refh">Reference ${i}</span><span class="badge" id="refBadge${i}"></span></h3><div class="ios">${[
       F.text(`refs.r${i}.name`,"Name","Full name"),
       `<div class="row"><span class="lbl">Reference received<small id="refRcv${i}">—</small></span><button class="btn small" type="button" data-refrcv="${i}" id="refBtn${i}">Mark received</button></div>`,
-      `<div class="row"><span class="lbl">Online reference form<small id="refFormNote${i}">—</small></span><span class="rfbtns"><button class="btn small primary" type="button" data-refview="${i}" id="refView${i}" hidden>View answers</button><button class="btn small" type="button" data-refmail="${i}" id="refMail${i}">Email link</button><button class="btn small" type="button" data-refcopy="${i}" id="refCopy${i}">Copy link</button></span></div>`,
+      `<div class="row"><span class="lbl">Online reference form<small id="refFormNote${i}">—</small></span><span class="rfbtns"><button class="btn small primary" type="button" data-refview="${i}" id="refView${i}" hidden>View answers</button><button class="btn small primary" type="button" data-refremind="${i}" id="refRemind${i}" hidden>Send reminder</button><button class="btn small" type="button" data-refmail="${i}" id="refMail${i}">Email link</button><button class="btn small" type="button" data-refcopy="${i}" id="refCopy${i}">Copy link</button></span></div>`,
       `<div class="row"><span class="lbl">Need a different reference?<small id="refRepNote${i}">—</small></span><button class="btn small" type="button" data-refrep="${i}" id="refRepBtn${i}">Ask for a new one</button></div>`,
       F.text(`refs.r${i}.email`,"Email","name@example.com","email"),F.text(`refs.r${i}.relationship`,"Relationship",""),F.text(`refs.r${i}.phone`,"Phone","","tel"),F.text(`refs.r${i}.address`,"Address",""),F.date(`refs.r${i}.contacted`,"Date contacted"),
       F.seg(`refs.r${i}.method`,"Method",[["Phone","Phone"],["Email","Email"],["Text","Text"]]),F.date(`refs.r${i}.returned`,"Date received"),F.init(`refs.r${i}.init`)].join("")}</div></section>`).join("")}
@@ -337,7 +337,7 @@ function renderOverview(){
 // mark the interview completed and sign off the Interview page. Firestore rules enforce the same thing.
 const INTERVIEW_FIELDS = new Set(["sched.completed", "sched.completedInit", "signoff.iv.init", "signoff.iv.done"]);
 const canEditPath = path => S.canEdit || path.startsWith("iv.") || INTERVIEW_FIELDS.has(path);
-const OWNER_ONLY = '[data-act="records"],[data-recrm],[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],[data-refrep],[data-refmail],[data-refcopy],[data-act="refsall"],#delBtn,#rqAdd';
+const OWNER_ONLY = '[data-act="records"],[data-recrm],[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],[data-refrep],[data-refmail],[data-refremind],[data-refcopy],[data-act="refsall"],#delBtn,#rqAdd';
 const ownerOnlyToast = () => toast("View only. You can fill in the Interview tab; everything else is changed by the owner.");
 
 /* ---------- page sign-off ---------- */
@@ -467,7 +467,7 @@ function syncRefs(a){
     sum.className = "refsum " + (!refs.length ? "" : waiting ? "warn" : "ok");
     sum.innerHTML = `<b>${!refs.length ? "No references entered yet" : waiting ? `${got} of ${REFS_NEEDED} required references received · need ${waiting} more` : `${got} of ${refs.length} references received · requirement met`}</b>
       <span>${REFS_NEEDED} references must be in before the application goes to the board${refs.length > REFS_NEEDED ? "; any " + REFS_NEEDED + " of the " + refs.length + " listed will do" : ""}. The applicant sees each name with Received or Waiting in their portal; email addresses, dates and initials stay private.</span>
-      ${S.canEdit && refs.some(r => !r.received && !get(a,`refs.r${r.i}.form`)) ? `<span class="refsum-act"><button class="btn small primary" type="button" data-act="refsall">Email all reference forms</button></span>` : ""}`;
+      ${S.canEdit && refs.some(r => !r.received && !get(a,`refs.r${r.i}.form`) && (!get(a,`refs.r${r.i}.contacted`) || refNudge(a, r.i))) ? `<span class="refsum-act"><button class="btn small primary" type="button" data-act="refsall">Email all reference forms</button></span>` : ""}`;
   }
   for (const i of [1,2,3,4]) {
     const badge = $("#refBadge" + i); if (!badge) continue;
@@ -484,10 +484,12 @@ function syncRefs(a){
     const form = get(a,`refs.r${i}.form`), link = get(a,`refs.r${i}.link`), exp = get(a,`refs.r${i}.linkExp`) || 0;
     $("#refFormNote" + i).textContent = form ? `Answered ${fmtDate(form.date)} by ${(form.answers && form.answers.signName) || name}`
       : !name ? "Enter a name first"
-      : link && exp > Date.now() ? `Link made ${fmtDate(get(a,`refs.r${i}.linkAt`))} · waiting for their answers · works until ${new Date(exp).toLocaleDateString()}`
+      : refNudge(a, i) ? `Emailed ${fmtDate(get(a,`refs.r${i}.contacted`))}, no answer after ${daysSince(get(a,`refs.r${i}.contacted`))} days${get(a,`refs.r${i}.reminded`) ? ` (reminded ${fmtDate(get(a,`refs.r${i}.reminded`))})` : ""}. Time for a reminder.`
+      : link && exp > Date.now() ? `Link made ${fmtDate(get(a,`refs.r${i}.linkAt`))}${get(a,`refs.r${i}.reminded`) ? ` · reminded ${fmtDate(get(a,`refs.r${i}.reminded`))}` : ""} · waiting for their answers · works until ${new Date(exp).toLocaleDateString()}`
       : `Send ${first(name)} a private link to the reference form. Their answers land here and mark this reference received.`;
     $("#refView" + i).hidden = !form;
     for (const id0 of ["#refMail", "#refCopy"]) { const x = $(id0 + i); x.hidden = !!form || !S.canEdit; x.disabled = !name; }
+    $("#refRemind" + i).hidden = !(S.canEdit && refNudge(a, i));
   }
   const bn = $("#boardRefNote");
   if (bn) { bn.hidden = !(refs.length === 0 || waiting); bn.textContent = refs.length === 0 ? `No references entered yet. ${REFS_NEEDED} references must be in before this goes to the board.` : `Need ${waiting} more reference${waiting===1?"":"s"} (${got} of ${REFS_NEEDED} received${rs.pending.length ? "; still out: " + rs.pending.map(x => x.name).join(", ") : ""}). ${REFS_NEEDED} references must be in before this goes to the board.`; }
@@ -1356,6 +1358,7 @@ function bindEvents(){
     const rcp = t.closest("[data-refcopy]");
     if (rcp) { const url = await refLink(S.sel, +rcp.dataset.refcopy); if (url) toast((await copyText(url)) ? "Link copied. It's private to this reference and works once." : url); return; }
     const rml = t.closest("[data-refmail]"); if (rml) return emailRefLink(S.sel, +rml.dataset.refmail);
+    const rrm = t.closest("[data-refremind]"); if (rrm) return remindRefLink(S.sel, +rrm.dataset.refremind);
     const rp = t.closest("[data-refrep]");
     if (rp) { const a = S.apps.get(S.sel), i = rp.dataset.refrep;
       if (get(a,`refs.r${i}.replace`)) { edit(S.sel, `refs.r${i}.replace`, ""); toast("Request cancelled"); return; }
@@ -1608,6 +1611,22 @@ async function refLink(id, i){
   edit(id, `refs.r${i}.link`, t); edit(id, `refs.r${i}.linkAt`, today()); edit(id, `refs.r${i}.linkExp`, expiresAt);
   return `${location.origin}/ref/${t}`;
 }
+// Nudges: a reference emailed 7+ days ago who hasn't answered gets a "Send reminder" (at most once a week).
+const NUDGE_DAYS = 7;
+function refNudge(a, i){
+  const g = k => get(a,`refs.r${i}.${k}`);
+  if (!String(g("name") || "").trim() || g("form") || (g("returned") && !g("replace")) || !g("contacted")) return false;
+  return daysSince(g("contacted")) >= NUDGE_DAYS && (!g("reminded") || daysSince(g("reminded")) >= NUDGE_DAYS);
+}
+async function remindRefLink(id, i){
+  const a = S.apps.get(id); if (!a) return;
+  const to = lower(get(a,`refs.r${i}.email`) || ""), name = String(get(a,`refs.r${i}.name`) || "").trim();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) { toast("Add the reference's email address first."); return; }
+  const url = await refLink(id, i); if (!url) return;
+  const body = `Hi ${first(name)},\n\nJust a friendly reminder: ${a.name} listed you as a reference for the Potsdam Volunteer Rescue Squad, and we'd still love to hear from you. It takes about 5 minutes:\n\n${url}\n\nIf you've already sent it, thank you, and please ignore this note.\n\nThank you,\n${sig()}`;
+  const l = document.createElement("a"); l.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(`Reminder: reference for ${a.name}`)}&body=${encodeURIComponent(body)}`; l.click();
+  edit(id, `refs.r${i}.reminded`, today());
+}
 async function emailRefLink(id, i){
   const a = S.apps.get(id); if (!a) return;
   const to = lower(get(a,`refs.r${i}.email`) || ""), name = String(get(a,`refs.r${i}.name`) || "").trim();
@@ -1627,12 +1646,13 @@ function openRefsAll(id){
     if (get(x,`refs.r${r.i}.returned`) && !get(x,`refs.r${r.i}.replace`)) return { done: true, text: "Already received" };
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email)) return { done: true, text: "No email on file. Add one on the References tab" };
     const c = get(x,`refs.r${r.i}.contacted`);
-    return { done: false, text: r.email + (c ? ` · emailed ${fmtDate(c)}` : "") };
+    if (c && !refNudge(x, r.i)) return { done: true, text: `Emailed ${fmtDate(c)} · waiting for their answers` };
+    return { done: false, nudge: !!c, text: r.email + (c ? ` · emailed ${fmtDate(c)}, no answer yet` : "") };
   };
   const paint = () => {
     const todo = rows.filter(r => !status(r).done).length;
     $("#rallList").innerHTML = rows.map(r => { const st = status(r);
-      return `<div class="row"><span class="lbl">${esc(r.name)}<small>${esc(st.text)}</small></span>${st.done ? "" : `<button class="btn small ${sent.has(r.i) ? "" : "primary"}" type="button" data-allmail="${r.i}">${sent.has(r.i) ? "Opened ✓" : "Open email"}</button>`}</div>`; }).join("");
+      return `<div class="row"><span class="lbl">${esc(r.name)}<small>${esc(st.text)}</small></span>${st.done && !sent.has(r.i) ? "" : `<button class="btn small ${sent.has(r.i) ? "" : "primary"}" type="button" data-allmail="${r.i}" data-nudge="${st.nudge ? 1 : ""}">${sent.has(r.i) ? "Opened ✓" : st.nudge ? "Send reminder" : "Open email"}</button>`}</div>`; }).join("");
     $("#rallNote").textContent = todo ? `${todo} to send. Click each button, then press Send in Mail.` : "Everyone here has answered or been received.";
   };
   const sent = new Set();
@@ -1644,7 +1664,7 @@ function openRefsAll(id){
   M.onclick = async e => {
     if (e.target.closest("[data-x]")) return closeModal();
     const b = e.target.closest("[data-allmail]"); if (!b) return;
-    b.disabled = true; await emailRefLink(id, +b.dataset.allmail); sent.add(+b.dataset.allmail); paint();
+    b.disabled = true; await (b.dataset.nudge ? remindRefLink : emailRefLink)(id, +b.dataset.allmail); sent.add(+b.dataset.allmail); paint();
   };
 }
 function refAnswersHTML(a, i){
