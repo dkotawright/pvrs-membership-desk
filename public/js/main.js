@@ -116,11 +116,11 @@ $("#pwForgot").addEventListener("click", async () => {
 // addresses), then request access like Google users; nobody sees anything until the owner approves them.
 function setPwMode(m){
   $("#pwMode").querySelectorAll("[data-pwmode]").forEach(b => { const on = b.dataset.pwmode === m; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
-  $("#pwForm").hidden = m !== "in"; $("#newForm").hidden = m !== "new";
+  $("#pwForm").hidden = m !== "in"; $("#signupForm").hidden = m !== "new";
 }
 $("#pwMode").addEventListener("click", e => { const b = e.target.closest("[data-pwmode]"); if (b) { setPwMode(b.dataset.pwmode); (b.dataset.pwmode === "new" ? $("#newName") : $("#pwEmail")).focus(); } });
 const verifySettings = () => ({ url: location.origin + "/signin" });
-$("#newForm").addEventListener("submit", async e => {
+$("#signupForm").addEventListener("submit", async e => {
   e.preventDefault();
   const name = $("#newName").value.trim(), email = lower($("#newEmail").value), pw = $("#newPass").value;
   if (name.length < 2) { $("#newName").focus(); return toast("Enter your full name."); }
@@ -171,7 +171,7 @@ $("#verifyResend").addEventListener("click", async () => {
 // Not on the team, not an applicant: offer to request team access (the owner approves in Settings → Team).
 let wantsAccess = false;
 $("#reqAccessBtn").addEventListener("click", () => { wantsAccess = true; $("#googleBtn").click(); });
-$("#reqEmailBtn").addEventListener("click", () => { $("#manualSignin").open = true; setPwMode("new"); $("#newName").focus(); $("#newForm").scrollIntoView({ block: "center", behavior: "smooth" }); });
+$("#reqEmailBtn").addEventListener("click", () => { $("#manualSignin").open = true; setPwMode("new"); $("#newName").focus(); $("#signupForm").scrollIntoView({ block: "center", behavior: "smooth" }); });
 function showNoAccess(user, email, req){
   const T = $("#noaccessTitle"), M = $("#noaccessMsg"), B = $("#accessBox");
   B.innerHTML = "";

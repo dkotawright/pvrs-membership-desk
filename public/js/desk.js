@@ -1368,7 +1368,7 @@ function select(id){
 
 function openNew(){
   if (!S.canEdit) return ownerOnlyToast();
-  const M = openModal(`<form id="newForm" style="display:contents" novalidate><h3>New applicant</h3>
+  const M = openModal(`<form id="newAppForm" style="display:contents" novalidate><h3>New applicant</h3>
     <div class="ios">${F.text("n.name","Full name","First Last")}${F.text("n.phone","Phone","(315) 555-0100","tel")}${F.text("n.email","Email","name@example.com","email")}${F.date("n.received","Date received")}</div>
     <div class="ios">${F.seg("n.type","Membership type",TYPES.map(t=>[t,t]),true)}${F.seg("n.location","Location",[["Potsdam","Potsdam"],["other","Other"]])}<div id="nLocRow" hidden>${F.text("n.locationOther","Where?","Town")}</div></div>
     <div class="acts"><button class="btn" type="button" id="nCancel">Cancel</button><button class="btn primary" type="submit">Add applicant</button></div></form>`);
@@ -1377,7 +1377,7 @@ function openNew(){
   const paint = () => { $("#nLocRow").hidden = draft.location !== "other"; };
   $("#f-n-received").value = today(); paintSeg(); paint(); $("#f-n-name").focus();
   M.onclick = e => { const b = e.target.closest(".seg button"); if (b) { draft[b.parentElement.dataset.k.slice(2)] = b.dataset.v; paintSeg(); paint(); if (draft.location === "other") $("#f-n-locationOther").focus(); } if (e.target.id === "nCancel") closeModal(); };
-  $("#newForm").onsubmit = async e => {
+  $("#newAppForm").onsubmit = async e => {
     e.preventDefault();
     const name = $("#f-n-name").value.trim(); if (!name) { $("#f-n-name").focus(); return toast("Enter the applicant's name."); }
     const data = { name, phone:$("#f-n-phone").value.trim(), email:$("#f-n-email").value.trim(), type:draft.type, location:draft.location, ...(draft.location==="other"?{locationOther:$("#f-n-locationOther").value.trim()}:{}), stage:"screen",

@@ -170,17 +170,17 @@ try {
     const { ctx, page } = await open(browser, { url: "/signin", user: null });
     await page.evaluate(() => localStorage.setItem("pvrsWho", "staff")); await page.reload(); await wait(page, 700);
     await page.locator("#reqEmailBtn").click(); await wait(page, 300);
-    if (await page.locator("#newForm").isHidden() || !(await page.locator("#manualSignin").evaluate(d => d.open))) fail("Request with email didn't open Create account"); else ok("'With email' opens Create account");
+    if (await page.locator("#signupForm").isHidden() || !(await page.locator("#manualSignin").evaluate(d => d.open))) fail("Request with email didn't open Create account"); else ok("'With email' opens Create account");
     await snap(page, "08-create-account");
     await page.locator("#newName").fill("Pat Rivera"); await page.locator("#newEmail").fill("Pat.Rivera@Example.com");
     await page.locator("#newPass").fill("short"); await page.locator("#newPass2").fill("short");
-    await page.locator("#newForm button[type=submit]").click(); await wait(page, 200);
+    await page.locator("#signupForm button[type=submit]").click(); await wait(page, 200);
     if (await page.evaluate(() => window.__mock.created)) fail("weak password accepted"); else ok("passwords under 10 characters are refused");
     await page.locator("#newPass").fill("a-long-password-1"); await page.locator("#newPass2").fill("a-long-password-2");
-    await page.locator("#newForm button[type=submit]").click(); await wait(page, 200);
+    await page.locator("#signupForm button[type=submit]").click(); await wait(page, 200);
     if (await page.evaluate(() => window.__mock.created)) fail("mismatched passwords accepted"); else ok("mismatched passwords are refused");
     await page.locator("#newPass2").fill("a-long-password-1");
-    await page.locator("#newForm button[type=submit]").click(); await wait(page, 700);
+    await page.locator("#signupForm button[type=submit]").click(); await wait(page, 700);
     const st = await page.evaluate(() => ({ c: window.__mock.created, v: window.__mock.verifySent, u: window.__MOCK_USER }));
     if (!st.c || st.c.email !== "pat.rivera@example.com" || st.u.displayName !== "Pat Rivera") fail("account not created: " + JSON.stringify(st)); else ok("account created (email lowercased, name saved)");
     if (!st.v || !st.v.length || !/\/signin$/.test(st.v[0].url)) fail("no confirmation email"); else ok("confirmation email sent");
@@ -206,7 +206,7 @@ try {
     await page.locator("#reqEmailBtn").click(); await wait(page, 200);
     await page.locator("#newName").fill("Dkota W"); await page.locator("#newEmail").fill("dkota@pvrs.org");
     await page.locator("#newPass").fill("a-long-password-1"); await page.locator("#newPass2").fill("a-long-password-1");
-    await page.locator("#newForm button[type=submit]").click(); await wait(page, 400);
+    await page.locator("#signupForm button[type=submit]").click(); await wait(page, 400);
     if (!/already an account/.test(await page.locator("#toast").textContent())) fail("existing email message"); else ok("an email that already has an account gets a clear message");
     await ctx.close();
   }
@@ -235,6 +235,21 @@ try {
     });
     const race = await page.evaluate(() => window.__race);
     if (race.filter(Boolean).length !== 1 || await count() !== 1) fail("race made duplicates: " + JSON.stringify(race) + " count " + await count()); else ok("3 desks racing for one application → exactly 1 applicant");
+    await ctx.close();
+  }
+  // ---- New applicant (owner)
+  {
+    const { ctx, page } = await open(browser);
+    await page.locator("#newBtn").click(); await wait(page, 300);
+    if (await page.locator("#modal").isHidden()) fail("New applicant window didn't open"); else ok("New applicant opens");
+    const dupes = await page.evaluate(() => { const c = {}; document.querySelectorAll("[id]").forEach(e => { c[e.id] = (c[e.id] || 0) + 1; }); return Object.keys(c).filter(k => c[k] > 1); });
+    if (dupes.length) fail("duplicate ids on the page: " + dupes.join(", ")); else ok("no duplicate ids on the page");
+    await page.locator("#f-n-name").fill("Jamie Test"); await page.locator("#f-n-email").fill("jamie@example.com");
+    await page.locator("#newAppForm button[type=submit]").click(); await wait(page, 600);
+    const made = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k, v]) => /^applicants\/[^/]+$/.test(k) && v.name === "Jamie Test").length);
+    if (made !== 1) fail("New applicant not added: " + made); else ok("Add applicant creates the applicant");
+    if (!(await page.locator("#modal").isHidden()) || !/Jamie Test/.test(await page.locator("#dName").textContent())) fail("didn't close and open the new file"); else ok("window closes and opens the new applicant's file");
+    if (!/^http:\/\/localhost:5999\/$/.test(page.url())) fail("page navigated away: " + page.url());
     await ctx.close();
   }
   // ---- the rest of the app still loads cleanly
