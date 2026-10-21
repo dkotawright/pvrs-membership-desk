@@ -334,6 +334,46 @@ function todoCard(){
     ${items.length > 6 ? `<button class="oitem showall" type="button" data-cmd="todoall">${S.todoAll ? "Show fewer" : `Show all ${items.length}`}</button>` : ""}</div></section>`;
 }
 
+/* ---------- year at a glance (overview) ---------- */
+// Three headline numbers and one single-hue column chart (applications per month, last 12 months).
+// Every value is also in a screen-reader table; hovering or focusing a column shows its value.
+function statsData(){
+  const now = new Date(), yr = now.getFullYear(), months = [];
+  for (let k = 11; k >= 0; k--) { const d = new Date(yr, now.getMonth() - k, 1); months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, d, n: 0 }); }
+  let apps = 0, joined = 0; const waits = [];
+  for (const a of S.apps.values()) {
+    const rec = get(a, "app.received"), bd = get(a, "board.date"), ok = get(a, "board.result") === "approved";
+    if (rec) { const m = months.find(x => rec.startsWith(x.key)); if (m) m.n++; if (rec.startsWith(String(yr))) apps++; }
+    if (ok && bd && bd.startsWith(String(yr))) joined++;
+    if (ok && rec && bd && daysSince(bd) <= 365) waits.push(Math.max(0, Math.round((new Date(bd + "T12:00") - new Date(rec + "T12:00")) / 864e5)));
+  }
+  return { months, apps, joined, avg: waits.length ? Math.round(waits.reduce((x, y) => x + y, 0) / waits.length) : null, yr };
+}
+function statsCard(){
+  if (!S.admin) return "";
+  const st = statsData(), max = Math.max(1, ...st.months.map(m => m.n)), top = Math.max(...st.months.map(m => m.n));
+  const mname = (d, f) => d.toLocaleDateString(undefined, { month: f });
+  return `<section class="ovcard stats"><h3>Year at a glance<small>${st.yr}</small></h3>
+    <div class="kpis"><div class="kpi"><b>${st.apps}</b><span>Applications this year</span></div><div class="kpi"><b>${st.joined}</b><span>Approved by the board this year</span></div>
+      <div class="kpi"><b>${st.avg == null ? "—" : st.avg}</b><span>${st.avg == null ? "Days to board (no approvals yet)" : "Average days from application to board"}</span></div></div>
+    <div class="mchart"><h4>Applications per month</h4>
+      <div class="mbars" aria-hidden="true">${st.months.map(m => `<button type="button" class="bcol" tabindex="-1" data-mv="${m.n}" data-ml="${esc(mname(m.d, "long") + " " + m.d.getFullYear())}">${m.n && m.n === top ? `<span class="cap">${m.n}</span>` : ""}${m.n ? `<i style="height:${Math.max(4, Math.round(m.n / max * 100))}%"></i>` : ""}</button>`).join("")}</div>
+      <div class="mlabels" aria-hidden="true">${st.months.map(m => `<span>${esc(mname(m.d, "short").slice(0, 3))}</span>`).join("")}</div>
+      <table class="sr-only"><caption>Applications per month, last 12 months</caption><thead><tr><th scope="col">Month</th><th scope="col">Applications</th></tr></thead>
+        <tbody>${st.months.map(m => `<tr><th scope="row">${esc(mname(m.d, "long") + " " + m.d.getFullYear())}</th><td>${m.n}</td></tr>`).join("")}</tbody></table>
+      <div class="mtip" id="mtip" hidden></div></div></section>`;
+}
+function statsHover(e){
+  const col = e.target.closest?.(".bcol"), tip = $("#mtip");
+  if (!tip) return;
+  if (!col) { tip.hidden = true; return; }
+  const box = col.closest(".mchart").getBoundingClientRect(), r = col.getBoundingClientRect();
+  tip.textContent = "";
+  const b = document.createElement("b"); b.textContent = `${col.dataset.mv} application${col.dataset.mv === "1" ? "" : "s"}`;
+  tip.append(b, document.createTextNode(col.dataset.ml));
+  tip.style.left = `${Math.min(box.width - 70, Math.max(70, r.left - box.left + r.width / 2))}px`; tip.style.top = `${r.top - box.top + 34}px`; tip.hidden = false;
+}
+
 /* ---------- overview (nothing selected) ---------- */
 function renderOverview(){
   const D = $("#detail"); if (!D || S.sel) return;
@@ -378,6 +418,7 @@ function renderOverview(){
       ${activityCard()}
 
     </div>
+    ${statsCard()}
     <p class="kbdhint">Tip: press <kbd>⌘K</kbd> to find anyone or run a command, <kbd>J</kbd> <kbd>K</kbd> to move through applicants, <kbd>?</kbd> for all shortcuts.</p>
   </div></div>`;
   if (D.querySelector(".ov") && D._ovHTML === html) return;
@@ -1504,6 +1545,7 @@ function bindEvents(){
   const sortSel = $("#sort"); sortSel.value = S.sort; sortSel.addEventListener("change", e => { S.sort = e.target.value; prefs.set("sort", S.sort); renderList(); });
   $("#overviewBtn").addEventListener("click", () => { if (S.sel) deselect(); else { S.filter = "all"; renderList(); } });
   $("#mnav").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) mnavGo(b.dataset.m); });
+  $("#detail").addEventListener("pointerover", statsHover); $("#detail").addEventListener("pointerleave", () => { const t = $("#mtip"); if (t) t.hidden = true; });
   $("#kbdBtn").addEventListener("click", openShortcuts);
   addEventListener("keydown", onKeys);
   const D = $("#detail");

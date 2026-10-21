@@ -449,6 +449,22 @@ try {
     }
     await ctx.close();
   }
+  // ---- Overview: year at a glance
+  for (const dark of [false, true]) {
+    const { ctx, page } = await open(browser, { dark }); await wait(page, 500);
+    const card = page.locator(".ovcard.stats");
+    if (!(await card.count())) { fail("no Year at a glance card"); await ctx.close(); continue; }
+    const cols = await card.locator(".bcol").count(), rows = await card.locator("table tbody tr").count();
+    const kpis = await card.locator(".kpi b").allTextContents();
+    if (cols !== 12 || rows !== 12 || kpis.length !== 3) fail(`stats card: ${cols} columns, ${rows} table rows, ${kpis}`); else if (!dark) ok("Year at a glance: 3 headline numbers, 12 months, screen-reader table");
+    const bar = card.locator(".bcol i").first();
+    if (await bar.count()) { await bar.hover(); await wait(page, 150);
+      const tip = await card.locator("#mtip").textContent();
+      if (!/^\d+ applications?\w+ \d{4}$/.test(tip.replace(/\s+/g, " ").trim().replace(/s?([A-Z])/, "$1")) && !/application/.test(tip)) fail("tooltip: " + tip); else if (!dark) ok("hovering a month shows its count");
+    }
+    await card.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(OUT, `18-stats${dark ? "-dark" : ""}.png`) });
+    await ctx.close();
+  }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);

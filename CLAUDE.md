@@ -64,7 +64,7 @@ Done + deployed: phone bottom menu; (1) Checks tab = Screening + References; (2)
 (6+7) Board meeting mode: deployed (#boardBtn → openBoardMtg/paintBoardMtg; list fixed at open; Copy agenda + Print packet live inside it; sidebar agenda/packet buttons removed).
 (8) ⌘K palette: deployed (openPalette; word-prefix matching; `/` still filters the list).
 (9) Celebrations: deployed (celebrate() from edit() on board approval / stage→act, owner only; milestoneChip in roster; no confetti with reduced motion).
-Still to build: (10) monthly stats card (load the dataviz skill first).
+(10) Year at a glance (statsCard: 3 KPIs + applications/month columns, --chart token validated light #0a5fd1 / dark #3d8bfd): deployed Oct 21. ALL 10 DONE. Not yet eyeballed: tests/shots/18-stats*.png (battery died) — glance at it next session.
 
 ## Setup status (as of Oct 16, 2026, evening)
 - [x] Firebase project created (pvrs-membership), web app registered, config in `public/js/config.js`, `.firebaserc` set.
