@@ -73,6 +73,8 @@ Read this first. It's the full context from the original build conversation (Oct
 - [x] Oct 19: Apply made prominent (featured card on sign-in + home, red Apply pill): deployed.
 - [x] Oct 19: email/password sign-up (confirm email → request access) + phone sign-in order: deployed.
 - [x] Oct 19: duplicate-import fix (online applications are claimed in a Firestore transaction, so several open desks can't import one application twice): deployed.
+- [x] Oct 21: New applicant fix (duplicate form id) + Email all reference forms: deployed. Chelsea Blain's application added as a submission (from her PDF, at Dkota's request).
+- [ ] Server-side email: Google app passwords are NOT available on Dkota's pvrs.org account, so functions/ (paperwork notices) can't use Gmail SMTP. Options: Workspace admin enables app passwords, or an email API (needs DNS on pvrs.org).
 - [ ] Email alerts for uploads/bookings: the function + SMTP setup now exists for confidential paperwork; other alerts not built.
 - Testing: see `tests/README.md`. Tests live in the repo (`tests/`) since Oct 19 — the old scratchpad copies were wiped by macOS. `node tests/browser.test.mjs` (Playwright + `tests/mockfb.js`) and `tests/run-rules.sh` (emulators; Java in ~/.local/jdk21).
 - [ ] Optional: GitHub Actions auto-deploy (repo exists) with a service-account key, so Claude can update the app on demand.
