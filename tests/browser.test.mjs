@@ -237,6 +237,34 @@ try {
     if (race.filter(Boolean).length !== 1 || await count() !== 1) fail("race made duplicates: " + JSON.stringify(race) + " count " + await count()); else ok("3 desks racing for one application → exactly 1 applicant");
     await ctx.close();
   }
+  // ---- Email all reference forms (one email each, from one window)
+  {
+    const { ctx, page } = await open(browser);
+    await page.evaluate(() => { const d = window.__mock.docs, p = d.get("applicants/a1/private/main");
+      p.refs = { r1: { name: "Ann Lee", email: "ann.lee@example.com" }, r2: { name: "Sam Ortiz", email: "sam@example.com", returned: "2026-10-01" }, r3: { name: "Kim Park", email: "kim@example.com" }, r4: { name: "Lee Chu" } }; window.__mock.emit(); });
+    await pickApplicant(page, "Georgia Thurmond");
+    await page.locator('.tabdock [data-tab="refs"]').click(); await wait(page, 300);
+    await page.locator('[data-act="refsall"]').click(); await wait(page, 300);
+    const list = await page.locator("#rallList").textContent();
+    if ((await page.locator("[data-allmail]").count()) !== 2 || !/Already received/.test(list) || !/No email on file/.test(list)) fail("send-all list: " + list); else ok("send-all lists who still needs the form (skips received, flags missing email)");
+    await snap(page, "11-refs-email-all");
+    await page.locator('[data-allmail="1"]').click(); await wait(page, 600);
+    await page.locator('[data-allmail="3"]').click(); await wait(page, 1500);   // edits save ~0.6 s after the last change
+    const mails = (await page.evaluate(() => window.__clicked || [])).filter(h => h.startsWith("mailto:")).map(decodeURIComponent);
+    const p = await priv(page, "a1");
+    if (mails.length !== 2 || !mails[0].includes("ann.lee@example.com") || !mails[1].includes("kim@example.com") || !mails[0].includes("/ref/" + p.refs.r1.link) || !mails[1].includes("/ref/" + p.refs.r3.link) || p.refs.r1.link === p.refs.r3.link)
+      fail("send-all emails: " + JSON.stringify(mails.map(m => m.slice(0, 60)))); else ok("each reference gets their own email with their own link");
+    if ((await page.locator("#rallList").textContent()).match(/Opened ✓/g)?.length !== 2) fail("rows not marked opened"); else ok("sent rows are checked off");
+    if (!p.refs.r1.contacted || !p.refs.r3.contacted) fail("contacted dates not filled"); else ok("date contacted filled for each");
+    await ctx.close();
+  }
+  { // admins don't get the button
+    const { ctx, page } = await open(browser, { user: { email: "admin@pvrs.org", displayName: "Casey" } });
+    await pickApplicant(page, "Georgia Thurmond");
+    await page.locator('.tabdock [data-tab="refs"]').click(); await wait(page, 300);
+    if (await page.locator('[data-act="refsall"]').count()) fail("admin sees Email all"); else ok("only the owner can email all references");
+    await ctx.close();
+  }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);

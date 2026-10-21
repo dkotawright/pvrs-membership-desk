@@ -335,7 +335,7 @@ function renderOverview(){
 // mark the interview completed and sign off the Interview page. Firestore rules enforce the same thing.
 const INTERVIEW_FIELDS = new Set(["sched.completed", "sched.completedInit", "signoff.iv.init", "signoff.iv.done"]);
 const canEditPath = path => S.canEdit || path.startsWith("iv.") || INTERVIEW_FIELDS.has(path);
-const OWNER_ONLY = '[data-act="records"],[data-recrm],[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],[data-refrep],[data-refmail],[data-refcopy],#delBtn,#rqAdd';
+const OWNER_ONLY = '[data-act="records"],[data-recrm],[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],[data-refrep],[data-refmail],[data-refcopy],[data-act="refsall"],#delBtn,#rqAdd';
 const ownerOnlyToast = () => toast("View only. You can fill in the Interview tab; everything else is changed by the owner.");
 
 /* ---------- page sign-off ---------- */
@@ -461,7 +461,8 @@ function syncRefs(a){
   if (sum) {
     sum.className = "refsum " + (!refs.length ? "" : waiting ? "warn" : "ok");
     sum.innerHTML = `<b>${!refs.length ? "No references entered yet" : waiting ? `${got} of ${REFS_NEEDED} required references received · need ${waiting} more` : `${got} of ${refs.length} references received · requirement met`}</b>
-      <span>${REFS_NEEDED} references must be in before the application goes to the board${refs.length > REFS_NEEDED ? "; any " + REFS_NEEDED + " of the " + refs.length + " listed will do" : ""}. The applicant sees each name with Received or Waiting in their portal; email addresses, dates and initials stay private.</span>`;
+      <span>${REFS_NEEDED} references must be in before the application goes to the board${refs.length > REFS_NEEDED ? "; any " + REFS_NEEDED + " of the " + refs.length + " listed will do" : ""}. The applicant sees each name with Received or Waiting in their portal; email addresses, dates and initials stay private.</span>
+      ${S.canEdit && refs.some(r => !r.received && !get(a,`refs.r${r.i}.form`)) ? `<span class="refsum-act"><button class="btn small primary" type="button" data-act="refsall">Email all reference forms</button></span>` : ""}`;
   }
   for (const i of [1,2,3,4]) {
     const badge = $("#refBadge" + i); if (!badge) continue;
@@ -1291,6 +1292,7 @@ function bindEvents(){
       if (k === "invite") return inviteToPortal(S.sel);
       if (k === "preview") { flushAll(); return openPreview(S.sel); }
       if (k === "delete") return confirmDelete(S.sel);
+      if (k === "refsall") return openRefsAll(S.sel);
       if (k === "docs") return openRequestDocs(S.sel);
       if (k === "records") return openUploadRecords(S.sel);
       if (k === "viewform") return openForm(S.sel);
@@ -1569,6 +1571,36 @@ async function emailRefLink(id, i){
   const body = `Hi ${first(name)},\n\n${a.name} has applied to volunteer with the Potsdam Volunteer Rescue Squad and listed you as a reference. We'd be grateful if you could answer a few questions about them. It takes about 5 minutes:\n\n${url}\n\nThe link is just for you and works once. Your answers go only to the PVRS Membership Committee.\n\nThank you,\n${sig()}`;
   const l = document.createElement("a"); l.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(`Reference for ${a.name}: Potsdam Volunteer Rescue Squad`)}&body=${encodeURIComponent(body)}`; l.click();
   if (!get(a,`refs.r${i}.contacted`)) { edit(id, `refs.r${i}.contacted`, today()); edit(id, `refs.r${i}.method`, "Email"); }
+}
+// Every reference needs their own private link, so it's one email each: this lists them with a button per person.
+function openRefsAll(id){
+  if (!S.canEdit) return ownerOnlyToast();
+  const a = S.apps.get(id); if (!a) return;
+  const rows = [1,2,3,4].map(i => ({ i, name: String(get(a,`refs.r${i}.name`) || "").trim(), email: lower(get(a,`refs.r${i}.email`) || "") })).filter(r => r.name);
+  const status = r => { const x = S.apps.get(id);
+    if (get(x,`refs.r${r.i}.form`)) return { done: true, text: "Already answered" };
+    if (get(x,`refs.r${r.i}.returned`) && !get(x,`refs.r${r.i}.replace`)) return { done: true, text: "Already received" };
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email)) return { done: true, text: "No email on file. Add one on the References tab" };
+    const c = get(x,`refs.r${r.i}.contacted`);
+    return { done: false, text: r.email + (c ? ` · emailed ${fmtDate(c)}` : "") };
+  };
+  const paint = () => {
+    const todo = rows.filter(r => !status(r).done).length;
+    $("#rallList").innerHTML = rows.map(r => { const st = status(r);
+      return `<div class="row"><span class="lbl">${esc(r.name)}<small>${esc(st.text)}</small></span>${st.done ? "" : `<button class="btn small ${sent.has(r.i) ? "" : "primary"}" type="button" data-allmail="${r.i}">${sent.has(r.i) ? "Opened ✓" : "Open email"}</button>`}</div>`; }).join("");
+    $("#rallNote").textContent = todo ? `${todo} to send. Click each button, then press Send in Mail.` : "Everyone here has answered or been received.";
+  };
+  const sent = new Set();
+  const M = openModal(`<h3>Email reference forms</h3>
+    <p class="help">Each reference gets their own email with a private link to the reference form for ${esc(a.name || "this applicant")}, so they go one at a time.</p>
+    <div class="ios" id="rallList"></div><p class="help" id="rallNote"></p>
+    <div class="acts"><button class="btn" type="button" data-x>Done</button></div>`);
+  paint();
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    const b = e.target.closest("[data-allmail]"); if (!b) return;
+    b.disabled = true; await emailRefLink(id, +b.dataset.allmail); sent.add(+b.dataset.allmail); paint();
+  };
 }
 function refAnswersHTML(a, i){
   const f = get(a,`refs.r${i}.form`) || {}, ans = f.answers || {}, fn = first(a.name) || "the applicant", qs = refQuestions(fn);
