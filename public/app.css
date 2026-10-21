@@ -1097,3 +1097,11 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
   .hacts .btn:not(.hmore){display:none}
   .hacts .hmore{display:inline-flex;gap:6px;background:var(--box);border:1px solid var(--glass-edge)}
 }
+/* Overview: To do */
+.ovcard.todo{margin-bottom:16px}
+.todoitem{display:flex;align-items:center;gap:10px;padding-right:12px;cursor:default}
+.todomain{flex:1;min-width:0;display:flex;align-items:center;gap:12px;border:0;background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;padding:0}
+.todomain .ot{min-width:0}
+.todomain .ot small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.todoitem .btn{flex:none}
+.oitem.showall{justify-content:center;color:var(--accent);font-weight:600}

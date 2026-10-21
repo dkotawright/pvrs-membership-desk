@@ -338,6 +338,20 @@ try {
     if (await page.locator("#refRemind1").isVisible()) fail("reminder offered again right away"); else ok("no second reminder within a week");
     await ctx.close();
   }
+  // ---- Overview: To do list
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    const items = await page.locator(".todo .todoitem").evaluateAll(r => r.map(x => x.textContent.replace(/\s+/g, " ").trim()));
+    const has = re => items.some(t => re.test(t));
+    if (!has(/Send a reference form.*Georgia Thurmond.*Ann Lee.*Email forms/) || !has(/Request the driving record.*Marcus Bell/) || !has(/Review the application.*Test Online/)) fail("to do items: " + JSON.stringify(items)); else ok("To do lists each applicant's next step");
+    await page.screenshot({ path: path.join(OUT, "13-todo.png") });
+    await page.locator(".todoitem", { hasText: "Georgia Thurmond" }).locator("[data-todoact]").click(); await wait(page, 300);
+    if (!/Email reference forms/.test(await page.locator("#modal").textContent())) fail("Email forms action didn't open the window"); else ok("one-tap action opens Email reference forms");
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    await page.locator(".todoitem", { hasText: "Marcus Bell" }).locator("[data-todo]").click(); await wait(page, 500);
+    if (!/Marcus Bell/.test(await page.locator("#dName").textContent()) || !(await page.locator('.tabdock [data-tab="checks"][aria-selected="true"]').count())) fail("to do row didn't open Marcus on Checks"); else ok("tapping a to-do opens the file on the right tab");
+    await ctx.close();
+  }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);

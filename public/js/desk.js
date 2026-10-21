@@ -282,6 +282,56 @@ function restoreFocus(fk){
   const el = root.querySelector(fk.sel); if (el) el.focus({ preventScroll: true });
 }
 
+/* ---------- to do (overview) ---------- */
+// For each applicant in process: what needs doing next, most actionable first. "Waiting" states aren't listed.
+const okEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || "").trim());
+function todoItems(){
+  const out = [];
+  for (const a of S.apps.values()) {
+    const p = progress(a); if (!IN_PROCESS.includes(p.stage)) continue;
+    const id = a._id, g = k => get(a, k), rs = refStatus(a), fn = first(a.name) || "them";
+    const age = daysSince(g("app.received")) || 0;
+    const add = (pri, text, sub, tab, act, btn) => out.push({ id, a, pri, text, sub, tab, act, btn, age });
+    const nudge = [1,2,3,4].filter(i => refNudge(a, i));
+    if (nudge.length) add(1, `Remind ${nudge.length === 1 ? "a reference" : nudge.length + " references"}`, nudge.map(i => g(`refs.r${i}.name`)).join(", ") + " · no answer in 7+ days", "checks", "refsall", "Send reminders");
+    const unsent = rs.list.filter(r => !r.received && !g(`refs.r${r.i}.form`) && !g(`refs.r${r.i}.contacted`) && okEmail(g(`refs.r${r.i}.email`)));
+    if (!rs.done && unsent.length) add(1, `Send ${unsent.length === 1 ? "a reference form" : unsent.length + " reference forms"}`, unsent.map(r => r.name).join(", "), "checks", "refsall", "Email forms");
+    const step = MILESTONES.findIndex(m => !m[1](a));
+    switch (step) {
+      case 0: add(2, "Enter the date the application came in", "", "app"); break;
+      case 1: add(2, g("app.complete") === "no" ? "Follow up on the incomplete application" : "Review the application", g("app.notified") ? "Notified " + fmtDate(g("app.notified")) : "", "app"); break;
+      case 2: if (!g("mvr.requestInit")) add(2, "Request the driving record (MVR)", "", "checks"); break;
+      case 3: add(2, "Verify the driver's license", "", "checks"); break;
+      case 4: if (!rs.list.length) add(2, "Add references", "None entered yet", "checks"); break;
+      case 5:
+        if (!g("portal.invited") && okEmail(a.email)) add(2, "Send the portal invite", `So ${fn} can book an interview`, "app", "invite", "Send invite");
+        else if (g("portal.invited") && g("portal.bookingOpen") !== "yes") add(2, "Open interview booking", `${fn} can then pick a time`, "app", "booking", "Open booking");
+        else if (!okEmail(a.email)) add(2, "Schedule the interview", "No email on file, so book it for them", "iv");
+        break;
+      case 6: { const when = a._booked ? a._booked.start : g("sched.scheduled") ? new Date(g("sched.scheduled") + "T12:00").getTime() : 0;
+        if (when && when < Date.now()) add(2, "Mark the interview completed", "Was " + fmtDate(new Date(when).toISOString().slice(0, 10)), "iv"); break; }
+      case 7: add(2, "Committee decision", "Interview done " + fmtDate(g("sched.completed")), "iv"); break;
+      case 8: if (!g("board.date")) add(3, "Ready for the board", rs.done ? "On the board queue" : "", "board"); break;
+      case 9: if (!g("bg.sterReq")) add(2, "Request the Sterling background check", "Approved by the board " + (g("board.date") ? fmtDate(g("board.date")) : ""), "onb"); break;
+      case 10: add(2, `Let ${fn} know they're approved`, "", "onb"); break;
+      case 11: add(2, "Notify the orientation chair", "", "onb"); break;
+      case 12: add(2, "Notify the chief for duty crew", "", "onb"); break;
+      case 13: add(2, "Ask the tech chair for an email account", "", "onb"); break;
+    }
+  }
+  return out.sort((x, y) => x.pri - y.pri || y.age - x.age);
+}
+function todoCard(){
+  if (!S.admin) return "";
+  const items = todoItems(), shown = S.todoAll ? items : items.slice(0, 6);
+  return `<section class="ovcard todo"><h3>To do<small>${items.length ? items.length + " thing" + (items.length === 1 ? "" : "s") : "all caught up"}</small></h3><div class="olist">${shown.length ? shown.map(x => `<div class="oitem todoitem">
+      <button class="todomain" type="button" data-todo="${esc(x.id)}" data-totab="${esc(x.tab)}"><span class="av" style="--stage-c:${stageVar(view(x.a).stage)}" aria-hidden="true">${esc(initials(x.a.name))}</span>
+        <span class="ot"><b>${esc(x.text)}</b><small>${esc(x.a.name || "Applicant")}${x.sub ? " · " + esc(x.sub) : ""}</small></span></button>
+      ${x.act && S.canEdit ? `<button class="btn small primary" type="button" data-todoact="${esc(x.act)}" data-id="${esc(x.id)}">${esc(x.btn)}</button>` : `<span class="when">${x.age ? x.age + "d" : ""}</span>`}</div>`).join("")
+    : `<div class="oempty">Nothing needs you right now. 🎉</div>`}
+    ${items.length > 6 ? `<button class="oitem showall" type="button" data-cmd="todoall">${S.todoAll ? "Show fewer" : `Show all ${items.length}`}</button>` : ""}</div></section>`;
+}
+
 /* ---------- overview (nothing selected) ---------- */
 function renderOverview(){
   const D = $("#detail"); if (!D || S.sel) return;
@@ -313,6 +363,7 @@ function renderOverview(){
       ${tile("Interviews this week", thisWeek, booked.length ? `${booked.length} booked in total` : "None booked", "ivweek", "var(--s-int)")}
       ${tile("Active members", c.act||0, "Through onboarding", "act", "var(--s-act)")}
     </div>
+    ${todoCard()}
     ${total ? `<section class="ovcard"><h3>Pipeline<small>${total} total</small></h3>
       <div class="pipe" role="img" aria-label="${order.map(k => `${STAGES[k].label} ${c[k]}`).join(", ")}">${order.map(k => `<span style="flex:${c[k]};--stage-c:${stageVar(k)}" title="${STAGES[k].label}: ${c[k]}"></span>`).join("")}</div>
       <div class="legend">${order.map(k => `<button type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}">${STAGES[k].label} <b>${c[k]}</b></button>`).join("")}</div></section>` : ""}
@@ -1326,7 +1377,14 @@ function bindEvents(){
     if (tab) { switchTab(tab.dataset.tab); return; }
     const op = t.closest("[data-open]"); if (op) return select(op.dataset.open);
     const fl0 = t.closest("[data-filter]"); if (fl0) return setFilter(fl0.dataset.filter, true);
-    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); return; }
+    const td = t.closest("[data-todo]"); if (td) { const tab = td.dataset.totab; select(td.dataset.todo); if (tab && tab !== S.tab) switchTab(tab); return; }
+    const ta = t.closest("[data-todoact]");
+    if (ta) { const id = ta.dataset.id, k = ta.dataset.todoact;
+      if (k === "refsall") return openRefsAll(id);
+      if (k === "invite") return inviteToPortal(id);
+      if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
+      return; }
+    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); return; }
     const om = t.closest("[data-openmsg]"); if (om) { select(om.dataset.openmsg); switchTab("msgs"); return; }
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
