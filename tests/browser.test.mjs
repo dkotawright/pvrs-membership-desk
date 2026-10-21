@@ -302,6 +302,19 @@ try {
     if (!(await page.locator("#f-mvr-completed").count()) || !(await page.locator("#refSummary").count())) fail("Checks tab missing MVR or references"); else if (w === 390) ok("Checks tab holds MVR/license and references");
     await ctx.close();
   }
+  { // phones: one Actions button in the file header instead of five unlabeled icons
+    const { ctx, page } = await open(browser, { w: 390, h: 844 });
+    await pickApplicant(page, "Georgia Thurmond");
+    const vis = await page.locator(".dhead .hacts .btn:visible").evaluateAll(b => b.map(x => x.dataset.act));
+    if (vis.join() !== "actions") fail("phone header buttons: " + vis); else ok("phone file header shows one Actions button");
+    await page.locator('[data-act="actions"]').click(); await wait(page, 300);
+    const t = await page.locator("#modal").textContent();
+    if (!/Write an email/.test(t) || !/Book an interview time/.test(t) || !/Request documents/.test(t) || !/See their applicant portal/.test(t) || !/Delete this applicant/.test(t)) fail("Actions sheet: " + t.slice(0, 160)); else ok("Actions sheet lists email, book, documents, portal, delete");
+    await page.screenshot({ path: path.join(OUT, "12-phone-actions.png") });
+    await page.locator("#modal [data-pick]", { hasText: "Request documents" }).click(); await wait(page, 400);
+    if (!/Request documents/.test(await page.locator("#modal h3").textContent())) fail("Actions → Request documents didn't open"); else ok("picking an action opens it");
+    await ctx.close();
+  }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);

@@ -409,6 +409,7 @@ function paintDetail(){
           <button class="btn small" type="button" data-act="docs" title="Request documents">${ICON.doc}<span class="tl">Request docs</span></button>
           <button class="btn small" type="button" data-act="preview" title="See their applicant portal">${ICON.eye}<span class="tl">Portal</span></button>
           ${S.canEdit ? `<button class="btn small hdel" type="button" data-act="delete" title="Delete this applicant">${ICON.trash}<span class="tl">Delete</span></button>` : ""}
+          <button class="btn small hmore" type="button" data-act="actions" aria-haspopup="dialog"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.5" cy="8" r="1.4" fill="currentColor"/></svg>Actions</button>
         </div>` : ""}</div>
       ${S.admin?`<div class="prog" id="dProg"></div>`:""}
     </div>
@@ -1194,6 +1195,15 @@ function mnavGo(k){
   if (k === "list") { const l = $("#list"); if (l) l.scrollTop = 0; }
   paintMnav();
 }
+// Phones: the file's header icons collapse into one Actions button; this sheet lists them with labels.
+function openActions(){
+  const a = S.apps.get(S.sel); if (!a) return;
+  const btns = [...document.querySelectorAll(".dhead .hacts [data-act]")].filter(b => b.dataset.act !== "actions");
+  const M = openModal(`<h3>${esc(a.name || "Applicant")}</h3>
+    <div class="ios morelist">${btns.map((b, i) => `<button class="row" type="button" data-pick="${i}"><span class="mi">${b.querySelector("svg")?.outerHTML || ""}</span><span class="lbl"${b.dataset.act === "delete" ? ' style="color:var(--s-dec)"' : ""}>${esc(b.title || b.textContent.trim())}</span><span class="chev" aria-hidden="true">›</span></button>`).join("")}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`);
+  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
+}
 function openMore(){
   const tools = [["slotsBtn", "Interview times"], ["agendaBtn", "Copy board agenda"], ["packetBtn", "Print board packet"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
@@ -1327,6 +1337,7 @@ function bindEvents(){
       if (k === "preview") { flushAll(); return openPreview(S.sel); }
       if (k === "delete") return confirmDelete(S.sel);
       if (k === "refsall") return openRefsAll(S.sel);
+      if (k === "actions") return openActions();
       if (k === "docs") return openRequestDocs(S.sel);
       if (k === "records") return openUploadRecords(S.sel);
       if (k === "viewform") return openForm(S.sel);
