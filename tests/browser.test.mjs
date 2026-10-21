@@ -87,7 +87,7 @@ try {
     const { ctx, page } = await open(browser);
     await page.evaluate(() => { const d = window.__mock.docs; d.delete("refLinks/linkGoodToken123456789"); window.__mock.emit(); });
     await pickApplicant(page, "Georgia Thurmond");
-    await page.locator('.tabdock [data-tab="refs"]').click(); await wait(page, 300);
+    await page.locator('.tabdock [data-tab="checks"]').click(); await wait(page, 300);
     if (!/Send Ann a private link/.test(await page.locator("#refFormNote1").textContent())) fail("form row text: " + await page.locator("#refFormNote1").textContent()); else ok("References tab offers the form link");
     await page.locator('[data-refmail="1"]').click(); await wait(page, 700);
     const p = await priv(page, "a1"), tok = p.refs.r1.link;
@@ -119,7 +119,7 @@ try {
     const { ctx, page } = await open(browser, { user: { email: "admin@pvrs.org", displayName: "Casey" } });
     await page.evaluate(() => { const d = window.__mock.docs, p = d.get("applicants/a1/private/main"); p.refs.r1.form = { label: "x", date: "2026-10-19", answers: { known: "k", ratings: {}, signName: "Ann Lee" } }; window.__mock.emit(); });
     await pickApplicant(page, "Georgia Thurmond");
-    await page.locator('.tabdock [data-tab="refs"]').click(); await wait(page, 300);
+    await page.locator('.tabdock [data-tab="checks"]').click(); await wait(page, 300);
     if (await page.locator("#refView1").isHidden()) fail("admin can't view answers"); else ok("admins can view answers");
     if (await page.locator("#refMail2").isVisible() || await page.locator("#refCopy2").isVisible()) fail("admin sees link buttons"); else ok("admins can't send links");
     await ctx.close();
@@ -131,7 +131,7 @@ try {
       p.refs = { r1: { name: "Ann Lee" }, r2: { name: "Sam Ortiz" }, r3: { name: "Kim Park" }, r4: { name: "Lee Chu" } };
       ["r1", "r2", "r3", "r4"].slice(0, n).forEach(k => { p.refs[k].returned = "2026-10-10"; }); window.__mock.emit(); }, n);
     await setRefs(2); await pickApplicant(page, "Georgia Thurmond");
-    await page.locator('.tabdock [data-tab="refs"]').click(); await wait(page, 300);
+    await page.locator('.tabdock [data-tab="checks"]').click(); await wait(page, 300);
     let t = await page.locator("#refSummary").textContent();
     if (!/2 of 3 required references received · need 1 more/.test(t)) fail("2 of 4 in: " + t); else ok("4 listed, 2 in → 'need 1 more' (not 2)");
     await setRefs(3); await wait(page, 300);
@@ -243,7 +243,7 @@ try {
     await page.evaluate(() => { const d = window.__mock.docs, p = d.get("applicants/a1/private/main");
       p.refs = { r1: { name: "Ann Lee", email: "ann.lee@example.com" }, r2: { name: "Sam Ortiz", email: "sam@example.com", returned: "2026-10-01" }, r3: { name: "Kim Park", email: "kim@example.com" }, r4: { name: "Lee Chu" } }; window.__mock.emit(); });
     await pickApplicant(page, "Georgia Thurmond");
-    await page.locator('.tabdock [data-tab="refs"]').click(); await wait(page, 300);
+    await page.locator('.tabdock [data-tab="checks"]').click(); await wait(page, 300);
     await page.locator('[data-act="refsall"]').click(); await wait(page, 300);
     const list = await page.locator("#rallList").textContent();
     if ((await page.locator("[data-allmail]").count()) !== 2 || !/Already received/.test(list) || !/No email on file/.test(list)) fail("send-all list: " + list); else ok("send-all lists who still needs the form (skips received, flags missing email)");
@@ -261,7 +261,7 @@ try {
   { // admins don't get the button
     const { ctx, page } = await open(browser, { user: { email: "admin@pvrs.org", displayName: "Casey" } });
     await pickApplicant(page, "Georgia Thurmond");
-    await page.locator('.tabdock [data-tab="refs"]').click(); await wait(page, 300);
+    await page.locator('.tabdock [data-tab="checks"]').click(); await wait(page, 300);
     if (await page.locator('[data-act="refsall"]').count()) fail("admin sees Email all"); else ok("only the owner can email all references");
     await ctx.close();
   }
@@ -290,6 +290,16 @@ try {
     const { ctx, page } = await open(browser, { w: 390, h: 844, user: { email: "admin@pvrs.org", displayName: "Casey" } });
     const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
     if (items.includes("new")) fail("admin sees + on phone: " + items); else ok("phone: only the owner gets the + button");
+    await ctx.close();
+  }
+  for (const w of [360, 390]) { // the file's section bar fits a phone without scrolling (Checks = Screening + References)
+    const { ctx, page } = await open(browser, { w, h: 800 });
+    await pickApplicant(page, "Georgia Thurmond");
+    const tabs = await page.locator(".tabdock [data-tab]").evaluateAll(b => b.map(x => x.dataset.tab).join());
+    const over = await page.evaluate(() => { const t = document.querySelector(".tabdock .tabs"); return t.scrollWidth - t.clientWidth; });
+    if (tabs !== "app,checks,iv,board,onb,notes,msgs" || over > 1) fail(`tabs at ${w}px: ${tabs} overflow ${over}`); else ok(`section bar fits at ${w}px (7 tabs, Checks merged)`);
+    await page.locator('.tabdock [data-tab="checks"]').click(); await wait(page, 300);
+    if (!(await page.locator("#f-mvr-completed").count()) || !(await page.locator("#refSummary").count())) fail("Checks tab missing MVR or references"); else if (w === 390) ok("Checks tab holds MVR/license and references");
     await ctx.close();
   }
   // ---- New applicant (owner)

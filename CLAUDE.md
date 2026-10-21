@@ -16,7 +16,7 @@ Read this first. It's the full context from the original build conversation (Oct
 
 ## Files
 - `public/js/main.js`: sign-in and routing (owner → admin desk; staff doc → desk; portal match → applicant portal; else "No application found").
-- `public/js/desk.js`: the staff Desk (roster, tabs: Application, Screening, Interview, Board, Onboard, Notes; interview slots manager; document requests; portal invite/sync; settings, team, exports, import, owner-only).
+- `public/js/desk.js`: the staff Desk (roster, tabs: Application, Checks [= Screening + References, merged Oct 21], Interview, Board, Onboard, Notes, Messages; interview slots manager; document requests; portal invite/sync; settings, team, exports, import, owner-only).
 - `public/js/portal.js`: applicant portal (status timeline, document uploads to Storage, interview booking via batch writes) + `portalHTML()` reused for the admin preview.
 - `public/js/shared.js`: helpers, `MILESTONES` (14-step checklist), `STAGES`, `applicantSteps()` (6 applicant-safe steps), `SECURE` field roots.
 - `firestore.rules` / `storage.rules`: all access control. Keep the owner email in sync across the 3 files.

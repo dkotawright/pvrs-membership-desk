@@ -42,12 +42,14 @@ const SHOW = {
   residentOther: a => get(a,"iv.resident") === "other",
 };
 
-const TABS_ADMIN = [["app","Application"],["screen","Screening"],["refs","References"],["iv","Interview"],["board","Board"],["onb","Onboard"],["notes","Notes"],["msgs","Messages"]];
-const TAB_SHORT = { app:"App", screen:"Screen", refs:"Refs", iv:"Interview", board:"Board", onb:"Onboard", notes:"Notes", msgs:"Msgs" };
+// Screening (MVR, license) and References share one "Checks" tab: seven tabs fit a phone's section bar.
+const TABS_ADMIN = [["app","Application"],["checks","Checks"],["iv","Interview"],["board","Board"],["onb","Onboard"],["notes","Notes"],["msgs","Messages"]];
+const TAB_SHORT = { app:"App", checks:"Checks", iv:"Interview", board:"Board", onb:"Onboard", notes:"Notes", msgs:"Msgs" };
 const TABS_MEMBER = [["app","Application"],["iv","Interview"]];
 
 function tabHTML(tab){
   const admin = S.admin;
+  if (tab === "checks") return `<h2 class="tabsec">Driving record and license</h2>${tabHTML("screen")}<h2 class="tabsec">References</h2>${tabHTML("refs")}`;
   if (tab === "app") return `<div class="cols">
     ${group("Applicant",[F.text("name","Full name","First Last"),F.text("phone","Phone","(315) 555-0100","tel"),F.text("email","Email","name@example.com","email"),
       F.seg("type","Membership type",TYPES.map(t=>[t,t]),true),`<div class="note" id="typeNote"></div>`,F.seg("location","Location",[["Potsdam","Potsdam"],["other","Other"]]),`<div data-show="locOther">${F.text("locationOther","Where?","Town")}</div>`])}
@@ -341,7 +343,7 @@ const ownerOnlyToast = () => toast("View only. You can fill in the Interview tab
 /* ---------- page sign-off ---------- */
 // Initials + "complete" at the bottom of each working tab. Tabs members can open keep it on the shared record;
 // admin-only tabs keep it in the private record.
-const SIGN_ROOT = { app:"signoff", iv:"signoff", screen:"pagesign", refs:"pagesign", board:"pagesign", onb:"pagesign" };
+const SIGN_ROOT = { app:"signoff", iv:"signoff", checks:"pagesign", board:"pagesign", onb:"pagesign" };
 const tabLabel = k => (TABS_ADMIN.find(t => t[0] === k) || [k, k])[1];
 const signPath = (k, f) => `${SIGN_ROOT[k]}.${k}.${f}`;
 const signHTML = k => !SIGN_ROOT[k] ? "" : `<section class="group signoff" id="signBox"><h3><span>Page sign-off</span></h3><div class="ios"><div class="row">
@@ -363,7 +365,7 @@ function syncSignoff(a){
 
 /* ---------- detail ---------- */
 // Which tab holds each MILESTONES step, so clicking the progress bar jumps there.
-const STEP_TAB = ["app","app","screen","screen","refs","iv","iv","board","board","onb","onb","onb","onb","onb"];
+const STEP_TAB = ["app","app","checks","checks","checks","iv","iv","board","board","onb","onb","onb","onb","onb"];
 const ICON = {
   trash:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   mail:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 4l6 4.5L14 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
@@ -394,6 +396,7 @@ function paintDetail(){
   $("#overviewBtn").classList.toggle("on", !a);
   if (!a) return renderOverview();
   const tabs = S.admin ? TABS_ADMIN : TABS_MEMBER;
+  if (S.tab === "screen" || S.tab === "refs") S.tab = "checks";   // the two tabs merged into Checks
   if (!tabs.some(t => t[0] === S.tab)) S.tab = "app";
   // The header sticks to the top of the scrolling file and the tab bar floats at the bottom; content scrolls under both.
   D.innerHTML = `<div class="dbody" id="dbody"><div class="dhead">
