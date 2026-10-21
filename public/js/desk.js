@@ -371,7 +371,9 @@ function statsHover(e){
   tip.textContent = "";
   const b = document.createElement("b"); b.textContent = `${col.dataset.mv} application${col.dataset.mv === "1" ? "" : "s"}`;
   tip.append(b, document.createTextNode(col.dataset.ml));
-  tip.style.left = `${Math.min(box.width - 70, Math.max(70, r.left - box.left + r.width / 2))}px`; tip.style.top = `${r.top - box.top + 34}px`; tip.hidden = false;
+  // Sit just above the hovered bar (or the baseline for an empty month), clear of the neighbouring value label.
+  const bar = col.querySelector("i"), y = (bar ? bar.getBoundingClientRect().top : r.bottom) - box.top - 8;
+  tip.style.left = `${Math.min(box.width - 70, Math.max(70, r.left - box.left + r.width / 2))}px`; tip.style.top = `${y}px`; tip.hidden = false;
 }
 
 /* ---------- overview (nothing selected) ---------- */
