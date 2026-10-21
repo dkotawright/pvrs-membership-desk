@@ -228,7 +228,8 @@ function renderChips(rows){
   if (!keys.includes(S.filter) && !PSEUDO[S.filter]) S.filter = "all";
   $("#chips").innerHTML = keys.map(k => `<button class="nav-i" type="button" data-f="${k}" aria-pressed="${S.filter===k}" style="--stage-c:${filterColor(k)}"><span class="ndot"></span><span class="nl">${k==="all"?"All":filterLabel(k)}</span><b>${counts[k]||0}</b></button>`).join("");
   $("#chipsMini").innerHTML = keys.map(k => `<button class="chip" type="button" data-f="${k}" aria-pressed="${S.filter===k}">${k==="all"?"All":filterLabel(k)} <b>${counts[k]||0}</b></button>`).join("");
-  $("#agendaBtn").hidden = $("#packetBtn").hidden = !(S.admin && counts.board);
+  $("#boardBtn").hidden = !S.admin;
+  { const bb = $("#boardBtn"); let n = bb.querySelector(".navbadge"); if (!n) { n = document.createElement("b"); n.className = "navbadge soft"; bb.appendChild(n); } n.textContent = counts.board || ""; n.hidden = !counts.board; }
   $("#rosterTitle").textContent = filterLabel(S.filter);
   S.counts = counts;
 }
@@ -1309,7 +1310,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["slotsBtn", "Interview times"], ["agendaBtn", "Copy board agenda"], ["packetBtn", "Print board packet"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
@@ -1514,10 +1515,10 @@ function bindEvents(){
   $("#settingsBtn").addEventListener("click", gateSettings);
   $("#slotsBtn").addEventListener("click", openSlots);
   $("#newBtn").addEventListener("click", openNew);
-  $("#agendaBtn").addEventListener("click", copyAgenda);
+  $("#boardBtn").addEventListener("click", () => openBoardMtg());
   $("#pwBtn").addEventListener("click", openPassword);
   $("#msgsBtn").addEventListener("click", openInbox);
-  $("#packetBtn").addEventListener("click", () => { flushAll(); printPacket(sorted().filter(r => inBoardQueue(r.a)).map(r => r.a)); });
+
 }
 function select(id){
   if (!S.apps.has(id)) return;
@@ -1547,6 +1548,76 @@ function openNew(){
     try { const r = doc(collection(db, "applicants")); await setDoc(r, data); S.shared.set(r.id, data); rebuild(r.id); writeLog(r.id, [{ path: "_created", from: "", to: name }]); closeModal(); S.tab = "app"; select(r.id); toast("Added " + name); }
     catch (err) { console.error(err); toast("Couldn't add the applicant."); }
   };
+}
+/* ---------- board meeting mode ---------- */
+// The board queue, one applicant per screen: their checks at a glance and the vote, with Copy agenda / Print packet.
+// The list is fixed when the meeting opens, so applicants don't vanish from it as votes are recorded.
+const BM = { ids: [], i: 0, date: "" };
+function openBoardMtg(){
+  if (!S.admin) return;
+  flushAll();
+  BM.ids = sorted().filter(r => inBoardQueue(r.a)).map(r => r.a._id); BM.i = 0; BM.date = BM.date || today();
+  let el = $("#boardMtg");
+  if (!el) { el = document.createElement("div"); el.id = "boardMtg"; el.className = "bmtg"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Board meeting"); document.body.appendChild(el); wireBoardMtg(el); }
+  el.hidden = false; document.body.classList.add("bmopen"); $("#app").inert = true; paintBoardMtg(); el.querySelector("[data-bm=close]")?.focus();
+}
+function closeBoardMtg(){ const el = $("#boardMtg"); if (el) el.hidden = true; document.body.classList.remove("bmopen"); $("#app").inert = false; flushAll(); renderList(); if (!S.sel) renderOverview(); }
+const avgRating = a => { const vals = []; [1,2,3,4].forEach(i => Object.values(get(a,`refs.r${i}.form.answers.ratings`) || {}).forEach(v => { if (typeof v === "number") vals.push(v); })); return vals.length ? (vals.reduce((x, y) => x + y, 0) / vals.length) : null; };
+function paintBoardMtg(){
+  const el = $("#boardMtg"); if (!el) return;
+  const n = BM.ids.length, id = BM.ids[BM.i], a = id && S.apps.get(id), ro = !S.canEdit ? "disabled" : "";
+  const top = `<div class="bmtop glass"><div class="bmt"><b>Board meeting</b><label>Meeting date <input type="date" id="bmDate" value="${esc(BM.date)}" ${ro}></label></div>
+    <div class="bmacts"><button class="btn small" type="button" data-bm="agenda">Copy agenda</button><button class="btn small" type="button" data-bm="packet" ${n ? "" : "disabled"}>Print packet</button><button class="btn small primary" type="button" data-bm="close">Done</button></div></div>`;
+  if (!a) { el.innerHTML = top + `<div class="bmbody"><div class="bmempty"><h2>Nobody is on the board queue</h2><p>Applicants show up here once the membership committee approves them and their references are in.</p></div></div>`; return; }
+  const g = k => get(a, k), rs = refStatus(a), avg = avgRating(a);
+  const chk = (ok, label, detail, bad) => `<div class="bmchk ${bad ? "bad" : ok ? "ok" : "no"}"><span class="dot" aria-hidden="true">${bad ? "!" : ok ? "✓" : "–"}</span><span><b>${esc(label)}</b><small>${esc(detail || "")}</small></span></div>`;
+  const panel = [1,2,3,4,5].map(i => g("iv.panel.m" + i)).filter(Boolean).join(", ");
+  const ivDate = g("sched.completed");
+  const q = (label, k) => g(k) ? `<div class="bmq"><b>${esc(label)}</b><p>${esc(g(k))}</p></div>` : "";
+  el.innerHTML = top + `<div class="bmbody"><article class="bmcard glass">
+      <header><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><div><h2>${esc(a.name || "Applicant")}</h2>
+        <p>${esc([a.type ? a.type + " membership" : "", loc(a), g("app.received") ? "applied " + fmtDate(g("app.received")) : ""].filter(Boolean).join(" · "))}</p></div>
+        ${g("board.result") === "tabled" && !g("board.date") ? `<span class="badge wait">Tabled last time</span>` : ""}</header>
+      <div class="bmchecks">
+        ${chk(g("app.complete") === "yes", "Application", g("app.complete") === "yes" ? "Complete" : "Not complete")}
+        ${chk(!!g("mvr.completed"), "Driving record", g("mvr.completed") ? `Completed ${fmtDate(g("mvr.completed"))}${g("mvr.violations") === "yesbad" ? " · violations" : ""}` : "Not completed", g("mvr.violations") === "yesbad")}
+        ${chk(!!g("dl.date") && g("dl.valid") === "yes", "Driver's license", g("dl.date") ? (g("dl.valid") === "yes" ? "Valid" : "Issue noted") : "Not verified", g("dl.valid") === "no")}
+        ${chk(rs.done, "References", `${rs.got} of ${REFS_NEEDED} in${avg != null ? ` · average rating ${avg.toFixed(1)} / 5` : ""}`)}
+        ${chk(!!ivDate, "Interview", ivDate ? `${fmtDate(ivDate)}${panel ? " · " + panel : ""}` : "Not completed")}
+        ${chk(g("appr.committee") === "yes", "Committee", g("appr.committee") === "yes" ? "Recommends approval" : "No decision")}
+      </div>
+      ${q("Why PVRS?", "iv.why")}${q("About them", "iv.about")}${g("iv.convicted") === "yesbad" ? q("Conviction (from the interview)", "iv.convictedExplain") : ""}
+    </article>
+    <section class="bmvote glass"><h3>Vote</h3>
+      <div class="bmgrid"><label>Motion by<input type="text" data-bk="board.motion" value="${esc(g("board.motion") || "")}" ${ro}></label><label>Seconded by<input type="text" data-bk="board.second" value="${esc(g("board.second") || "")}" ${ro}></label></div>
+      <div class="bmgrid three"><label>For<input type="number" min="0" inputmode="numeric" data-bk="board.for" value="${esc(g("board.for") ?? "")}" ${ro}></label><label>Against<input type="number" min="0" inputmode="numeric" data-bk="board.against" value="${esc(g("board.against") ?? "")}" ${ro}></label><label>Abstain<input type="number" min="0" inputmode="numeric" data-bk="board.abstain" value="${esc(g("board.abstain") ?? "")}" ${ro}></label></div>
+      <div class="seg wide bmres" role="group" aria-label="Result">${[["approved","Approved","good"],["tabled","Tabled","warn"],["denied","Denied","bad"]].map(([v, l, c]) => `<button type="button" class="${c}${g("board.result") === v ? " on" : ""}" data-bres="${v}" ${ro}>${l}</button>`).join("")}</div>
+      <label class="bmnotes">Notes<textarea rows="3" data-bk="board.notes" ${ro} placeholder="Discussion or conditions">${esc(g("board.notes") || "")}</textarea></label>
+      ${S.canEdit ? "" : `<p class="help">View only. The owner records the vote.</p>`}
+    </section></div>
+    <div class="bmbar glass"><button class="btn" type="button" data-bm="prev" ${BM.i ? "" : "disabled"}>‹ Previous</button><span><b>${BM.i + 1} of ${n}</b><small>${esc(a.name || "")}</small></span><button class="btn primary" type="button" data-bm="next">${BM.i < n - 1 ? "Next ›" : "Finish"}</button></div>`;
+}
+function wireBoardMtg(el){
+  el.addEventListener("click", e => {
+    const b = e.target.closest("[data-bm]"); const r = e.target.closest("[data-bres]");
+    const id = BM.ids[BM.i];
+    if (r && id && S.canEdit) { const a = S.apps.get(id), v = r.dataset.bres; edit(id, "board.result", get(a,"board.result") === v ? "" : v); if (!get(a,"board.date")) edit(id, "board.date", BM.date || today()); paintBoardMtg(); return; }
+    if (!b) return;
+    const k = b.dataset.bm;
+    if (k === "close") return closeBoardMtg();
+    if (k === "agenda") return copyAgenda();
+    if (k === "packet") { flushAll(); return printPacket(BM.ids.map(x => S.apps.get(x)).filter(Boolean)); }
+    if (k === "prev" && BM.i > 0) { flushAll(); BM.i--; paintBoardMtg(); }
+    if (k === "next") { flushAll(); if (BM.i < BM.ids.length - 1) { BM.i++; paintBoardMtg(); } else { closeBoardMtg(); toast("Board meeting closed. Everything is saved."); } }
+  });
+  el.addEventListener("input", e => {
+    if (e.target.id === "bmDate") { BM.date = e.target.value; return; }
+    const k = e.target.dataset.bk, id = BM.ids[BM.i]; if (!k || !id || !S.canEdit) return;
+    const v = e.target.type === "number" ? (e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10) || 0)) : e.target.value;
+    edit(id, k, v);
+    if (!get(S.apps.get(id), "board.date")) edit(id, "board.date", BM.date || today());
+  });
+  el.addEventListener("keydown", e => { if (e.key === "Escape" && $("#modal").hidden) { e.stopPropagation(); closeBoardMtg(); } });
 }
 async function copyAgenda(){
   const q = sorted().filter(r => inBoardQueue(r.a));

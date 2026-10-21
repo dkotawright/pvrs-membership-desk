@@ -383,6 +383,33 @@ try {
     if (await page.locator("#app").evaluate(a => a.classList.contains("ivmode")) || await page.locator("#ivBar").count()) fail("Escape didn't leave interview mode"); else ok("Escape leaves interview mode");
     await ctx.close();
   }
+  // ---- Board meeting mode (replaces Copy agenda + Print packet)
+  {
+    const { ctx, page } = await open(browser);
+    await page.evaluate(() => { window.print = () => { window.__printed = (window.__printed || 0) + 1; }; });
+    if (await page.locator("#agendaBtn").count() || await page.locator("#packetBtn").count() || await page.locator("#boardBtn").isHidden()) fail("sidebar still has agenda/packet or no Board meeting"); else ok("one Board meeting button replaces agenda + packet");
+    await page.locator("#boardBtn").click(); await wait(page, 400);
+    const t = await page.locator("#boardMtg").textContent();
+    if (!/Georgia Thurmond/.test(t) || !/1 of 1/.test(t) || !/Committee/.test(t) || !/References/.test(t)) fail("board meeting view: " + t.slice(0, 200)); else ok("board meeting shows the queue one applicant at a time with checks");
+    await page.locator('#boardMtg [data-bk="board.motion"]').fill("Pat Lee"); await page.locator('#boardMtg [data-bk="board.second"]').fill("Sam Roe");
+    await page.locator('#boardMtg [data-bk="board.for"]').fill("9"); await page.locator('#boardMtg [data-bk="board.against"]').fill("0"); await page.locator('#boardMtg [data-bk="board.abstain"]').fill("1");
+    await page.locator('#boardMtg [data-bres="approved"]').click(); await wait(page, 1500);
+    const b = (await priv(page, "a1")).board || {};
+    if (b.result !== "approved" || b.motion !== "Pat Lee" || b.for !== 9 || b.abstain !== 1 || !b.date) fail("vote not saved: " + JSON.stringify(b)); else ok("vote recorded (motion, second, tally, result, date)");
+    await page.screenshot({ path: path.join(OUT, "16-board-meeting.png") });
+    if (!/Georgia Thurmond/.test(await page.locator("#boardMtg").textContent())) fail("approved applicant vanished from the meeting"); else ok("the meeting list stays put while votes are recorded");
+    await page.locator('#boardMtg [data-bm="packet"]').click(); await wait(page, 400);
+    if (!(await page.evaluate(() => window.__printed))) fail("Print packet didn't print"); else ok("Print packet works from the meeting");
+    await page.locator('#boardMtg [data-bm="close"]').click(); await wait(page, 300);
+    if (await page.locator("#boardMtg").isVisible() || await page.locator("#app").evaluate(a => a.inert)) fail("Done didn't close the meeting"); else ok("Done closes the meeting");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { user: { email: "admin@pvrs.org", displayName: "Casey" } });
+    await page.locator("#boardBtn").click(); await wait(page, 400);
+    if (!(await page.locator('#boardMtg [data-bk="board.motion"]').isDisabled())) fail("admin can edit the vote"); else ok("admins see the meeting view-only");
+    await ctx.close();
+  }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);

@@ -1132,3 +1132,43 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .ivprog{display:block;width:70%;height:4px;border-radius:4px;background:var(--fill);overflow:hidden}
 .ivprog i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .25s}
 @media (max-width:520px){ .ivbar .btn{padding:0 14px} .app.ivmode .dbody{padding-left:12px;padding-right:12px} }
+
+/* Board meeting mode */
+.navbadge.soft{background:color-mix(in srgb,var(--s-appr) 22%,transparent);color:var(--s-appr)}
+.bmtg{position:fixed;inset:0;z-index:55;overflow-y:auto;background:color-mix(in srgb,var(--bg) 84%,transparent);-webkit-backdrop-filter:blur(30px);backdrop-filter:blur(30px);
+  padding:calc(84px + env(safe-area-inset-top,0px)) 16px calc(110px + env(safe-area-inset-bottom,0px))}
+.bmtg[hidden]{display:none}
+.bmtop{position:fixed;z-index:56;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);width:min(980px,calc(100% - 24px));display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 8px 8px 18px;border-radius:24px}
+.bmt{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.bmt b{font-size:15px}
+.bmt label{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--fg2)}
+.bmt input{border:1px solid var(--sep);background:var(--box);border-radius:8px;padding:4px 8px;font:inherit;color:var(--fg)}
+.bmacts{display:flex;gap:6px;flex-wrap:wrap}
+.bmbody{max-width:980px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;align-items:start}
+.bmcard,.bmvote{border-radius:24px;padding:22px}
+.bmcard header{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.bmcard header .av{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;background:var(--stage-c,var(--accent));flex:none;font-size:17px}
+.bmcard h2{margin:0;font-family:var(--font-display);font-size:26px;letter-spacing:-.02em}
+.bmcard header p{margin:2px 0 0;color:var(--fg2);font-size:14px}
+.bmcard header .badge{margin-left:auto}
+.bmchecks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.bmchk{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:14px;background:var(--fill)}
+.bmchk .dot{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;flex:none;color:#fff;background:var(--fg3)}
+.bmchk.ok .dot{background:var(--s-act)} .bmchk.bad .dot{background:var(--s-dec)}
+.bmchk b{display:block;font-size:13.5px} .bmchk small{display:block;font-size:12.5px;color:var(--fg2);margin-top:1px}
+.bmq{margin-top:12px} .bmq b{font-size:13px;color:var(--fg2)} .bmq p{margin:3px 0 0;font-size:14.5px;line-height:1.5;white-space:pre-wrap}
+.bmvote h3{margin:0 0 12px;font-size:17px}
+.bmgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.bmgrid.three{grid-template-columns:repeat(3,1fr)}
+.bmvote label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;font-weight:600;color:var(--fg2)}
+.bmvote input,.bmvote textarea{border:1px solid var(--sep);background:var(--box);border-radius:10px;padding:9px 11px;font:inherit;font-size:15px;color:var(--fg);font-weight:400;width:100%;box-sizing:border-box}
+.bmres{margin:6px 0 12px;width:100%}
+.bmres button{flex:1;min-height:40px;font-size:14px}
+.bmnotes{margin-top:4px}
+.bmempty{grid-column:1/-1;text-align:center;padding:60px 20px}
+.bmempty h2{font-family:var(--font-display)} .bmempty p{color:var(--fg2)}
+.bmbar{position:fixed;z-index:56;bottom:calc(14px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);width:min(760px,calc(100% - 24px));display:flex;align-items:center;gap:12px;padding:8px;border-radius:999px}
+.bmbar span{flex:1;display:flex;flex-direction:column;align-items:center;min-width:0}
+.bmbar small{color:var(--fg2);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.bmbar .btn{height:44px;padding:0 20px}
+@media (max-width:760px){ .bmbody{grid-template-columns:1fr} .bmchecks{grid-template-columns:1fr} .bmtop{border-radius:20px} .bmtg{padding-top:calc(130px + env(safe-area-inset-top,0px))} }

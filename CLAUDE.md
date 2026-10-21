@@ -37,7 +37,7 @@ Read this first. It's the full context from the original build conversation (Oct
 - Applications go to the board only once references and all other prerequisites are complete. References: names + received status are shown to the applicant; reference contact is email (no phone numbers collected).
 - Driver's license check is a required step. The online application requires the license state + number (no "no license" option) and 3–4 references (Dkota is authorized to run the check); it lives only in the private record (`private/main.form.person.dlNumber`), shown on the Screening tab to admins. Never in the portal, board packet or member views.
 - Probation is handled by the general membership, not this app (probation tracking removed Oct 18).
-- Board: committee approval → board vote (motion/second/for/against/abstain, Approved/Tabled/Denied); "Board queue" filter + copy agenda.
+- Board: committee approval → board vote (motion/second/for/against/abstain, Approved/Tabled/Denied); "Board queue" filter; Board meeting mode (one applicant per screen, vote panel, Copy agenda, Print packet).
 - Location is Potsdam or Other (free text). Membership types: Regular, Associate, Auxiliary, Non-Operational, Driver Only, Non-Resident.
 - Contact/documents email: membership@pvrs.org. Signature:
   Dkota Wright, NREMT / NYS EMT-B / Potsdam Volunteer Rescue Squad / dkota@pvrs.org
@@ -61,7 +61,8 @@ Done + deployed: phone bottom menu; (1) Checks tab = Screening + References; (2)
 (3) Reference nudges: deployed (refNudge/remindRefLink; 7 days, once a week; refs.rN.reminded).
 (4) Overview "To do": deployed (todoItems/todoCard; data-todo/data-totab/data-todoact — don't use data-tab, it switches tabs).
 (5) Interview mode: deployed (enterIvMode/applyIvMode/ivSteps; `.app.ivmode`; sections in question order via style.order from stackCols).
-Still to build, in order: (6) Board meeting mode (one applicant per screen, record vote) which also (7) merges Copy agenda + Print packet into one "Board meeting" button; (8) ⌘K command palette (applicants + commands); (9) celebrations (confetti on board approval / onboarding complete, milestone chip); (10) monthly stats card (load the dataviz skill first).
+(6+7) Board meeting mode: deployed (#boardBtn → openBoardMtg/paintBoardMtg; list fixed at open; Copy agenda + Print packet live inside it; sidebar agenda/packet buttons removed).
+Still to build, in order: (8) ⌘K command palette (applicants + commands); (9) celebrations (confetti on board approval / onboarding complete, milestone chip); (10) monthly stats card (load the dataviz skill first).
 
 ## Setup status (as of Oct 16, 2026, evening)
 - [x] Firebase project created (pvrs-membership), web app registered, config in `public/js/config.js`, `.firebaserc` set.
