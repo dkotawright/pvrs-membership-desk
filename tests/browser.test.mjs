@@ -270,14 +270,14 @@ try {
     const { ctx, page } = await open(browser, { w: 390, h: 844 });
     if (await page.locator(".app > .side").isVisible() || await page.locator("#mnav").isHidden()) fail("phone: sidebar strip still showing / no bottom menu"); else ok("phone: bottom menu replaces the icon strip");
     const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
-    if (items.join() !== "list,ov,new,msgs,more") fail("phone menu items: " + items); else ok("phone menu: Applicants, Overview, +, Messages, More");
+    if (items.join() !== "list,ov,msgs,more") fail("phone menu items: " + items); else ok("phone menu: Applicants, Overview, Messages, More (no big +)");
     await page.click('#mnav [data-m="ov"]'); await wait(page, 500);
     if (await page.locator(".ov").isHidden() || !/Good (morning|afternoon|evening)/.test(await page.locator(".ov").textContent())) fail("phone overview not shown"); else ok("phone: Overview shows the dashboard");
     await page.click('#mnav [data-m="list"]'); await wait(page, 500);
     if (await page.locator("#app").evaluate(a => a.classList.contains("ovopen"))) fail("Applicants didn't close overview"); else ok("phone: Applicants returns to the list");
     await page.click('#mnav [data-m="more"]'); await wait(page, 300);
     const more = await page.locator("#modal").textContent();
-    if (!/Interview times/.test(more) || !/Settings/.test(more) || !/Sign out/.test(more)) fail("More sheet: " + more.slice(0, 120)); else ok("phone: More has interview times, settings, sign out");
+    if (!/New applicant/.test(more) || !/Interview times/.test(more) || !/Settings/.test(more) || !/Sign out/.test(more)) fail("More sheet: " + more.slice(0, 120)); else ok("phone: More has New applicant, interview times, settings, sign out");
     await page.click('#modal [data-more="slotsBtn"]'); await wait(page, 500);
     if (!/Interview times/.test(await page.locator("#modal").textContent())) fail("More → Interview times didn't open"); else ok("phone: More → Interview times opens");
     await page.click("#modal [data-x]").catch(() => {}); await page.keyboard.press("Escape"); await wait(page, 300);
@@ -288,8 +288,8 @@ try {
   }
   {
     const { ctx, page } = await open(browser, { w: 390, h: 844, user: { email: "admin@pvrs.org", displayName: "Casey" } });
-    const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
-    if (items.includes("new")) fail("admin sees + on phone: " + items); else ok("phone: only the owner gets the + button");
+    await page.click('#mnav [data-m="more"]'); await wait(page, 300);
+    if (/New applicant/.test(await page.locator("#modal").textContent())) fail("admin sees New applicant in More"); else ok("phone: only the owner gets New applicant (in More)");
     await ctx.close();
   }
   for (const w of [360, 390]) { // the file's section bar fits a phone without scrolling (Checks = Screening + References)

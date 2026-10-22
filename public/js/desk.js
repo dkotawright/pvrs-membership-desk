@@ -1417,7 +1417,6 @@ function ivGo(d){
 // It mirrors the sidebar: each item is shown only when the matching sidebar button is, so roles stay the same.
 function paintMnav(){
   const m = $("#mnav"); if (!m) return;
-  m.querySelector('[data-m="new"]').hidden = $("#newBtn").hidden;
   m.querySelector('[data-m="msgs"]').hidden = $("#msgsBtn").hidden;
   m.querySelectorAll("[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === (S.mOv ? "ov" : "list")));
   $("#app").classList.toggle("ovopen", !!S.mOv && !S.sel);
@@ -1441,7 +1440,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["newBtn", "New applicant"], ["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
