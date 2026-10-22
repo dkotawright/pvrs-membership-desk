@@ -66,6 +66,9 @@ Done + deployed: phone bottom menu; (1) Checks tab = Screening + References; (2)
 (9) Celebrations: deployed (celebrate() from edit() on board approval / stage→act, owner only; milestoneChip in roster; no confetti with reduced motion).
 (10) Year at a glance (statsCard: 3 KPIs + applications/month columns, --chart token validated light #0a5fd1 / dark #3d8bfd): deployed Oct 21. ALL 10 DONE. Reviewed Oct 21: fixed tooltip overlap + overview cards squeezed at 700–760px container widths.
 
+## Dashboard layout (Oct 22)
+Overview = header (greeting + Board meeting / Search ⌘K buttons) → one stage strip (Screening, Interview, Approval [+board queue count], Onboarding, Active; each filters the list) → `.ovmain`: left To do (+ new messages, access requests), right `.ovcol.ovside` (Coming up, Applicant activity, Year at a glance). Medium panes pair the side cards under To do; phones get one compact stage row. "Waiting longest" and the separate pipeline/tiles were removed (redundant). Don't name classes `side` — `.side` is the sidebar's glass style.
+
 ## Stability review (Oct 22)
 Full check: 118 browser checks, 49 rules tests, live public pages clean, live rules == local. Fixed: replacement references and reference answers are now claimed in a transaction (`claimOnce`) before the owner's desk applies them — an out-of-date open desk could otherwise redo a swap and wipe the new reference's link/answers. Every automatic owner-desk action now claims first (submissions, refUpdates, refResponses).
 

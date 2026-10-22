@@ -389,38 +389,24 @@ function renderOverview(){
   const booked = [...S.slots.values()].filter(s => s.bookedBy && s.start > now - 2*36e5 && S.apps.has(s.bookedBy)).sort((x,y) => x.start - y.start);
   const thisWeek = booked.filter(s => s.start < wk).length;
   const hour = new Date().getHours(), greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  const tile = (k, v, s, f, color) => `<button class="tile" type="button" data-filter="${f}" style="--stage-c:${color}"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s}</span></button>`;
-  const order = ["screen","int","appr","onb","act","hold","dec","wd"].filter(k => c[k]);
-  const total = order.reduce((n,k) => n + c[k], 0);
   const oitem = (a, right, sub) => `<button class="oitem" type="button" data-open="${esc(a._id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name||"Unnamed applicant")}</b><small>${sub}</small></span><span class="when">${right}</span></button>`;
-  const ivList = booked.slice(0,6).map(s => { const a = S.apps.get(s.bookedBy); const d = new Date(s.start);
+  const ivList = booked.slice(0,5).map(s => { const a = S.apps.get(s.bookedBy); const d = new Date(s.start);
     return oitem(a, `<b>${esc(d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}))}</b>${esc(slotTime(s.start))}`, esc([a.type, s.location].filter(Boolean).join(" · ") || "Interview")); }).join("");
-  const waiting = inProc.filter(r => get(r.a,"app.received")).sort((x,y) => String(get(x.a,"app.received")).localeCompare(String(get(y.a,"app.received")))).slice(0,6)
-    .map(({a,p}) => { const d = daysSince(get(a,"app.received")); return oitem(a, `<b>${d}d</b>waiting`, S.admin && p.next ? "Next: " + esc(p.next) : esc(STAGES[p.stage].label)); }).join("");
+  // One strip of stage counts (replaces the separate count tiles and pipeline bar); each filters the list.
+  const stage = (k, label, sub) => `<button class="stg" type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}"><span class="v">${c[k] || 0}</span><span class="k">${label}</span>${sub ? `<span class="s">${sub}</span>` : ""}</button>`;
+  const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.canEdit ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>`;
   const html = `<div class="ov"><div class="ovin">
-    <div class="ovhead"><div class="eyebrow">${esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))}</div>
+    <div class="ovhead"><div><div class="eyebrow">${esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))}</div>
       <h2>${greet}${S.name ? ", " + esc(first(S.name)) : ""}</h2>
-      <p>${rows.length ? `${inProc.length} applicant${inProc.length===1?"":"s"} in process${S.admin && c.board ? `, ${c.board} waiting on the board` : ""}${thisWeek ? `, ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet. Press N or click New applicant to start a file."}</p></div>
-    <div class="tiles">
-      ${tile("In process", inProc.length, "Screening through onboarding", "inproc", "var(--s-screen)")}
-      ${S.admin ? tile("Board queue", c.board||0, c.board ? "Ready for the next meeting" : "Nobody waiting", "board", "var(--s-appr)") : tile("Interview stage", c.int||0, "Waiting on or in interviews", "int", "var(--s-int)")}
-      ${tile("Interviews this week", thisWeek, booked.length ? `${booked.length} booked in total` : "None booked", "ivweek", "var(--s-int)")}
-      ${tile("Active members", c.act||0, "Through onboarding", "act", "var(--s-act)")}
-    </div>
-    ${todoCard()}
-    ${total ? `<section class="ovcard"><h3>Pipeline<small>${total} total</small></h3>
-      <div class="pipe" role="img" aria-label="${order.map(k => `${STAGES[k].label} ${c[k]}`).join(", ")}">${order.map(k => `<span style="flex:${c[k]};--stage-c:${stageVar(k)}" title="${STAGES[k].label}: ${c[k]}"></span>`).join("")}</div>
-      <div class="legend">${order.map(k => `<button type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}">${STAGES[k].label} <b>${c[k]}</b></button>`).join("")}</div></section>` : ""}
-    <div class="ovgrid cols">
-      <section class="ovcard"><h3>Upcoming interviews${S.canEdit?`<button class="btn small" type="button" data-cmd="slots">Interview times</button>`:""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>
-      <section class="ovcard"><h3>Waiting longest<small>in process</small></h3><div class="olist">${waiting || `<div class="oempty">Nobody in process.</div>`}</div></section>
-      ${S.owner && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="settings">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}
+      <p>${rows.length ? `${inProc.length} applicant${inProc.length===1?"":"s"} in process${S.admin && c.board ? `, ${c.board} waiting on the board` : ""}${thisWeek ? `, ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet."}</p></div>
+      <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
+    <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
+    ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
       ${S.admin && unreadTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open inbox</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => m.from === "applicant" && !m.readAt && S.apps.has(m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
         return `<button class="oitem" type="button" data-openmsg="${esc(id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name)}</b><small>${esc(last.text.slice(0, 80))}</small></span><span class="when"><span class="newdot"></span>${esc(ago(last.at))}</span></button>`; }).join("")}</div></section>` : ""}
-      ${activityCard()}
-
-    </div>
-    ${statsCard()}
+      ${S.owner && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="settings">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}</div>
+      <div class="ovcol ovside">${comingUp}${activityCard()}${statsCard()}</div></div>`
+    : `<div class="ovmain single"><div class="ovcol">${comingUp}</div></div>`}
     <p class="kbdhint">Tip: press <kbd>⌘K</kbd> to find anyone or run a command, <kbd>J</kbd> <kbd>K</kbd> to move through applicants, <kbd>?</kbd> for all shortcuts.</p>
   </div></div>`;
   if (D.querySelector(".ov") && D._ovHTML === html) return;
@@ -1569,7 +1555,7 @@ function bindEvents(){
       if (k === "invite") return inviteToPortal(id);
       if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
       return; }
-    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); return; }
+    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); return; }
     const om = t.closest("[data-openmsg]"); if (om) { select(om.dataset.openmsg); switchTab("msgs"); return; }
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
@@ -2052,7 +2038,7 @@ function activity(){
 }
 function activityCard(){
   if (!S.admin) return "";
-  const items = activity().slice(0, 8);
+  const items = activity().slice(0, 5);
   const seen = S.seenBefore || 0;
   return `<section class="ovcard"><h3>Applicant activity<small>last 14 days</small></h3><div class="olist">${items.length ? items.map(x => {
     const a = S.apps.get(x.id);
