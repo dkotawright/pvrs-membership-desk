@@ -465,6 +465,20 @@ try {
     await card.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(OUT, `18-stats${dark ? "-dark" : ""}.png`) });
     await ctx.close();
   }
+  // ---- desktop: the applicant list tucks into a strip; filters slide it out
+  {
+    const { ctx, page } = await open(browser); await wait(page, 400); await page.mouse.move(900, 500); await wait(page, 900);
+    const tucked = () => page.evaluate(() => getComputedStyle(document.querySelector(".roster")).transform !== "none");
+    if (!(await tucked())) fail("list not tucked on the dashboard"); else ok("desktop: the applicant list tucks into a strip by default");
+    await page.locator('#chips [data-f="screen"]').click(); await wait(page, 700);
+    if (await tucked() || !/Screening/.test(await page.locator("#rosterTitle").textContent())) fail("filter didn't slide the list out"); else ok("choosing a filter slides the list out with the results");
+    await page.mouse.click(1200, 600); await wait(page, 900);
+    if (!(await tucked())) fail("list didn't tuck after clicking elsewhere"); else ok("clicking elsewhere tucks it away again");
+    await page.locator(".rhandle").hover(); await wait(page, 700);
+    await page.locator("#pinBtn").click(); await page.mouse.move(1200, 600); await wait(page, 900);
+    if (await tucked()) fail("pinned list still tucks"); else ok("the pin keeps the list docked open");
+    await ctx.close();
+  }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);

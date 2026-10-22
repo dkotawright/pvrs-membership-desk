@@ -1438,7 +1438,14 @@ function openMore(){
 function deselect(){ if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
 function setFilter(f, focusList){
   S.filter = f; renderList();
+  peekList();
   if (focusList) { const L = $("#list"); $(".roster").scrollTop = 0; const first = L.querySelector(".arow"); if (first && innerWidth > 860) first.focus(); }
+}
+// Desktop: the list lives as a strip on the left; choosing a filter slides it out to show the results until the pointer leaves it.
+function peekList(){
+  const R = $(".roster"); if (!R || innerWidth <= 860 || $("#app").classList.contains("pinned")) return;
+  R.classList.remove("nohover"); R.classList.add("peek");
+  clearTimeout(peekList.t); peekList.t = setTimeout(() => { if (!R.matches(":hover")) R.classList.remove("peek"); }, 6000);
 }
 function moveSel(dir){
   const ids = S.vis || []; if (!ids.length) return;
@@ -1519,15 +1526,16 @@ function bindEvents(){
   $("#chipsMini").addEventListener("click", onFilter);
   $("#q").addEventListener("input", e => { S.q = e.target.value; renderList(); });
   // While a file is open the list tucks away to a strip on the left; hover (or ⌘K) slides it out. Pin keeps it docked.
-  const setPinned = on => { $("#app").classList.toggle("pinned", on); $("#pinBtn").setAttribute("aria-pressed", on); $("#pinBtn").title = on ? "Let the list tuck away while a file is open" : "Keep the list open while a file is open"; prefs.set("pinned", on ? "1" : ""); };
+  const setPinned = on => { $("#app").classList.toggle("pinned", on); $("#pinBtn").setAttribute("aria-pressed", on); $("#pinBtn").title = on ? "Let the list tuck away to a strip" : "Keep the list open"; prefs.set("pinned", on ? "1" : ""); };
   setPinned(prefs.get("pinned") === "1");
   $("#pinBtn").addEventListener("click", () => setPinned(!$("#app").classList.contains("pinned")));
   // After picking someone from the slid-out list, let it tuck away again instead of holding it open by focus.
   // and don't slide back out under the mouse until the pointer has left the list once.
   const R = $(".roster");
   $("#list").addEventListener("click", e => { if ($("#app").classList.contains("pinned") || !e.target.closest(".arow")) return;
-    R.classList.add("nohover"); setTimeout(() => { const f = document.activeElement; if (f && f.closest && f.closest(".roster") && f.id !== "q") f.blur(); }, 0); });
-  R.addEventListener("mouseleave", () => R.classList.remove("nohover"));
+    R.classList.remove("peek"); R.classList.add("nohover"); setTimeout(() => { const f = document.activeElement; if (f && f.closest && f.closest(".roster") && f.id !== "q") f.blur(); }, 0); });
+  R.addEventListener("mouseleave", () => { R.classList.remove("nohover"); R.classList.remove("peek"); });
+  document.addEventListener("pointerdown", e => { if (R.classList.contains("peek") && !e.target.closest(".roster, #chips, #chipsMini, .stg, [data-filter]")) R.classList.remove("peek"); });
   $(".rhandle").addEventListener("mouseenter", () => R.classList.remove("nohover"));
   const sortSel = $("#sort"); sortSel.value = S.sort; sortSel.addEventListener("change", e => { S.sort = e.target.value; prefs.set("sort", S.sort); renderList(); });
   $("#overviewBtn").addEventListener("click", () => { if (S.sel) deselect(); else { S.filter = "all"; renderList(); } });

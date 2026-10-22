@@ -69,6 +69,8 @@ Done + deployed: phone bottom menu; (1) Checks tab = Screening + References; (2)
 ## Dashboard layout (Oct 22)
 Overview = header (greeting + Board meeting / Search ⌘K buttons) → one stage strip (Screening, Interview, Approval [+board queue count], Onboarding, Active; each filters the list) → `.ovmain`: left To do (+ new messages, access requests), right `.ovcol.ovside` (Coming up, Applicant activity, Year at a glance). Medium panes pair the side cards under To do; phones get one compact stage row. "Waiting longest" and the separate pipeline/tiles were removed (redundant). Don't name classes `side` — `.side` is the sidebar's glass style.
 
+Desktop applicant list (Oct 22): tucks into a thin "Applicants" strip on the left ALWAYS (not only with a file open) unless pinned (`.app:not(.pinned)` rules; pin button at the top of the list, saved per browser). Hover slides it out; choosing a filter adds `.peek` (peekList) until the pointer leaves, a click elsewhere, or 6 s.
+
 ## Stability review (Oct 22)
 Full check: 118 browser checks, 49 rules tests, live public pages clean, live rules == local. Fixed: replacement references and reference answers are now claimed in a transaction (`claimOnce`) before the owner's desk applies them — an out-of-date open desk could otherwise redo a swap and wipe the new reference's link/answers. Every automatic owner-desk action now claims first (submissions, refUpdates, refResponses).
 
