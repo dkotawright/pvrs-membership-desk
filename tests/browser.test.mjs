@@ -480,6 +480,48 @@ try {
     if (!/^http:\/\/localhost:5999\/$/.test(page.url())) fail("page navigated away: " + page.url());
     await ctx.close();
   }
+  // ---- an applicant's replacement reference is swapped in exactly once
+  {
+    const { ctx, page } = await open(browser);
+    await page.evaluate(() => { const d = window.__mock.docs, p = d.get("applicants/a1/private/main");
+      p.refs.r2 = { name: "Sam Ortiz", email: "sam@example.com", contacted: "2026-10-01", returned: "2026-10-05", replace: "2026-10-10" };
+      d.set("portal/a1/refUpdates/u1", { slot: 2, name: "Dr. Lena Ruiz", relationship: "Professor", email: "lruiz@example.com", phone: "", address: "", at: Date.now(), by: "georgia@example.com" });
+      window.__mock.emit(); });
+    await wait(page, 1800);
+    const r2 = (await priv(page, "a1")).refs.r2, u = await page.evaluate(() => window.__mock.docs.get("portal/a1/refUpdates/u1"));
+    if (r2.name !== "Dr. Lena Ruiz" || r2.email !== "lruiz@example.com" || r2.returned || r2.contacted || r2.replace || r2.replacedFrom !== "Sam Ortiz") fail("replacement not applied: " + JSON.stringify(r2)); else ok("a replacement reference is swapped in (old progress cleared, history noted)");
+    if (!u.appliedAt) fail("replacement not marked applied"); else ok("…and marked applied so no other desk repeats it");
+    await ctx.close();
+  }
+  // ---- a desk working from an out-of-date copy must not redo automatic work another desk already did
+  {
+    const { ctx, page } = await open(browser);
+    await page.evaluate(() => { const d = window.__mock.docs, now = Date.now(), p = d.get("applicants/a1/private/main");
+      // already handled by another desk: Lena replaced Sam (now contacted, with a link and answers) and her answers were filed
+      p.refs.r2 = { name: "Dr. Lena Ruiz", email: "lruiz@example.com", contacted: "2026-10-15", link: "lenaLinkToken1234567890", form: { label: "x", date: "2026-10-18", answers: { known: "2 yrs" } }, returned: "2026-10-18", replacedFrom: "Sam Ortiz" };
+      d.set("portal/a1/refUpdates/u9", { slot: 2, name: "Dr. Lena Ruiz", email: "lruiz@example.com", relationship: "", phone: "", address: "", at: now - 864e5, by: "georgia@example.com", appliedAt: now - 8e7 });
+      d.set("refLinks/lenaLinkToken1234567890", { appId: "a1", slot: 2, applicant: "Georgia Thurmond", first: "Georgia", refName: "Dr. Lena Ruiz", createdAt: now, expiresAt: now + 5e9, submittedAt: now });
+      d.set("refResponses/lenaLinkToken1234567890", { v: 1, answers: { known: "2 yrs", signName: "Lena" }, submittedAt: now, hp: "", importedAt: now - 1e6 });
+      window.__mock.emit(); });
+    await wait(page, 800);
+    const before = await page.evaluate(() => (window.__mock.writes || []).length);
+    // the out-of-date copy: the same two items, but without the "done" marks
+    await page.evaluate(() => {
+      const stale = (path, data) => ({ id: path.split("/").pop(), ref: { path, id: path.split("/").pop(), parent: { id: path.split("/").slice(-2, -1)[0], parent: { id: path.split("/")[1] } } }, data: () => data });
+      const u = stale("portal/a1/refUpdates/u9", { slot: 2, name: "Dr. Lena Ruiz", email: "lruiz@example.com", relationship: "", phone: "", address: "" });
+      const r = stale("refResponses/lenaLinkToken1234567890", { v: 1, answers: { known: "2 yrs", signName: "Lena" }, submittedAt: Date.now(), hp: "" });
+      window.__mock.listeners.forEach(l => {
+        if (l.target.kind === "group" && l.target.name === "refUpdates") l.cb({ docs: [u] });
+        if (l.target.kind === "col" && l.target.path === "refResponses") l.cb({ docs: [r] });
+      });
+    });
+    await wait(page, 1500);
+    const r2 = (await priv(page, "a1")).refs.r2, link = await page.evaluate(() => window.__mock.docs.has("refLinks/lenaLinkToken1234567890"));
+    const writes = await page.evaluate(n => (window.__mock.writes || []).slice(n).filter(w => /applicants\/a1/.test(w.path)).length, before);
+    if (!r2.contacted || !r2.link || !r2.form || !link) fail("stale copy wiped the new reference: " + JSON.stringify(r2)); else ok("an out-of-date desk can't redo a reference swap (progress kept)");
+    if (writes) fail(`stale copy re-filed answers (${writes} writes)`); else ok("an out-of-date desk can't re-file reference answers");
+    await ctx.close();
+  }
   // ---- the rest of the app still loads cleanly
   for (const [url, user, sel, label] of [["/", null, "#home", "home page"], ["/apply", null, "#apply", "online application"], ["/signin", null, "#signin", "sign-in"],
     ["/", OWNER, "#app", "owner desk"], ["/", { email: "marcus.bell@example.com", displayName: "" }, "#portal", "applicant portal"], ["/", { email: "orientationpaperwork@pvrs.org", displayName: "" }, "#vault", "paperwork page"]]) {

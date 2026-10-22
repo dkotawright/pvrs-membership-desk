@@ -102,6 +102,22 @@ console.log("Online application imported once, even with several desks open");
   else { fail++; console.log("  ✗ race produced", made, "applicants", JSON.stringify(res)); }
 }
 
+console.log("Reference items are claimed once, even with several desks open");
+{
+  await env.withSecurityRulesDisabled(async c => {
+    const cdb = c.firestore();
+    await setDoc(doc(cdb, "portal/a1/refUpdates/claimMe"), { slot: 2, name: "X", relationship: "", email: "x@example.com", phone: "", address: "", at: now(), by: "app@example.com" });
+    await setDoc(doc(cdb, "refResponses/claimMeToo"), { v: 1, answers: {}, submittedAt: now(), hp: "" });
+  });
+  for (const [path, field] of [["portal/a1/refUpdates/claimMe", "appliedAt"], ["refResponses/claimMeToo", "importedAt"]]) {
+    const desks = [fsOf("dkota@pvrs.org"), fsOf("dkota@pvrs.org"), fsOf("dkota@pvrs.org")];
+    const claim = db => runTransaction(db, async tx => { const r = doc(db, path), cur = await tx.get(r); if (cur.data()[field]) return false; tx.update(r, { [field]: now() }); return true; });
+    const res = await Promise.all(desks.map(claim));
+    if (res.filter(Boolean).length === 1) { pass++; console.log(`  ✓ 3 desks claiming ${path.split("/")[0] === "portal" ? "a replacement reference" : "reference answers"} → exactly 1 wins`); }
+    else { fail++; console.log("  ✗ claim race", path, JSON.stringify(res)); }
+  }
+}
+
 console.log("Storage");
 const st = email => ctx(email).storage(), pdf = new Uint8Array([37, 80, 68, 70]), meta = { contentType: "application/pdf" };
 await t("an applicant uploads private paperwork to their folder", uploadBytes(ref(st("app@example.com"), "confidential/a1/1.pdf"), pdf, meta), true);

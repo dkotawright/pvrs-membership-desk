@@ -1888,6 +1888,14 @@ const applyingRefs = new Set();
 function watchRefUpdates(){
   onSnapshot(collectionGroup(db, "refUpdates"), snap => { refUps = snap.docs; processRefUpdates(); }, e => console.error(e));
 }
+// Claim an item against the live database before acting on it: if the desk is open in several places, or one is
+// working from an out-of-date copy, only the first claim succeeds. Returns false if someone already handled it.
+const claimOnce = (ref0, field) => runTransaction(db, async tx => {
+  const cur = await tx.get(ref0);
+  if (!cur.exists() || cur.data()[field]) return false;
+  tx.update(ref0, { [field]: Date.now() });
+  return true;
+});
 function processRefUpdates(){
   for (const d of refUps) {
     const u = d.data(), id = d.ref.parent.parent.id;
@@ -1897,6 +1905,9 @@ function processRefUpdates(){
 }
 async function applyRefUpdate(id, ref0, u){
   const a = S.apps.get(id), i = u.slot; if (![1,2,3,4].includes(i)) return;
+  let mine = false;
+  try { mine = await claimOnce(ref0, "appliedAt"); } catch (e) { console.error(e); applyingRefs.delete(ref0.path); return; }
+  if (!mine) return;   // another desk already swapped this reference in; re-doing it would wipe the new reference's progress
   const set = (k, v) => { if ((get(a,`refs.r${i}.${k}`) || "") !== v) edit(id, `refs.r${i}.${k}`, v); };
   const old = String(get(a,`refs.r${i}.name`) || "").trim();
   set("name", u.name || ""); set("email", lower(u.email)); set("phone", u.phone || ""); set("relationship", u.relationship || ""); set("address", u.address || "");
@@ -1904,7 +1915,6 @@ async function applyRefUpdate(id, ref0, u){
   for (const k of ["contacted","method","returned","init","replace","link","linkAt","linkExp","form"]) if (get(a,`refs.r${i}.${k}`)) edit(id, `refs.r${i}.${k}`, "");
   set("replacedFrom", old); set("replacedAt", today());
   flushAll();
-  try { await updateDoc(ref0, { appliedAt: Date.now() }); } catch (e) { console.error(e); }
   toast(`${a.name || "An applicant"} sent a new reference: ${u.name}`);
   if (S.sel === id) syncDetail();
 }
@@ -2015,6 +2025,7 @@ async function processRefResponses(){
         continue;
       }
       if (!S.secure.has(L.appId)) { importingResp.delete(d.id); continue; }
+      if (!(await claimOnce(d.ref, "importedAt"))) continue;   // another desk already filed these answers
       const a = S.apps.get(L.appId), i = L.slot, ans = r.answers || {};
       const rec = { label: `Online reference form from ${ans.signName || L.refName}`, answers: ans, date: isoDay(r.submittedAt || Date.now()) };
       if (get(a,`refs.r${i}.link`) === d.id) {
@@ -2022,7 +2033,6 @@ async function processRefResponses(){
         if (!get(a,`refs.r${i}.returned`)) edit(L.appId, `refs.r${i}.returned`, rec.date);
       } else edit(L.appId, `refs.late.${d.id}`, { ...rec, refName: L.refName });   // that reference was replaced in the meantime
       flushAll();
-      await updateDoc(d.ref, { importedAt: Date.now() });
       toast(`Reference from ${L.refName} for ${a.name} came in`);
       if (S.sel === L.appId) syncDetail();
     } catch (e) { console.error(e); importingResp.delete(d.id); }
