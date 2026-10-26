@@ -19,7 +19,7 @@ export const refQuestions = f => [
 ];
 export const TRUST_Q = f => `Within Potsdam Rescue we deal with large amounts of personal information. Do you feel ${f} is trustworthy and would not disclose such information?`;
 
-const R = { token: "", link: null, a: null, state: "loading", sending: false };
+const R = { token: "", link: null, a: null, state: "loading", sending: false, wiz: 0 };
 const KEY = () => "pvrsRef." + R.token;
 const blank = () => ({ known: "", skills: "", getAlong: "", criticism: "", ratings: {}, trustworthy: "", reservations: "", other: "", others: "", signName: "" });
 const today = () => new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
@@ -29,8 +29,9 @@ const save = () => { clearTimeout(saveT); saveT = setTimeout(saveNow, 300); };
 
 // The card fades in once; later redraws (a rating tap, say) must not replay it.
 let shown = false;
+const CREST = `<div class="refcrest" aria-hidden="true"><svg viewBox="-120 -120 240 240"><g fill="var(--navy)"><rect x="-24" y="-100" width="48" height="200" rx="7"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(60)"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(-60)"/></g><rect x="-5" y="-78" width="10" height="156" rx="5" fill="var(--red-fill)"/></svg><div class="eyebrow">Potsdam Volunteer Rescue Squad</div></div>`;
 function card(inner){ const c = `<div class="applycard glass refcard${shown ? " noanim" : ""}">${inner}</div>`; shown = true; return c; }
-function message(title, body){ return card(`<div class="applyhead"><div><div class="eyebrow">Potsdam Volunteer Rescue Squad · Reference</div><h1>${title}</h1></div></div><p class="lead2">${body}</p>`); }
+function message(title, body){ return card(`${CREST}<div class="applyhead"><div><h1>${title}</h1></div></div><p class="lead2">${body}</p>`); }
 
 function render(){
   const root = $("#refRoot"); if (!root) return;
@@ -40,32 +41,42 @@ function render(){
   if (R.state === "expired") { root.innerHTML = message("This link has expired", `Please contact <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> and we'll send you a new one.`); return; }
   if (R.state === "already") { root.innerHTML = message("We already have your reference", `Thank you! Your reference for ${full} is with the PVRS Membership Committee. Questions? <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a>`); return; }
   if (R.state === "done") {
-    root.innerHTML = card(`<div class="donemark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    root.innerHTML = card(`${CREST}<div class="donemark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h1>Thank you${R.a.signName ? ", " + esc(R.a.signName.split(" ")[0]) : ""}!</h1>
-      <p class="lead2">Your reference for ${full} is with the PVRS Membership Committee. We appreciate you taking the time.</p>`);
+      <p class="lead2">Your reference for ${full} is with the Membership Committee. We appreciate your time.</p>`);
     return;
   }
   const a = R.a;
   const area = (k, label, req) => `<div class="af"><label for="rf-${k}">${label}${req ? ' <i aria-hidden="true">*</i>' : ' <span class="opt">optional</span>'}</label><textarea id="rf-${k}" data-r="${k}" rows="3" maxlength="4000">${esc(a[k] || "")}</textarea></div>`;
   const qs = refQuestions(f);
-  root.innerHTML = card(`<div class="applyhead"><div><div class="eyebrow">Potsdam Volunteer Rescue Squad · Reference check</div><h1>Reference for ${full}</h1></div></div>
-    <p class="lead2">${L.refName ? `Hi ${esc(String(L.refName).split(" ")[0])}, ` : ""}${full} has applied to volunteer with the Potsdam Volunteer Rescue Squad and listed you as a reference. This takes about 5 minutes. Your answers go only to the PVRS Membership Committee; ${f} won't see them.</p>
-    <form class="applybody" id="refForm" novalidate>
-      <input type="text" id="rf-hp" tabindex="-1" autocomplete="off" aria-hidden="true" class="hp">
-      ${qs.slice(0, 4).map(([k, label, req]) => area(k, label, req)).join("")}
-      <fieldset class="afs"><legend>Please rate ${f} on the following <i aria-hidden="true">*</i></legend>
+  const ratings = `<fieldset class="afs"><legend>Please rate ${f} on the following <i aria-hidden="true">*</i></legend>
         ${RATINGS.map(([k, label]) => `<div class="rate" data-rk="${k}"><span class="rl" id="rl-${k}">${label}</span><div class="rscale"><small aria-hidden="true">Poor</small><div class="choice" role="radiogroup" aria-labelledby="rl-${k}">
           ${[1,2,3,4,5].map(n => `<button type="button" role="radio" aria-checked="${a.ratings[k] === n}" aria-label="${label}: ${n} of 5" data-rate="${k}" data-v="${n}">${n}</button>`).join("")}</div><small aria-hidden="true">Excellent</small></div></div>`).join("")}
       </fieldset>
       <div class="af" data-rk="trustworthy"><span class="aflabel">${TRUST_Q(f)} <i aria-hidden="true">*</i></span><div class="choice" role="radiogroup" aria-label="Trustworthy with personal information">
-        ${[["yes", "Yes"], ["no", "No"]].map(([v, t]) => `<button type="button" role="radio" aria-checked="${a.trustworthy === v}" data-trust="${v}">${t}</button>`).join("")}</div></div>
-      ${qs.slice(4).map(([k, label, req]) => area(k, label, req)).join("")}
-      <div class="afgrid"><div class="af half"><label for="rf-signName">Your name <i aria-hidden="true">*</i></label><input id="rf-signName" data-r="signName" type="text" maxlength="200" autocomplete="name" value="${esc(a.signName || "")}"></div>
-        <div class="af half"><span class="aflabel">Date</span><div class="rdate">${esc(today())}</div></div></div>
+        ${[["yes", "Yes"], ["no", "No"]].map(([v, t]) => `<button type="button" role="radio" aria-checked="${a.trustworthy === v}" data-trust="${v}">${t}</button>`).join("")}</div></div>`;
+  const sign = `<div class="afgrid"><div class="af half"><label for="rf-signName">Your name <i aria-hidden="true">*</i></label><input id="rf-signName" data-r="signName" type="text" maxlength="200" autocomplete="name" value="${esc(a.signName || "")}"></div>
+        <div class="af half"><span class="aflabel">Date</span><div class="rdate">${esc(today())}</div></div></div>`;
+  // Phone: one question (or block) at a time. Desktop CSS shows every step at once.
+  const steps = [
+    ...qs.slice(0, 4).map(([k, label, req]) => area(k, label, req)),
+    ratings,
+    ...qs.slice(4).map(([k, label, req]) => area(k, label, req)),
+    sign,
+  ];
+  const n = steps.length; R.wiz = Math.max(0, Math.min(R.wiz || 0, n - 1));
+  root.innerHTML = card(`${CREST}<div class="applyhead"><div><div class="eyebrow">Reference check · about 5 minutes</div><h1>Reference for ${full}</h1></div></div>
+    <p class="lead2">${L.refName ? `Hi ${esc(String(L.refName).split(" ")[0])}, ` : ""}${full} has applied to volunteer with the Potsdam Volunteer Rescue Squad and listed you as a reference. Your answers go only to the Membership Committee; ${f} won't see them.</p>
+    <form class="applybody refwiz" id="refForm" novalidate>
+      <input type="text" id="rf-hp" tabindex="-1" autocomplete="off" aria-hidden="true" class="hp">
+      <div class="rwprog">Step ${R.wiz + 1} of ${n}</div>
+      ${steps.map((html, i) => `<div class="rwstep${i === R.wiz ? " on" : ""}" data-rw="${i}">${html}</div>`).join("")}
       <div class="aperr" id="rfErr" role="alert" hidden></div>
-      <div class="applyfoot"><span></span><button type="submit" class="btn primary" ${R.sending ? "disabled" : ""}>${R.sending ? "Sending…" : "Send reference"}</button></div>
+      <div class="applyfoot rwnav">${R.wiz ? `<button type="button" class="btn" data-rwback>← Back</button>` : `<span></span>`}
+        ${R.wiz < n - 1 ? `<button type="button" class="btn primary" data-rwnext>Continue →</button>` : `<button type="submit" class="btn primary" ${R.sending ? "disabled" : ""}>${R.sending ? "Sending…" : "Send reference"}</button>`}</div>
+      <div class="applyfoot" style="display:none" id="rwDeskSubmit"><span></span><button type="submit" class="btn primary" ${R.sending ? "disabled" : ""}>${R.sending ? "Sending…" : "Send reference"}</button></div>
     </form>
-    <p class="applyfine">Fields marked <i>*</i> are required. Your answers are kept on this device until you send them. Questions? <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p>`);
+    <p class="applyfine">Required fields are marked <i>*</i>. Draft saves on this device. <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p>`);
 }
 
 function problems(){
@@ -112,7 +123,9 @@ function bind(){
   root.addEventListener("input", e => { const k = e.target.dataset && e.target.dataset.r; if (k) { R.a[k] = e.target.value; save(); } });
   root.addEventListener("click", e => {
     const r = e.target.closest("[data-rate]"); if (r) { R.a.ratings[r.dataset.rate] = +r.dataset.v; save(); render(); return; }
-    const t = e.target.closest("[data-trust]"); if (t) { R.a.trustworthy = t.dataset.trust; save(); render(); }
+    const t = e.target.closest("[data-trust]"); if (t) { R.a.trustworthy = t.dataset.trust; save(); render(); return; }
+    if (e.target.closest("[data-rwnext]")) { R.wiz = (R.wiz || 0) + 1; saveNow(); render(); const g = $("#reference"); if (g) g.scrollTop = 0; return; }
+    if (e.target.closest("[data-rwback]")) { R.wiz = Math.max(0, (R.wiz || 0) - 1); render(); const g = $("#reference"); if (g) g.scrollTop = 0; }
   });
   root.addEventListener("submit", e => { e.preventDefault(); send(); });
 }

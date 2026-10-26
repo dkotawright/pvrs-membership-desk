@@ -79,7 +79,8 @@ try {
     const { ctx, page } = await open(browser, { url: "/ref/linkGoodToken123456789", user: null, w: 390, h: 844 });
     const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     if (over > 1) fail("reference form scrolls sideways on a phone"); else ok("reference form fits a phone");
-    await page.locator(".rate").first().scrollIntoViewIfNeeded(); await snap(page, "04-ref-phone");
+    // Phone uses a one-question wizard; just capture the visible card (don't hunt for .rate — it's on a later step).
+    await snap(page, "04-ref-phone");
     await ctx.close();
   }
   // ---- the owner sends the link, the answers come back

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#f3f3f6" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#e9e4da" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161310" media="(prefers-color-scheme: dark)">
 <meta name="robots" content="noindex">
 <title>PVRS Membership Desk</title>
 <link rel="icon" type="image/png" sizes="192x192" href="/img/icon-192.png">
@@ -34,24 +34,19 @@
   <span class="publinks"><a href="/apply" data-nav="/apply" id="navApply">Apply</a><a href="/signin" data-nav="/signin" id="navSignin">Sign in</a></span>
 </nav>
 
-<!-- Public home: apply or sign in -->
+<!-- Public home: full-bleed hero; Apply is the primary CTA -->
 <div class="gate home" id="home" hidden>
+  <div class="homehero" aria-hidden="true">
+    <img src="/img/hero.jpg" alt="" width="1280" height="720" decoding="async" fetchpriority="high">
+    <div class="homehero-scrim"></div>
+  </div>
   <div class="hero">
-    <div class="eyebrow light">Potsdam Volunteer Rescue Squad · Est. 1955</div>
+    <div class="hero-brand"><svg viewBox="-120 -120 240 240" aria-hidden="true"><g fill="#fff"><rect x="-24" y="-100" width="48" height="200" rx="7"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(60)"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(-60)"/></g><rect x="-5" y="-78" width="10" height="156" rx="5" fill="#c8102e"/></svg><span>Potsdam Volunteer Rescue Squad</span></div>
     <h1>Be part of Potsdam's volunteer EMS.</h1>
-    <p class="lead">Volunteer EMTs, drivers and members serving Potsdam around the clock. Apply online in about 15 minutes, then follow your application from your own portal.</p>
-    <div class="homecards">
-      <a class="homecard glass featured" href="/apply" data-nav="/apply">
-        <span class="hc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v5h5 M9 13h7 M9 17h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
-        <span class="jc-pill"><i aria-hidden="true"></i>New members welcome</span>
-        <b>Apply to join PVRS</b>
-        <span>Contact details, education, work history, your driver's license and 3–4 references. Your progress saves on this device as you go.</span>
-        <em>Start application →</em></a>
-      <a class="homecard glass" href="/signin" data-nav="/signin">
-        <span class="hc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 21c.8-4 4-6 8-6s7.2 2 8 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-        <b>Sign in</b>
-        <span>Applicants: check your status, upload documents and book your interview. PVRS members: open the desk.</span>
-        <em>Sign in →</em></a>
+    <p class="lead">Apply online in about 15 minutes. Then follow your application, upload documents and book your interview from your portal.</p>
+    <div class="hero-ctas">
+      <a class="btn primary block featured hero-apply" href="/apply" data-nav="/apply">Apply to join PVRS</a>
+      <a class="hero-signin" href="/signin" data-nav="/signin">Already applied or on the squad? Sign in</a>
     </div>
   </div>
 </div>
