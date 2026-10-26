@@ -1301,7 +1301,7 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 /* Portal: current-step hero + softer empties */
 .portal .nowhero{padding:22px 22px 20px;background:linear-gradient(135deg,color-mix(in srgb,var(--navy) 12%,var(--glass-2)),var(--glass-2));border-color:color-mix(in srgb,var(--navy) 22%,var(--glass-edge))}
 .portal .nowhero .eyebrow{color:var(--navy)}
-.portal .nowhero h2{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.02em;margin:2px 0 6px}
+.portal .nowhero h2{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.02em;margin:2px 0 6px;text-transform:none;color:var(--fg)}
 .portal .nowhero p{margin:0;color:var(--fg2);font-size:14.5px;line-height:1.5}
 .portal .hello{font-size:clamp(26px,4vw,32px)}
 .portal .softempty{padding:18px 4px;text-align:center;color:var(--fg2);font-size:14px;line-height:1.5}
