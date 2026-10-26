@@ -313,20 +313,38 @@ try {
     if (await page.locator("#schedule").isVisible() || await page.locator("#app").isHidden()) fail("member couldn't leave Duty for Applicants"); else ok("phone: members can leave Duty for the membership list");
     await ctx.close();
   }
-  { // owner: Crew settings + new positions
+  { // owner: Crew settings + eSchedule calendar (no publish)
     const { ctx, page } = await open(browser, { w: 1280, h: 820 });
     await page.click("#schedBtn"); await wait(page, 700);
     const t = await page.locator("#schedule").textContent();
     if (!/Crew settings/.test(t) || !/Crew roster/.test(t)) fail("owner duty missing crew tools"); else ok("owner Duty shows Crew settings and roster");
+    if (/Publish shifts/.test(t)) fail("publish still shown"); else ok("no Publish button — self-serve calendar");
+    if (!(await page.locator(".daycell[data-day]").count())) fail("week calendar days missing"); else ok("week calendar shows clickable days");
+    await page.click('[data-sc="view-month"]'); await wait(page, 300);
+    if (!(await page.locator(".mcell[data-day]").count())) fail("month grid missing"); else ok("month calendar view works");
+    await page.click('[data-sc="view-week"]'); await wait(page, 200);
+    await page.locator(".daycell[data-day]").first().click(); await wait(page, 400);
+    const day = await page.locator("#modal").textContent();
+    if (!/Day/.test(day) || !/Evening/.test(day) || !/EMT/.test(day) || !/Driver Trainer/.test(day) || /Attendant/.test(day)) fail("day board: " + day.slice(0, 200)); else ok("day board lists Day/Evening slots for EMT · AEMT · Paramedic · Driver · Driver Trainer");
+    await page.screenshot({ path: path.join(OUT, "16-duty-day-board.png") });
+    await page.click("#modal [data-x]"); await wait(page, 200);
     await page.click('[data-sc="crew"]'); await wait(page, 400);
     const crew = await page.locator("#modal").textContent();
     if (!/Add to duty crew/.test(crew) || !/Alex Moore/.test(crew) || !/Portable 14/.test(crew) || !/Casey Driver/.test(crew)) fail("crew settings: " + crew.slice(0, 180)); else ok("Crew settings lists people with portables");
-    await page.click("#modal [data-x]"); await wait(page, 200);
-    await page.click('[data-sc="publish"]'); await wait(page, 300);
-    const pub = await page.locator("#modal").textContent();
-    const pos = await page.locator("#dsPos").evaluate(s => [...s.options].map(o => o.value).join(","));
-    if (pos !== "EMT,AEMT,Paramedic,Driver,Driver Trainer" || /Attendant/.test(pub)) fail("positions: " + pos); else ok("publish positions are EMT · AEMT · Paramedic · Driver · Driver Trainer");
     await page.screenshot({ path: path.join(OUT, "16-duty-crew-settings.png") });
+    await ctx.close();
+  }
+  { // member signs up from the calendar for a cleared position
+    const { ctx, page } = await open(browser, { w: 390, h: 844, user: { email: "alex@pvrs.org", displayName: "Alex" } });
+    await wait(page, 900);
+    // Pick a future day in the week grid (skip past evenings when possible).
+    const dayKey = await page.locator(".daycell[data-day]").last().getAttribute("data-day");
+    await page.locator(`.daycell[data-day="${dayKey}"]`).click(); await wait(page, 400);
+    const claim = page.locator('#modal [data-claim][data-pos="EMT"]').first();
+    if (!(await claim.count())) fail("no EMT Sign up for Alex on " + dayKey); else ok("cleared member sees Sign up on open EMT slots");
+    await claim.click(); await wait(page, 800);
+    const saved = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k, v]) => k.startsWith("dutyShifts/") && v.assignee === "alex@pvrs.org"));
+    if (!saved.length || saved[0][1].position !== "EMT") fail("signup not saved: " + JSON.stringify(saved)); else ok("calendar signup writes a filled duty shift for the member");
     await ctx.close();
   }
   for (const w of [360, 390]) { // the file's section bar fits a phone without scrolling (Checks = Screening + References)

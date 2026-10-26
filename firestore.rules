@@ -169,27 +169,43 @@ service cloud.firestore {
             && onlyChanged(['credentials', 'cleared', 'memberType', 'updatedAt', 'schedule', 'scheduler', 'name', 'portable']));
     }
 
-    // Duty schedule (eSchedule-style). Beta: only staff with schedule==true (and the owner).
+    // Duty calendar (eSchedule-style). Members self-sign-up for slots by clearance.
+    // Slot docs are often created by the member when they claim (deterministic id).
     match /dutyShifts/{shiftId} {
       allow read: if hasSchedule();
-      allow create: if canManageSchedule()
+      allow create: if (
+        canManageSchedule()
         && request.resource.data.start is int
         && request.resource.data.end is int
-        && request.resource.data.position is string && request.resource.data.position.size() <= 40;
-      allow delete: if canManageSchedule();
-      allow update: if canManageSchedule() || (
+        && request.resource.data.position is string && request.resource.data.position.size() <= 40
+      ) || (
         hasSchedule()
-        && onlyChanged(['assignee', 'assigneeName', 'status', 'posted', 'updatedAt'])
-        && (
-          // Pick up an open shift (or claim a giveaway)
-          (resource.data.get('assignee', null) == null || resource.data.get('posted', false) == true)
+        && request.resource.data.assignee == myEmail()
+        && request.resource.data.createdBy == myEmail()
+        && request.resource.data.assigneeName is string && request.resource.data.assigneeName.size() <= 100
+        && request.resource.data.start is int
+        && request.resource.data.end is int
+        && request.resource.data.position is string && request.resource.data.position.size() <= 40
+        && request.resource.data.status == 'filled'
+        && request.resource.data.get('posted', false) == false
+      );
+      allow delete: if canManageSchedule()
+        || (hasSchedule() && resource.data.assignee == myEmail());
+      allow update: if canManageSchedule() || (
+        hasSchedule() && (
+          // Claim an open slot or giveaway
+          (onlyChanged(['assignee', 'assigneeName', 'status', 'posted', 'updatedAt'])
+            && (resource.data.get('assignee', null) == null || resource.data.get('posted', false) == true)
             && request.resource.data.assignee == myEmail()
             && request.resource.data.assigneeName is string && request.resource.data.assigneeName.size() <= 100
+            && request.resource.data.status == 'filled'
+            && request.resource.data.get('posted', false) == false)
           // Post / cancel own giveaway
           || (resource.data.assignee == myEmail() && request.resource.data.assignee == myEmail()
             && onlyChanged(['posted', 'updatedAt']))
-          // Clear own shift back to open (drop)
-          || (resource.data.assignee == myEmail() && request.resource.data.assignee == null)
+          // Clear own shift back to open
+          || (resource.data.assignee == myEmail() && request.resource.data.assignee == null
+            && onlyChanged(['assignee', 'assigneeName', 'status', 'posted', 'updatedAt']))
         )
       );
     }

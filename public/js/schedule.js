@@ -1,19 +1,17 @@
-// Duty schedule (eSchedule-style): week board, open-shift pickup, giveaways, trades,
-// credentials/expiry gates, monthly hours by membership category, and crew roster.
+// Duty schedule — eSchedule-style calendar: click a day, see who's on / what's open,
+// and sign up for a slot matching your clearances & credentials. No "publish first".
+// Members see only their own hours + credentials; roster shows names + portables.
 // Gated by staff/{email}.schedule === true (owner always on).
-// Members see only their own hours + credentials on the board; managers get Crew settings.
-import { db, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, getDoc } from "./fb.js";
+import { db, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, getDoc, runTransaction } from "./fb.js";
 import { $, esc, toast, openModal, closeModal, copyText, lower, pad2, TYPES } from "./shared.js";
 import { CONTACT_EMAIL, OWNER_EMAIL } from "./config.js";
 
 export const POSITIONS = ["EMT", "AEMT", "Paramedic", "Driver", "Driver Trainer"];
-const TEMPLATES = [
-  { id: "duty-eve", label: "Duty crew · evening", startH: 18, startM: 0, hours: 12, position: "EMT" },
-  { id: "duty-day", label: "Duty crew · day", startH: 6, startM: 0, hours: 12, position: "EMT" },
-  { id: "driver-eve", label: "Driver · evening", startH: 18, startM: 0, hours: 12, position: "Driver" },
-  { id: "medic-eve", label: "Paramedic · evening", startH: 18, startM: 0, hours: 12, position: "Paramedic" },
+// Fixed duty windows every day (self-serve open slots — no publish step).
+const BANDS = [
+  { id: "day", label: "Day", startH: 6, hours: 12 },
+  { id: "eve", label: "Evening", startH: 18, hours: 12 },
 ];
-// Monthly hour expectations from PVRS membership categories (TYPE_INFO).
 export const HOUR_TARGETS = {
   "Regular": 24, "Associate": 24, "Driver Only": 24, "Non-Resident": 24,
   "Auxiliary": 16, "Non-Operational": 0,
@@ -32,10 +30,12 @@ const POSITION_CREDS = {
   Driver: ["dl", "cpr"],
   "Driver Trainer": ["dl", "cpr"],
 };
+const CLINICAL = new Set(["EMT", "AEMT", "Paramedic"]);
+const DRIVING = new Set(["Driver", "Driver Trainer"]);
 
 const Q = {
   me: "", name: "", canManage: false, shifts: new Map(), trades: new Map(), staff: new Map(),
-  weekStart: null, unsub: [], onDesk: null,
+  weekStart: null, monthStart: null, view: "week", unsub: [], onDesk: null,
 };
 
 const startOfWeek = d => {
@@ -44,15 +44,26 @@ const startOfWeek = d => {
   x.setDate(x.getDate() - day);
   return x;
 };
+const startOfMonth = d => { const x = new Date(d.getFullYear(), d.getMonth(), 1); x.setHours(0, 0, 0, 0); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 const dayKey = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const fmtDay = d => d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+const fmtDayLong = d => d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 const fmtRange = (a, b) => `${a.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}–${b.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
 const monthBounds = (d = new Date()) => {
   const start = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
   const end = new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime();
   return { start, end, label: d.toLocaleDateString(undefined, { month: "long", year: "numeric" }) };
 };
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+const isToday = d => sameDay(d, new Date());
+const bandTimes = (day, band) => {
+  const start = new Date(day); start.setHours(band.startH, 0, 0, 0);
+  const end = new Date(start.getTime() + band.hours * 36e5);
+  return { start: start.getTime(), end: end.getTime(), startDate: start, endDate: end };
+};
+const slotDocId = (day, bandId, position) => `${dayKey(day)}_${bandId}_${String(position).replace(/\s+/g, "")}`;
 const shiftHours = s => Math.max(0, ((s.end || s.start + 12 * 36e5) - s.start) / 36e5);
 const meStaff = () => Q.staff.get(Q.me) || {};
 const memberType = (st = meStaff()) => st.memberType || "Regular";
@@ -71,7 +82,6 @@ const myClearedFor = st => {
 const credList = (st = meStaff()) => {
   const raw = st.credentials;
   const byKey = new Map((Array.isArray(raw) ? raw : []).map(c => [c.key, c]));
-  // Always show the current credential set (migrates off Attendant-era lists).
   return CRED_DEFS.map(d => {
     const c = byKey.get(d.key);
     return { key: d.key, label: d.label, expires: c?.expires || "" };
@@ -97,26 +107,17 @@ const blockedForPosition = (st, position) => {
   for (const key of need) {
     const c = credByKey(st, key);
     if (!c || !c.expires) { bad.push((CRED_DEFS.find(d => d.key === key) || { label: key }).label + " (missing)"); continue; }
-    const stt = credStatus(c);
-    if (stt.kind === "expired") bad.push(c.label + " expired");
+    if (credStatus(c).kind === "expired") bad.push(c.label + " expired");
   }
   return bad;
 };
-const canTake = sh => {
-  if (sh.assignee && !sh.posted) return false;
-  if (sh.assignee && sh.posted && sh.assignee === Q.me) return false;
-  if (sh.position && !myCleared().includes(sh.position) && !myCleared().includes("Any")) return false;
-  if (blockedForPosition(meStaff(), sh.position || "EMT").length) return false;
-  return true;
-};
-const isMine = sh => sh.assignee === Q.me;
+const isMine = sh => sh && sh.assignee === Q.me;
 const monthHoursFor = email => {
   const { start, end } = monthBounds();
   let h = 0;
   for (const s of Q.shifts.values()) {
     if (s.assignee !== email || s.status === "cancelled") continue;
     if (s.start < start || s.start >= end) continue;
-    // Count worked time once the shift has started (scheduled duty hours).
     if (s.start <= Date.now() || s.credited) h += shiftHours(s);
   }
   return Math.round(h * 10) / 10;
@@ -125,11 +126,58 @@ const schedulePeople = () => [...Q.staff.entries()]
   .filter(([email, s]) => s.schedule || email === Q.me || email === lower(OWNER_EMAIL))
   .sort((a, b) => displayName(a[0], a[1]).localeCompare(displayName(b[0], b[1]), undefined, { sensitivity: "base" }));
 
+/** Resolve a calendar slot to an existing shift (deterministic id or legacy random id). */
+function findSlotShift(day, band, position) {
+  const id = slotDocId(day, band.id, position);
+  if (Q.shifts.has(id)) return Q.shifts.get(id);
+  const { start } = bandTimes(day, band);
+  for (const s of Q.shifts.values()) {
+    if (s.position !== position) continue;
+    if (Math.abs((s.start || 0) - start) < 5 * 60e3) return s;
+  }
+  return null;
+}
+function hasOverlap(start, end, exceptId){
+  for (const s of Q.shifts.values()) {
+    if (!isMine(s) || s.id === exceptId || s.status === "cancelled") continue;
+    const a = s.start, b = s.end || a + 12 * 36e5;
+    if (a < end && b > start) return true;
+  }
+  return false;
+}
+function canClaimPosition(position, day, band){
+  if (!myCleared().includes(position) && !myCleared().includes("Any")) return { ok: false, why: `Not cleared for ${position}` };
+  const block = blockedForPosition(meStaff(), position);
+  if (block.length) return { ok: false, why: block.join(", ") };
+  const { start, end } = bandTimes(day, band);
+  if (hasOverlap(start, end)) return { ok: false, why: "You're already on this window" };
+  if (end <= Date.now()) return { ok: false, why: "This shift already ended" };
+  return { ok: true, why: "" };
+}
+function dayCoverage(day){
+  const filled = [], openEligible = [];
+  let clinical = 0, driving = 0, taken = 0;
+  for (const band of BANDS) {
+    for (const pos of POSITIONS) {
+      const s = findSlotShift(day, band, pos);
+      if (s && s.assignee && !s.posted) {
+        taken++;
+        filled.push({ band, pos, s });
+        if (CLINICAL.has(pos)) clinical++;
+        if (DRIVING.has(pos)) driving++;
+      } else if (canClaimPosition(pos, day, band).ok) {
+        openEligible.push({ band, pos, s });
+      }
+    }
+  }
+  const status = clinical && driving ? "covered" : taken ? "partial" : "open";
+  return { filled, openEligible, clinical, driving, taken, status };
+}
+
 const stop = () => { Q.unsub.forEach(u => { try { u(); } catch {} }); Q.unsub = []; };
 export function stopSchedule(){ stop(); }
 
 function hoursCard(){
-  // Own hours only — members never see others' totals here.
   const st = meStaff(), target = hourTarget(st), got = monthHoursFor(Q.me), { label } = monthBounds();
   const pct = target > 0 ? Math.min(100, Math.round(got / target * 100)) : (got ? 100 : 0);
   const rem = target > 0 ? Math.max(0, Math.round((target - got) * 10) / 10) : 0;
@@ -137,11 +185,10 @@ function hoursCard(){
     <h3>Your hours · ${esc(label)}<small>${esc(memberType(st))}</small></h3>
     <div class="hbar" aria-hidden="true"><i style="width:${pct}%"></i></div>
     <p class="help"><b>${got}</b> of <b>${target || "—"}</b> hours${target ? (rem ? ` · ${rem} to go` : " · met ✓") : " · no monthly target"}</p>
-    <p class="help muted">Only you see this. Targets follow membership category (Regular/Associate 24 · Auxiliary 16 · Non-Operational none).</p>
+    <p class="help muted">Only you see this. Tap a day on the calendar to sign up for open slots that match your clearances.</p>
   </section>`;
 }
 function credsCard(){
-  // Own credentials only.
   const list = credList();
   const rows = list.map(c => {
     const stt = credStatus(c);
@@ -170,41 +217,77 @@ function rosterCard(){
   </section>`;
 }
 
+function weekCell(d){
+  const cov = dayCoverage(d);
+  const bandsHtml = BANDS.map(band => {
+    const people = POSITIONS.map(pos => {
+      const s = findSlotShift(d, band, pos);
+      if (s && s.assignee && !s.posted) {
+        const st = Q.staff.get(s.assignee) || {};
+        const short = (s.assigneeName || displayName(s.assignee, st)).split(" ")[0];
+        return `<span class="chip on${isMine(s) ? " mine" : ""}" title="${esc(pos)}">${esc(pos.split(" ")[0])} · ${esc(short)}</span>`;
+      }
+      if (s && s.posted) return `<span class="chip give" title="Giveaway">${esc(pos.split(" ")[0])} · free</span>`;
+      return null;
+    }).filter(Boolean);
+    const openN = POSITIONS.filter(pos => {
+      const s = findSlotShift(d, band, pos);
+      return !(s && s.assignee && !s.posted);
+    }).length;
+    return `<div class="bandsum"><b>${esc(band.label)}</b>
+      <div class="chips">${people.length ? people.join("") : `<span class="chip open">All open</span>`}
+        ${openN && people.length ? `<span class="chip open">${openN} open</span>` : ""}</div></div>`;
+  }).join("");
+  return `<button type="button" class="scell daycell ${cov.status}${isToday(d) ? " today" : ""}" data-day="${esc(dayKey(d))}">
+    <div class="daytop"><b>${esc(d.toLocaleDateString(undefined, { weekday: "short" }))}</b><span>${esc(d.getDate())}</span></div>
+    ${bandsHtml}
+    <em class="tap">Tap for who's on</em>
+  </button>`;
+}
+
+function monthGrid(){
+  if (!Q.monthStart) Q.monthStart = startOfMonth(new Date());
+  const first = Q.monthStart;
+  const gridStart = startOfWeek(first);
+  const days = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+  return `<div class="monthgrid" role="grid" aria-label="Month schedule">
+    <div class="shead month">${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d => `<div><b>${d}</b></div>`).join("")}</div>
+    <div class="mcols">${days.map(d => {
+      const inMonth = d.getMonth() === first.getMonth();
+      const cov = dayCoverage(d);
+      return `<button type="button" class="mcell ${cov.status}${inMonth ? "" : " out"}${isToday(d) ? " today" : ""}" data-day="${esc(dayKey(d))}" ${inMonth ? "" : "tabindex=-1"}>
+        <b>${d.getDate()}</b>
+        <span>${cov.taken ? cov.taken + " on" : "Open"}</span>
+        <i class="dot ${cov.status}" aria-hidden="true"></i>
+      </button>`;
+    }).join("")}</div>
+  </div>`;
+}
+
 function paint(){
   const root = $("#schedRoot"); if (!root) return;
   if (!Q.weekStart) Q.weekStart = startOfWeek(new Date());
+  if (!Q.monthStart) Q.monthStart = startOfMonth(new Date());
   const days = Array.from({ length: 7 }, (_, i) => addDays(Q.weekStart, i));
-  const end = addDays(Q.weekStart, 7).getTime();
-  const startMs = Q.weekStart.getTime();
-  const list = [...Q.shifts.values()].filter(s => s.start >= startMs && s.start < end).sort((a, b) => a.start - b.start || (a.position || "").localeCompare(b.position || ""));
-  const open = list.filter(s => !s.assignee || s.posted);
-  const mine = list.filter(isMine);
-  const byDay = {}; days.forEach(d => { byDay[dayKey(d)] = []; });
-  list.forEach(s => { const k = dayKey(new Date(s.start)); (byDay[k] = byDay[k] || []).push(s); });
-
-  const cell = d => {
-    const rows = byDay[dayKey(d)] || [];
-    if (!rows.length) return `<div class="scell empty"><span class="muted">Open</span></div>`;
-    return `<div class="scell">${rows.map(s => {
-      const who = s.assignee ? (s.assigneeName || s.assignee.split("@")[0]) : "OPEN";
-      return `<button type="button" class="sshift${isMine(s) ? " mine" : ""}${!s.assignee ? " open" : ""}${s.posted ? " give" : ""}" data-sid="${esc(s.id)}">
-        <b>${esc(s.position || "Duty")}</b>
-        <span>${esc(fmtRange(new Date(s.start), new Date(s.end || s.start + 12 * 36e5)))}</span>
-        <em>${esc(who)}${s.posted && s.assignee ? " · giveaway" : ""}</em>
-      </button>`;
-    }).join("")}</div>`;
-  };
+  const mine = [...Q.shifts.values()].filter(s => isMine(s) && s.start >= Q.weekStart.getTime() && s.start < addDays(Q.weekStart, 7).getTime())
+    .sort((a, b) => a.start - b.start);
+  const title = Q.view === "month"
+    ? Q.monthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" })
+    : `Week of ${fmtDay(Q.weekStart)}`;
 
   root.innerHTML = `
     <header class="schedhead glass">
-      <div class="schedbrand"><div class="eyebrow">PVRS · beta</div><h1>Duty schedule</h1>
-        <p>Week of ${esc(fmtDay(Q.weekStart))} — pick up shifts, track your hours, keep credentials current.</p></div>
+      <div class="schedbrand"><div class="eyebrow">PVRS · duty calendar</div><h1>Duty schedule</h1>
+        <p>${esc(title)} — tap a day to see who's on and grab an open slot that matches your level.</p></div>
       <div class="schedacts">
-        <button class="btn" type="button" data-sc="prev">‹ Prev</button>
-        <button class="btn" type="button" data-sc="today">This week</button>
-        <button class="btn" type="button" data-sc="next">Next ›</button>
-        ${Q.canManage ? `<button class="btn primary" type="button" data-sc="publish">Publish shifts</button>
-        <button class="btn" type="button" data-sc="crew">Crew settings</button>` : ""}
+        <div class="seg" role="group" aria-label="Calendar view">
+          <button type="button" data-sc="view-week" class="${Q.view === "week" ? "on" : ""}">Week</button>
+          <button type="button" data-sc="view-month" class="${Q.view === "month" ? "on" : ""}">Month</button>
+        </div>
+        <button class="btn" type="button" data-sc="prev">‹</button>
+        <button class="btn" type="button" data-sc="today">Today</button>
+        <button class="btn" type="button" data-sc="next">›</button>
+        ${Q.canManage ? `<button class="btn" type="button" data-sc="crew">Crew settings</button>` : ""}
         <button class="btn" type="button" data-sc="desk">${Q.onDesk ? "Membership" : "Membership desk"}</button>
         <button class="btn" type="button" data-signout>Sign out</button>
       </div>
@@ -216,23 +299,144 @@ function paint(){
         ${rosterCard()}
         <section><h3>My shifts<small>${mine.length}</small></h3>
           ${mine.length ? mine.map(s => `<button type="button" class="srow" data-sid="${esc(s.id)}"><b>${esc(fmtDay(new Date(s.start)))}</b><span>${esc(s.position || "Duty")} · ${esc(fmtRange(new Date(s.start), new Date(s.end || s.start + 12 * 36e5)))} · ${shiftHours(s)}h</span></button>`).join("")
-            : `<div class="oempty fun"><b>None this week</b>Pick up an open shift when you're free.</div>`}</section>
-        <section><h3>Open / giveaways<small>${open.length}</small></h3>
-          ${open.length ? open.map(s => {
-            const block = blockedForPosition(meStaff(), s.position || "EMT");
-            const ok = canTake(s);
-            return `<button type="button" class="srow open" data-sid="${esc(s.id)}"><b>${esc(fmtDay(new Date(s.start)))}</b><span>${esc(s.position || "Duty")} · ${esc(fmtRange(new Date(s.start), new Date(s.end || s.start + 12 * 36e5)))}</span>
-              <i>${ok ? "Tap to pick up" : block.length ? "Credential issue" : `Needs ${esc(s.position)}`}</i></button>`;
-          }).join("") : `<div class="oempty fun"><b>Fully covered</b>Nice work, crew.</div>`}</section>
+            : `<div class="oempty fun"><b>None this week</b>Open a day on the calendar and take a slot you're cleared for.</div>`}</section>
         <section><h3>Your clearances</h3>
           <p class="help">${esc(myCleared().join(" · ") || "Not set — ask a coordinator in Crew settings.")}</p>
-          <p class="help">Questions? ${esc(CONTACT_EMAIL)}</p></section>
+          <p class="help">Open slots you can take light up on each day. Questions? ${esc(CONTACT_EMAIL)}</p></section>
       </aside>
+      ${Q.view === "month" ? `<div class="schedgrid glass">${monthGrid()}</div>` : `
       <div class="schedgrid glass" role="grid" aria-label="Week schedule">
-        <div class="shead">${days.map(d => `<div><b>${esc(d.toLocaleDateString(undefined, { weekday: "short" }))}</b><span>${esc(d.toLocaleDateString(undefined, { month: "short", day: "numeric" }))}</span></div>`).join("")}</div>
-        <div class="scols">${days.map(d => cell(d)).join("")}</div>
-      </div>
+        <div class="scols weekcols">${days.map(d => weekCell(d)).join("")}</div>
+      </div>`}
     </div>`;
+}
+
+function parseDayKey(key){
+  const [y, m, d] = String(key || "").split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const dt = new Date(y, m - 1, d); dt.setHours(0, 0, 0, 0);
+  return dt;
+}
+
+async function claimSlot(day, bandId, position){
+  const band = BANDS.find(b => b.id === bandId); if (!band) return;
+  const check = canClaimPosition(position, day, band);
+  if (!check.ok) return toast(check.why);
+  const existing = findSlotShift(day, band, position);
+  if (existing && existing.assignee && !existing.posted) return toast("That slot was just taken.");
+  const { start, end } = bandTimes(day, band);
+  const id = existing?.id || slotDocId(day, band.id, position);
+  try {
+    await runTransaction(db, async tx => {
+      const ref = doc(db, "dutyShifts", id);
+      const snap = await tx.get(ref);
+      if (snap.exists()) {
+        const cur = snap.data();
+        if (cur.assignee && !cur.posted && cur.assignee !== Q.me) throw Object.assign(new Error("taken"), { code: "taken" });
+        // Existing open/giveaway doc — only flip assignee fields (rules-friendly).
+        tx.update(ref, {
+          assignee: Q.me, assigneeName: Q.name || Q.me, status: "filled", posted: false, updatedAt: Date.now(),
+        });
+      } else {
+        tx.set(ref, {
+          start, end, position, band: band.id, unit: "PVRS", notes: "",
+          status: "filled", assignee: Q.me, assigneeName: Q.name || Q.me, posted: false,
+          createdAt: Date.now(), createdBy: Q.me, updatedAt: Date.now(),
+        });
+      }
+    });
+    toast(`You're on · ${position} · ${fmtDay(day)} ${band.label}`);
+    closeModal();
+  } catch (err) {
+    console.error(err);
+    toast(err?.code === "taken" ? "Someone else just took that slot." : "Couldn't sign up. Try again.");
+  }
+}
+
+async function dropSlot(id){
+  const s = Q.shifts.get(id); if (!s || !isMine(s)) return;
+  try {
+    await deleteDoc(doc(db, "dutyShifts", id));
+    toast("You're off that shift.");
+    closeModal();
+  } catch (err) { console.error(err); toast("Couldn't drop that shift."); }
+}
+
+function openDay(dayOrKey){
+  const day = dayOrKey instanceof Date ? dayOrKey : parseDayKey(dayOrKey);
+  if (!day) return;
+  const cov = dayCoverage(day);
+  const bandsHtml = BANDS.map(band => {
+    const { startDate, endDate } = bandTimes(day, band);
+    const rows = POSITIONS.map(pos => {
+      const s = findSlotShift(day, band, pos);
+      const filled = s && s.assignee && !s.posted;
+      const give = s && s.posted;
+      if (filled) {
+        const st = Q.staff.get(s.assignee) || {};
+        const port = portableOf(st);
+        const mine = isMine(s);
+        return `<div class="slotrow filled${mine ? " mine" : ""}">
+          <div><b>${esc(pos)}</b><span>${esc(s.assigneeName || displayName(s.assignee, st))}${port ? " · P" + esc(port) : ""}${give ? " · giveaway" : ""}</span></div>
+          <div class="slotacts">
+            ${mine ? `<button class="btn small" type="button" data-drop="${esc(s.id)}">Drop</button>
+              <button class="btn small" type="button" data-give="${esc(s.id)}">${s.posted ? "Cancel giveaway" : "Giveaway"}</button>
+              <button class="btn small" type="button" data-sid="${esc(s.id)}">More</button>` : ""}
+            ${!mine && Q.canManage ? `<button class="btn small" type="button" data-clear="${esc(s.id)}">Clear</button>` : ""}
+          </div>
+        </div>`;
+      }
+      const check = canClaimPosition(pos, day, band);
+      const giveTake = give && check.ok;
+      return `<div class="slotrow open${check.ok ? " can" : ""}">
+        <div><b>${esc(pos)}</b><span>${give ? "Giveaway — open" : "Open"}</span>
+          ${check.ok ? "" : `<small class="cred-missing">${esc(check.why)}</small>`}</div>
+        <div class="slotacts">
+          ${check.ok ? `<button class="btn small primary" type="button" data-claim="${esc(band.id)}" data-pos="${esc(pos)}">${giveTake ? "Take giveaway" : "Sign up"}</button>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+    return `<section class="dayband"><h4>${esc(band.label)} <small>${esc(fmtRange(startDate, endDate))}</small></h4>${rows}</section>`;
+  }).join("");
+
+  const coverNote = cov.clinical && cov.driving
+    ? "Crew covered (clinical + driver)."
+    : cov.taken
+      ? "Partial — still needs " + (!cov.clinical ? "a clinician" : "") + (!cov.clinical && !cov.driving ? " and " : "") + (!cov.driving ? "a driver" : "") + "."
+      : "Nothing signed up yet — open slots below.";
+
+  const M = openModal(`<h3>${esc(fmtDayLong(day))}</h3>
+    <p class="help">${esc(coverNote)} Sign up only for positions you're cleared for.</p>
+    <div class="dayboard">${bandsHtml}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`, true);
+
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    const claim = e.target.closest("[data-claim]");
+    if (claim) return claimSlot(day, claim.dataset.claim, claim.dataset.pos);
+    const drop = e.target.closest("[data-drop]");
+    if (drop) return dropSlot(drop.dataset.drop);
+    const give = e.target.closest("[data-give]");
+    if (give) {
+      const s = Q.shifts.get(give.dataset.give); if (!s || !isMine(s)) return;
+      try {
+        await updateDoc(doc(db, "dutyShifts", s.id), { posted: !s.posted, updatedAt: Date.now() });
+        toast(s.posted ? "Giveaway cancelled." : "Posted as a giveaway.");
+        closeModal(); openDay(day);
+      } catch { toast("Couldn't update giveaway."); }
+      return;
+    }
+    const clear = e.target.closest("[data-clear]");
+    if (clear) {
+      try {
+        await deleteDoc(doc(db, "dutyShifts", clear.dataset.clear));
+        toast("Slot cleared."); closeModal(); openDay(day);
+      } catch { toast("Couldn't clear that slot."); }
+      return;
+    }
+    const sid = e.target.closest("[data-sid]");
+    if (sid) { closeModal(); return openShift(sid.dataset.sid); }
+  };
 }
 
 function openCreds(email){
@@ -244,7 +448,7 @@ function openCreds(email){
   const type = memberType(st);
   const port = portableOf(st);
   const M = openModal(`<h3>${editingOther ? esc(displayName(target, st)) + " · " : ""}Credentials & category</h3>
-    <p class="help">${editingOther ? "Coordinator view — members only see their own hours and credentials on the board." : "Only you see your hours and credential details on the duty board. The roster shows your name and portable to the crew."}</p>
+    <p class="help">${editingOther ? "Coordinator view — members only see their own hours and credentials on the board." : "Only you see your hours and credential details. The roster shows your name and portable to the crew."}</p>
     <div class="field"><label for="crPortable">Portable number</label>
       <input id="crPortable" type="text" maxlength="20" inputmode="numeric" placeholder="e.g. 12" value="${esc(port)}"></div>
     ${Q.canManage ? `<div class="field"><label for="crType">Membership category</label>
@@ -253,11 +457,11 @@ function openCreds(email){
     <div class="ios" style="padding:10px 12px">${list.map(c => {
       const stt = credStatus(c);
       return `<div class="row stack"><span class="lbl">${esc(c.label)}<small class="cred-${stt.kind}">${esc(stt.label)}</small></span>
-        <input type="date" data-cr="${esc(c.key)}" value="${esc(c.expires || "")}" aria-label="${esc(c.label)} expiry" ${Q.canManage || !editingOther ? "" : "disabled"}></div>`;
+        <input type="date" data-cr="${esc(c.key)}" value="${esc(c.expires || "")}" aria-label="${esc(c.label)} expiry"></div>`;
     }).join("")}</div>
     ${Q.canManage ? `<div class="field" style="margin-top:8px"><label>Cleared positions</label>
       <div class="seg wrap" id="crCleared" role="group">${POSITIONS.map(p => `<button type="button" data-cl="${esc(p)}" class="${myClearedFor(st).includes(p) ? "on" : ""}">${esc(p)}</button>`).join("")}</div>
-      <p class="help" style="margin-top:6px">EMT / AEMT / Paramedic need that cert + CPR. Driver and Driver Trainer need license + CPR.</p></div>`
+      <p class="help" style="margin-top:6px">These are the slots they can sign up for on the calendar.</p></div>`
       : `<p class="help" style="margin-top:8px">Cleared: <b>${esc(myClearedFor(st).join(" · ") || "not set")}</b></p>`}
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" data-crsave>Save</button></div>`, true);
   const cleared = new Set(myClearedFor(st));
@@ -304,7 +508,7 @@ function openDutySettings(){
     </button>`;
   }).join("");
   const M = openModal(`<h3>Crew settings</h3>
-    <p class="help">Add people to duty, set portable numbers, clearances, and credentials. Members only see <b>their own</b> hours and credentials on the board — the roster shows names and portables to everyone.</p>
+    <p class="help">Add people and set clearances — the calendar shows open slots by level. Members sign up themselves; you don't publish shifts.</p>
     <div class="ios" style="padding:12px;margin-bottom:10px">
       <div class="addslot">
         <div class="field"><label for="crewEmail">Email</label><input id="crewEmail" type="email" placeholder="member@pvrs.org" autocomplete="off"></div>
@@ -369,53 +573,33 @@ function onRosterTap(email){
   const st = Q.staff.get(target) || {};
   const port = portableOf(st);
   const name = displayName(target, st);
-  if (port) {
-    copyText(port).then(ok => toast(ok ? `Copied portable ${port} (${name})` : `${name} · portable ${port}`));
-  } else toast(`${name} has no portable on file yet.`);
+  if (port) copyText(port).then(ok => toast(ok ? `Copied portable ${port} (${name})` : `${name} · portable ${port}`));
+  else toast(`${name} has no portable on file yet.`);
 }
 
 function openShift(id){
   const s = Q.shifts.get(id); if (!s) return;
   const start = new Date(s.start), end = new Date(s.end || s.start + 12 * 36e5);
   const who = s.assignee ? (s.assigneeName || s.assignee) : "Open";
-  const block = blockedForPosition(meStaff(), s.position || "EMT");
   const acts = [];
-  if ((!s.assignee || s.posted) && canTake(s)) acts.push(`<button class="btn primary" type="button" data-sa="take">${s.posted ? "Take giveaway" : "Pick up shift"}</button>`);
-  else if ((!s.assignee || s.posted) && block.length) acts.push(`<p class="help cred-expired">Can't pick up: ${esc(block.join(", "))}. <button class="copy" type="button" data-sc="creds">Update credentials</button></p>`);
   if (isMine(s) && !s.posted) acts.push(`<button class="btn" type="button" data-sa="give">Post as giveaway</button>`);
   if (isMine(s) && s.posted) acts.push(`<button class="btn" type="button" data-sa="ungive">Cancel giveaway</button>`);
   if (isMine(s)) acts.push(`<button class="btn" type="button" data-sa="trade">Request a trade</button>`);
+  if (isMine(s)) acts.push(`<button class="btn danger" type="button" data-sa="drop">Drop shift</button>`);
   if (Q.canManage && s.assignee) acts.push(`<button class="btn" type="button" data-sa="clear">Clear assignee</button>`);
-  if (Q.canManage && !s.assignee) acts.push(`<button class="btn danger" type="button" data-sa="del">Delete shift</button>`);
   const M = openModal(`<h3>${esc(s.position || "Duty")} · ${esc(fmtDay(start))}</h3>
-    <p class="help">${esc(fmtRange(start, end))} · ${shiftHours(s)}h${s.unit ? " · " + esc(s.unit) : ""}<br>Assigned: <b>${esc(who)}</b>${s.posted ? " (posted for giveaway)" : ""}</p>
-    ${s.notes ? `<p class="help">${esc(s.notes)}</p>` : ""}
+    <p class="help">${esc(fmtRange(start, end))} · ${shiftHours(s)}h<br>Assigned: <b>${esc(who)}</b>${s.posted ? " (posted for giveaway)" : ""}</p>
     <div class="acts">${acts.join("")}<button class="btn" type="button" data-x>Close</button></div>`);
   M.onclick = async e => {
     if (e.target.closest("[data-x]")) return closeModal();
-    if (e.target.closest("[data-sc=creds]")) { closeModal(); return openCreds(); }
     const b = e.target.closest("[data-sa]"); if (!b) return;
     const k = b.dataset.sa;
     try {
-      if (k === "take") {
-        if (!canTake(s)) return toast("Credentials or clearance block this shift.");
-        await updateDoc(doc(db, "dutyShifts", id), { assignee: Q.me, assigneeName: Q.name || Q.me, status: "filled", posted: false, updatedAt: Date.now() });
-        toast("You're on for " + fmtDay(start)); closeModal();
-      } else if (k === "give") {
-        await updateDoc(doc(db, "dutyShifts", id), { posted: true, updatedAt: Date.now() });
-        toast("Posted as a giveaway."); closeModal();
-      } else if (k === "ungive") {
-        await updateDoc(doc(db, "dutyShifts", id), { posted: false, updatedAt: Date.now() });
-        toast("Giveaway cancelled."); closeModal();
-      } else if (k === "clear") {
-        await updateDoc(doc(db, "dutyShifts", id), { assignee: null, assigneeName: "", status: "open", posted: false, updatedAt: Date.now() });
-        toast("Shift opened."); closeModal();
-      } else if (k === "del") {
-        await deleteDoc(doc(db, "dutyShifts", id)); toast("Shift deleted."); closeModal();
-      } else if (k === "trade") {
-        closeModal(); openTrade(id);
-      }
-    } catch (err) { console.error(err); toast("Couldn't update that shift. Try again."); }
+      if (k === "give") { await updateDoc(doc(db, "dutyShifts", id), { posted: true, updatedAt: Date.now() }); toast("Posted as a giveaway."); closeModal(); }
+      else if (k === "ungive") { await updateDoc(doc(db, "dutyShifts", id), { posted: false, updatedAt: Date.now() }); toast("Giveaway cancelled."); closeModal(); }
+      else if (k === "clear" || k === "drop") { await deleteDoc(doc(db, "dutyShifts", id)); toast(k === "drop" ? "You're off that shift." : "Slot cleared."); closeModal(); }
+      else if (k === "trade") { closeModal(); openTrade(id); }
+    } catch (err) { console.error(err); toast("Couldn't update that shift."); }
   };
 }
 
@@ -445,68 +629,29 @@ function openTrade(shiftId){
   };
 }
 
-function openPublish(){
-  if (!Q.canManage) return;
-  const d0 = addDays(new Date(), 1);
-  const dStr = `${d0.getFullYear()}-${pad2(d0.getMonth() + 1)}-${pad2(d0.getDate())}`;
-  const M = openModal(`<h3>Publish duty shifts</h3>
-    <p class="help">Open slots for cleared members whose credentials are current. Positions: ${esc(POSITIONS.join(" · "))}.</p>
-    <div class="ios" style="padding:12px">
-      <div class="addslot">
-        <div class="field"><label for="dsDate">Date</label><input id="dsDate" type="date" value="${dStr}" required></div>
-        <div class="field"><label for="dsTpl">Template</label><select id="dsTpl">${TEMPLATES.map(t => `<option value="${esc(t.id)}">${esc(t.label)}</option>`).join("")}<option value="custom">Custom…</option></select></div>
-        <div class="field"><label for="dsPos">Position</label><select id="dsPos">${POSITIONS.map(p => `<option>${esc(p)}</option>`).join("")}</select></div>
-        <div class="field"><label for="dsCount">Days in a row</label><select id="dsCount">${[1,2,3,4,5,6,7].map(n => `<option>${n}</option>`).join("")}</select></div>
-        <div class="field" id="dsCustom" hidden><label for="dsTime">Start</label><input id="dsTime" type="time" value="18:00"></div>
-        <div class="field" id="dsCustom2" hidden><label for="dsHours">Hours</label><select id="dsHours"><option>8</option><option selected>12</option><option>24</option></select></div>
-        <div class="field full"><label for="dsNotes">Notes</label><input id="dsNotes" type="text" maxlength="200" placeholder="Optional — unit, station notes…"></div>
-      </div>
-    </div>
-    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" data-dspub>Publish open shifts</button></div>`, true);
-  const syncTpl = () => {
-    const id = $("#dsTpl").value, t = TEMPLATES.find(x => x.id === id);
-    $("#dsCustom").hidden = !!t; $("#dsCustom2").hidden = !!t;
-    if (t) $("#dsPos").value = t.position;
-  };
-  $("#dsTpl").onchange = syncTpl; syncTpl();
-  M.onclick = async e => {
-    if (e.target.closest("[data-x]")) return closeModal();
-    if (!e.target.closest("[data-dspub]")) return;
-    const [y, mo, d] = $("#dsDate").value.split("-").map(Number);
-    if (!y) return toast("Pick a date.");
-    const tpl = TEMPLATES.find(x => x.id === $("#dsTpl").value);
-    const h = tpl ? tpl.startH : +($("#dsTime").value.split(":")[0] || 18);
-    const mi = tpl ? tpl.startM : +($("#dsTime").value.split(":")[1] || 0);
-    const hours = tpl ? tpl.hours : +$("#dsHours").value || 12;
-    const position = $("#dsPos").value || "EMT";
-    const n = +$("#dsCount").value || 1;
-    const notes = ($("#dsNotes").value || "").trim().slice(0, 200);
-    try {
-      for (let i = 0; i < n; i++) {
-        const start = new Date(y, mo - 1, d + i, h, mi).getTime();
-        const end = start + hours * 36e5;
-        await addDoc(collection(db, "dutyShifts"), {
-          start, end, position, unit: "PVRS", notes, status: "open",
-          assignee: null, assigneeName: "", posted: false,
-          createdAt: Date.now(), createdBy: Q.me,
-        });
-      }
-      toast(`Published ${n} open ${position} shift${n > 1 ? "s" : ""}`);
-      closeModal();
-    } catch (err) { console.error(err); toast("Couldn't publish. Check you're on the schedule beta."); }
-  };
-}
-
 function wire(){
   const root = $("#schedule");
   if (root._wired) return; root._wired = true;
   root.addEventListener("click", e => {
     const sc = e.target.closest("[data-sc]"); if (sc) {
       const k = sc.dataset.sc;
-      if (k === "prev") { Q.weekStart = addDays(Q.weekStart, -7); return paint(); }
-      if (k === "next") { Q.weekStart = addDays(Q.weekStart, 7); return paint(); }
-      if (k === "today") { Q.weekStart = startOfWeek(new Date()); return paint(); }
-      if (k === "publish") return openPublish();
+      if (k === "view-week") { Q.view = "week"; Q.weekStart = startOfWeek(Q.monthStart || new Date()); return paint(); }
+      if (k === "view-month") { Q.view = "month"; Q.monthStart = startOfMonth(Q.weekStart || new Date()); return paint(); }
+      if (k === "prev") {
+        if (Q.view === "month") Q.monthStart = addMonths(Q.monthStart, -1);
+        else Q.weekStart = addDays(Q.weekStart, -7);
+        return paint();
+      }
+      if (k === "next") {
+        if (Q.view === "month") Q.monthStart = addMonths(Q.monthStart, 1);
+        else Q.weekStart = addDays(Q.weekStart, 7);
+        return paint();
+      }
+      if (k === "today") {
+        Q.weekStart = startOfWeek(new Date());
+        Q.monthStart = startOfMonth(new Date());
+        return paint();
+      }
       if (k === "creds") return openCreds();
       if (k === "crew" || k === "crewcreds") return openDutySettings();
       if (k === "desk") {
@@ -516,6 +661,7 @@ function wire(){
         return;
       }
     }
+    const day = e.target.closest("[data-day]"); if (day) return openDay(day.dataset.day);
     const roster = e.target.closest("[data-roster]"); if (roster) return onRosterTap(roster.dataset.roster);
     const sid = e.target.closest("[data-sid]"); if (sid) return openShift(sid.dataset.sid);
   });
@@ -527,6 +673,8 @@ export function startSchedule({ email, name, canManage, staffMap, onDesk }){
   Q.staff = staffMap || new Map();
   Q.onDesk = typeof onDesk === "function" ? onDesk : null;
   Q.weekStart = startOfWeek(new Date());
+  Q.monthStart = startOfMonth(new Date());
+  Q.view = "week";
   $("#app").hidden = true; $("#portal").hidden = true;
   const el = $("#schedule"); el.hidden = false;
   wire(); paint();
@@ -540,7 +688,6 @@ export function startSchedule({ email, name, canManage, staffMap, onDesk }){
       const data = d.data();
       if (d.id === Q.me || data.schedule || Q.canManage) next.set(d.id, data);
     });
-    // Keep schedule flag for self even if query is sparse
     if (!next.has(Q.me) && Q.staff.has(Q.me)) next.set(Q.me, Q.staff.get(Q.me));
     Q.staff = next;
     paint();
