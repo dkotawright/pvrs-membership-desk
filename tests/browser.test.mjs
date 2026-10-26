@@ -299,7 +299,7 @@ try {
     await ctx.close();
   }
   { // schedule members land on Duty; membership is background
-    const { ctx, page } = await open(browser, { w: 390, h: 844, user: { email: "alex@pvrs.org", displayName: "Alex Moore" } });
+    const { ctx, page } = await open(browser, { w: 390, h: 844, user: { email: "alex@pvrs.org", displayName: "Alex" } });
     await wait(page, 900);
     if (await page.locator("#schedule").isHidden() || !(await page.locator("body").evaluate(b => b.classList.contains("on-duty")))) fail("member didn't open Duty first"); else ok("phone: schedule members open on Duty crew");
     const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
@@ -371,6 +371,11 @@ try {
   // ---- Interview mode
   for (const [w, h, who] of [[1440, 900, OWNER], [390, 844, { email: "alex@pvrs.org", displayName: "Alex" }]]) {
     const { ctx, page } = await open(browser, { w, h, user: who });
+    await wait(page, 800);
+    // Schedule members auto-open Duty; leave it so the membership file is reachable.
+    if (await page.locator("#schedule").isVisible()) {
+      await page.click('#mnav [data-m="list"]'); await wait(page, 500);
+    }
     await pickApplicant(page, "Georgia Thurmond");
     await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
     await page.locator('[data-act="ivmode"]').click(); await wait(page, 400);
