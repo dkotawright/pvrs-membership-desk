@@ -2,7 +2,7 @@
    Below 1180px the sidebar shrinks to an icon rail; below 860px it becomes a top bar and the file opens as a full-screen sheet. */
 :root{
   --bg:#ececf0; --side:transparent; --pane:#ffffff; --pane2:#f5f5f7; --box:#ffffff;
-  --fg:#1d1d1f; --fg2:#6e6e73; --fg3:#86868b;
+  --fg:#1d1d1f; --fg2:#5c5c63; --fg3:#6e6e73;
   --sep:rgba(0,0,0,.075); --border:rgba(0,0,0,.1); --hover:rgba(0,0,0,.045);
   --fill:rgba(118,118,128,.11); --fill2:rgba(118,118,128,.2);
   --shadow:rgba(20,24,40,.12);
@@ -17,8 +17,8 @@
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --bg:#0f0f11; --pane:#1c1c1f; --pane2:#151517; --box:#232327;
-  --fg:#f5f5f7; --fg2:#a1a1a8; --fg3:#8a8a91;
-  --sep:rgba(255,255,255,.075); --border:rgba(255,255,255,.09); --hover:rgba(255,255,255,.05);
+  --fg:#f5f5f7; --fg2:#c4c4cc; --fg3:#a8a8b0;
+  --sep:rgba(255,255,255,.1); --border:rgba(255,255,255,.14); --hover:rgba(255,255,255,.06);
   --fill:rgba(118,118,128,.22); --fill2:rgba(118,118,128,.34);
   --shadow:rgba(0,0,0,.5);
   --navy:#8fb4ff; --red:#ff4d5e; --red-fill:#d92a3c; --accent:#4c9bff; --accent-soft:rgba(76,155,255,.16); --chart:#3d8bfd;
@@ -28,8 +28,8 @@
   color-scheme:dark }}
 :root[data-theme="dark"]{
   --bg:#0f0f11; --pane:#1c1c1f; --pane2:#151517; --box:#232327;
-  --fg:#f5f5f7; --fg2:#a1a1a8; --fg3:#8a8a91;
-  --sep:rgba(255,255,255,.075); --border:rgba(255,255,255,.09); --hover:rgba(255,255,255,.05);
+  --fg:#f5f5f7; --fg2:#c4c4cc; --fg3:#a8a8b0;
+  --sep:rgba(255,255,255,.1); --border:rgba(255,255,255,.14); --hover:rgba(255,255,255,.06);
   --fill:rgba(118,118,128,.22); --fill2:rgba(118,118,128,.34);
   --shadow:rgba(0,0,0,.5);
   --navy:#8fb4ff; --red:#ff4d5e; --red-fill:#d92a3c; --accent:#4c9bff; --accent-soft:rgba(76,155,255,.16); --chart:#3d8bfd;
@@ -1252,4 +1252,123 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
   .stg{padding:10px 6px 9px;border-radius:12px;align-items:center;text-align:center}
   .stg .v{font-size:22px} .stg .k{font-size:10.5px;line-height:1.2} .stg .s{display:none}
   .ovquick kbd{display:none}
+}
+
+/* ======================================================================
+   Oct 26 polish: home hero, portal warmth, form journey, desk craft
+   ====================================================================== */
+
+/* Full-bleed home hero */
+.gate.home{position:relative;min-height:100%;padding:0;place-items:stretch;overflow:hidden}
+.homehero{position:absolute;inset:0;z-index:0}
+.homehero img{width:100%;height:100%;object-fit:cover;object-position:center 40%;transform:scale(1.02);animation:herozoom 18s ease-out both}
+.homehero-scrim{position:absolute;inset:0;background:
+  linear-gradient(180deg,rgba(3,7,15,.55) 0%,rgba(3,7,15,.42) 40%,rgba(3,7,15,.78) 100%),
+  radial-gradient(80% 60% at 50% 100%,rgba(200,16,46,.22),transparent 55%),
+  radial-gradient(70% 50% at 20% 0%,rgba(10,53,111,.35),transparent 50%)}
+@keyframes herozoom{from{transform:scale(1.08)}to{transform:scale(1.02)}}
+.gate.home .hero{position:relative;z-index:1;width:min(720px,100%);margin:0 auto;min-height:100dvh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:100px 24px 48px;box-sizing:border-box}
+.hero-brand{display:inline-flex;align-items:center;gap:10px;color:#fff;font-size:clamp(15px,2vw,18px);font-weight:650;letter-spacing:.02em;margin-bottom:18px}
+.hero-brand svg{width:28px;height:28px;flex:none;filter:drop-shadow(0 2px 8px rgba(0,0,0,.35))}
+.gate.home .hero h1{max-width:14ch;margin:0 auto 14px;text-shadow:0 2px 24px rgba(0,0,0,.35)}
+.gate.home .hero .lead{margin:0 auto 28px;max-width:42ch;color:rgba(235,240,250,.88)}
+.hero-ctas{display:flex;flex-direction:column;align-items:center;gap:14px;width:min(340px,100%)}
+.hero-apply{height:52px;font-size:16px;border-radius:999px;width:100%;box-shadow:0 12px 32px -10px rgba(200,16,46,.65)}
+.hero-signin{color:rgba(255,255,255,.82);font-size:14px;font-weight:600;text-decoration:none;padding:6px 10px;border-radius:8px}
+.hero-signin:hover{color:#fff;background:rgba(255,255,255,.08)}
+@media (prefers-reduced-motion:reduce){ .homehero img{animation:none;transform:none} }
+
+/* Apply / reference: chapter progress + letter feel (same fields) */
+.applycard .applyhead h1{font-size:clamp(24px,3.2vw,32px)}
+.applyblurb{margin:4px 0 0;font-size:14px;color:var(--fg2);line-height:1.45;max-width:42ch}
+.apsteps{gap:0;align-items:flex-start;padding:4px 0 8px;border-bottom:1px solid var(--sep);margin-bottom:20px}
+.apsteps li{position:relative;flex:1 1 0;min-width:0}
+.apsteps li:not(:last-child)::after{content:"";position:absolute;top:15px;left:calc(50% + 18px);right:calc(-50% + 18px);height:2px;background:var(--fill2);z-index:0}
+.apsteps li.done:not(:last-child)::after{background:color-mix(in srgb,var(--s-act) 70%,transparent)}
+.apsteps button{position:relative;z-index:1}
+.apsteps em{max-width:7.5em;overflow:hidden;text-overflow:ellipsis}
+.saved.pulse{color:var(--s-act);animation:savepulse .7s ease}
+@keyframes savepulse{0%{opacity:.4}40%{opacity:1}100%{opacity:.85}}
+.applycard.done .donemark{margin-bottom:4px}
+.applycard.done h1{font-size:clamp(26px,3.5vw,34px);margin:0}
+.nextsteps{background:color-mix(in srgb,var(--box) 70%,transparent);border:1px solid var(--glass-edge);border-radius:18px;padding:16px 18px 16px 36px;margin:8px 0 14px}
+.refcrest{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.refcrest svg{width:36px;height:36px;flex:none}
+.refcrest .eyebrow{margin:0}
+.refcard .lead2{font-size:15px;line-height:1.55}
+.rdate{padding:10px 12px;border-radius:12px;background:var(--fill);font-weight:600;color:var(--fg2)}
+
+/* Portal: current-step hero + softer empties */
+.portal .nowhero{padding:22px 22px 20px;background:linear-gradient(135deg,color-mix(in srgb,var(--navy) 12%,var(--glass-2)),var(--glass-2));border-color:color-mix(in srgb,var(--navy) 22%,var(--glass-edge))}
+.portal .nowhero .eyebrow{color:var(--navy)}
+.portal .nowhero h2{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.02em;margin:2px 0 6px}
+.portal .nowhero p{margin:0;color:var(--fg2);font-size:14.5px;line-height:1.5}
+.portal .hello{font-size:clamp(26px,4vw,32px)}
+.portal .softempty{padding:18px 4px;text-align:center;color:var(--fg2);font-size:14px;line-height:1.5}
+.portal .softempty b{display:block;color:var(--fg);font-size:15px;margin-bottom:4px}
+.portal .timeline .mile.cur .mtext .mlabel{color:var(--navy)}
+.portal .card h2{font-size:14px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;color:var(--fg3)}
+
+/* Desk: skeletons */
+.skel{pointer-events:none;display:flex;flex-direction:column;gap:8px;padding:8px}
+.skel-row{display:grid;grid-template-columns:34px 1fr;gap:11px;align-items:center;padding:10px;border-radius:16px}
+.skel-av,.skel-line{border-radius:999px;background:linear-gradient(90deg,var(--fill),color-mix(in srgb,var(--fill2) 70%,transparent),var(--fill));background-size:200% 100%;animation:shimmer 1.2s ease-in-out infinite}
+.skel-av{width:34px;height:34px;border-radius:50%}
+.skel-stack{display:flex;flex-direction:column;gap:8px;min-width:0}
+.skel-line{height:10px;width:100%}
+.skel-line.w60{width:60%}.skel-line.w40{width:40%}.skel-line.w80{width:80%}
+@keyframes shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
+@media (prefers-reduced-motion:reduce){ .skel-av,.skel-line{animation:none} }
+
+/* Overview hierarchy + stage accent discipline */
+.ovhead h2{font-size:clamp(28px,3.5vw,36px);letter-spacing:-.025em;margin:4px 0 6px}
+.ovhead p{font-size:14.5px;max-width:52ch}
+.ovcard.todo>h3{font-size:14px}
+.ovcol.ovside .ovcard>h3{font-weight:600;color:var(--fg2)}
+.stg{background:color-mix(in srgb,var(--box) 85%,transparent);box-shadow:none}
+.stg::before{left:0;right:auto;top:0;bottom:0;width:3px;height:auto;border-radius:0 2px 2px 0}
+.pill,.arow .bar span,.mile.done .dot,.steps button.done{/* stage color used as accent only */}
+.arow .pill{background:color-mix(in srgb,var(--stage-c) 10%,transparent)}
+.empty-cta{margin-top:14px}
+.oempty{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:18px 16px}
+.oempty .btn{align-self:flex-start}
+
+/* Tab crossfade + saved pulse */
+.dinner.tab-in{animation:tabin .22s ease-out}
+@keyframes tabin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.save:not(:empty)::before{transition:transform .25s,background .2s}
+.save:not(.busy):not(.err):not(:empty)::before{animation:savepulse .9s ease}
+@media (prefers-reduced-motion:reduce){ .dinner.tab-in,.save:not(:empty)::before{animation:none} }
+
+/* Desk EMS backdrop quieter */
+body:not(:has(.gate:not([hidden]))) .ems-bg .light{opacity:.04;animation:none}
+body:not(:has(.gate:not([hidden]))) .ems-bg .ecg{opacity:.35}
+body:not(:has(.gate:not([hidden]))) .ecg-line{opacity:.35;filter:none;animation-duration:6s}
+
+/* Staff photo avatar */
+.av.photo{background-size:cover;background-position:center;color:transparent;text-shadow:none}
+.av.photo>*{display:none}
+
+/* Dark glass edge readability */
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --glass-edge:rgba(255,255,255,.18); --glass-line:rgba(255,255,255,.12);
+}}
+:root[data-theme="dark"]{ --glass-edge:rgba(255,255,255,.18); --glass-line:rgba(255,255,255,.12) }
+
+/* Board packet print polish */
+@media print{
+  .pk header{border-bottom:2.5px solid #00356f;padding-bottom:12px;margin-bottom:14px}
+  .pk-k{letter-spacing:.08em}
+  .pk h1{font-size:22pt;letter-spacing:-.01em}
+  .pk h2{font-size:9.5pt;letter-spacing:.08em;border-bottom:1.5px solid #00356f;color:#00356f;padding-bottom:4px}
+  .pk .vote td{height:26px}
+  .pk-res{font-size:12pt;margin-top:12px}
+  .pk footer{margin-top:22px;font-size:8.5pt;display:flex;justify-content:space-between;gap:12px}
+  .pk footer .pk-mark{font-weight:700;color:#00356f}
+}
+
+@media (max-width:640px){
+  .gate.home .hero{padding:88px 18px 36px;justify-content:flex-end;min-height:100dvh}
+  .hero-brand span{font-size:14px}
+  .apsteps li:not(:last-child)::after{display:none}
 }

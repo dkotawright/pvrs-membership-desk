@@ -9,7 +9,7 @@ const okType = f => /^image\//.test(f.type) || f.type === "application/pdf";
 
 const msgTime = ms => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 export function threadHTML(msgs, mine){
-  if (!msgs.length) return `<p class="info thread-empty">No messages yet.</p>`;
+  if (!msgs.length) return `<div class="softempty thread-empty"><b>No messages yet</b>Questions about your application? Send one below.</div>`;
   return msgs.map(m => `<div class="msg ${m.from === mine ? "me" : "them"}"><div class="bub">${esc(m.text)}</div>
     <small>${m.from === "staff" ? (mine === "staff" ? esc(m.name || "PVRS") : "PVRS Membership") : (mine === "applicant" ? "You" : esc(m.name || "Applicant"))} · ${esc(msgTime(m.at))}${mine === "staff" && m.from === "staff" && m.seenAt ? " · Seen" : ""}</small></div>`).join("");
 }
@@ -24,6 +24,12 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
   const days = {}; open.forEach(s => { const k = slotDay(s.start); (days[k] = days[k] || []).push(s); });
   const dis = preview ? "disabled" : "";
   const canChange = iv && iv.start > now + DAY;
+  const nowStep = (pd.steps || []).find(s => s.state === "now");
+  const nowHero = nowStep
+    ? `<section class="card glass nowhero"><div class="eyebrow">Up next</div><h2>${esc(nowStep.label)}</h2><p>${esc(nowStep.detail || "We'll update this as your application moves forward.")}</p></section>`
+    : (pd.steps || []).length && (pd.steps || []).every(s => s.state === "done")
+      ? `<section class="card glass nowhero"><div class="eyebrow">You're in</div><h2>Welcome to PVRS</h2><p>Orientation and duty crew are next. Questions? Email ${esc(CONTACT_EMAIL)}.</p></section>`
+      : "";
 
   const docRows = docs.map(d => {
     const up = byKey(d.key);
@@ -42,20 +48,22 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
       ${canChange ? `<div class="acts" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn small" type="button" data-ics ${dis}>Add to my calendar</button><button class="btn small" type="button" data-cancel ${dis}>Cancel interview</button>${pd.bookingOpen && open.length?`<button class="btn small" type="button" data-change ${dis}>Change time</button>`:""}</div>`
         : `<div style="display:flex;justify-content:flex-end"><button class="btn small" type="button" data-ics ${dis}>Add to my calendar</button></div><p class="info">Need to change it? It's less than 24 hours away, so email <b>${esc(CONTACT_EMAIL)}</b>.</p>`}`;
   }
-  else if (!pd.bookingOpen) ivBody = `<p class="info">Interview times will open here once your application review is underway. We'll let you know.</p>`;
-  else if (!open.length) ivBody = `<p class="info">No interview times are open right now. Check back soon, or email <b>${esc(CONTACT_EMAIL)}</b>.</p>`;
+  else if (!pd.bookingOpen) ivBody = `<div class="softempty"><b>Interview booking isn't open yet</b>We'll let you know when you can pick a time.</div>`;
+  else if (!open.length) ivBody = `<div class="softempty"><b>No times open right now</b>Check back soon, or email <b>${esc(CONTACT_EMAIL)}</b>.</div>`;
   else ivBody = slotPicker(days, pick, dis, busy);
 
   return `<div class="wrap">
     <section class="card glass"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
-      <div class="ptop"><div><div class="eyebrow">Applicant portal</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
-      <div class="info">${esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div>
+      <div class="ptop"><div><div class="eyebrow">Applicant portal</div><div class="hello">Hi, ${esc(pd.firstName || "there")}</div>
+      <div class="info">${esc(pd.type ? pd.type + " membership" : "Membership application")}</div></div>
       ${preview ? `<span class="badge wait">Preview</span>` : `<button class="btn small" type="button" data-signout>Sign out</button>`}</div></section>
+
+    ${nowHero}
 
     <section class="card glass"><h2>Your application</h2>${timelineHTML(pd.steps || [])}</section>
 
     <section class="card glass" id="msgCard"><div class="ptop"><h2>Messages</h2>${msgs.some(m => m.from === "staff" && !m.seenAt) ? `<span class="badge wait">New reply</span>` : ""}</div>
-      <p class="info" style="margin:0">Questions about your application? Send them here. We'll reply in this space, usually within a few days.</p>
+      <p class="info" style="margin:0">Ask us anything about your application. We usually reply within a few days.</p>
       <div class="thread" id="thread">${threadHTML(msgs, "applicant")}</div>
       <div class="composer"><textarea id="msgText" rows="2" maxlength="2000" placeholder="Type your question…" aria-label="Your message" ${dis}></textarea>
         <button class="btn primary" type="button" data-send ${dis}>Send</button></div></section>
@@ -65,7 +73,7 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
     <section class="card glass" id="refCard"><h2>References</h2>${refsBody(pd.refs || [], { ups: refUps, form: refForm, draft: refDraft, sending: refSending, dis })}</section>
 
     <section class="card glass"><h2>Documents</h2>
-      ${docs.length ? `<div>${docRows}</div>` : `<p class="info">Nothing needed right now. If we need anything from you, it will show up here.</p>`}
+      ${docs.length ? `<div>${docRows}</div>` : `<div class="softempty"><b>Nothing needed right now</b>If we need a document from you, it will show up here.</div>`}
       ${other.filter(f => !f.confidential).length ? `<div class="info"><b>Other files you sent:</b> ${other.filter(f => !f.confidential).map(f => esc(f.name)).join(", ")}</div>` : ""}
       ${other.some(f => f.confidential) ? `<div class="info"><b>Secure documents sent:</b> ${other.filter(f => f.confidential).length} file${other.filter(f => f.confidential).length === 1 ? "" : "s"} 🔒</div>` : ""}
       <div class="docbtns"><button class="btn small" type="button" data-upload="" ${dis}>Send another document</button>
@@ -84,7 +92,7 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
 // Only names and received/waiting come through; contact details stay with the squad.
 // When the squad asks for a different reference, that row gets a short form; what they send replaces it in the squad's file.
 function refsBody(refs, { ups = [], form = null, draft = {}, sending = false, dis = "" } = {}){
-  if (!refs.length) return `<p class="info" style="margin:0">Once we start contacting your references, you'll see here which ones we've heard from.</p>`;
+  if (!refs.length) return `<div class="softempty"><b>References will appear here</b>Once we start contacting them, you'll see who's replied.</div>`;
   const pending = slot => ups.find(u => u.slot === slot && !u.appliedAt);
   const asks = refs.filter(r => r.replace && !pending(r.slot));
   const got = refs.filter(r => r.received).length, need = Math.max(0, 3 - got);   // 3 received is enough (REFS_NEEDED)
