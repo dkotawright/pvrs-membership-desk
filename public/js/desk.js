@@ -1354,7 +1354,18 @@ function openSettings(){
       const email = sa.dataset.schedaccess, cur = S.staff.get(email) || {};
       const on = !cur.schedule;
       try {
-        await setDoc(doc(db, "staff", email), { schedule: on, cleared: cur.cleared || SCHED_POSITIONS, scheduler: cur.role === "admin", updatedAt: Date.now() }, { merge: true });
+        await setDoc(doc(db, "staff", email), {
+          schedule: on,
+          cleared: cur.cleared || SCHED_POSITIONS,
+          scheduler: cur.role === "admin",
+          memberType: cur.memberType || "Regular",
+          credentials: cur.credentials || [
+            { key: "emt", label: "NYS / NREMT EMT", expires: "" },
+            { key: "cpr", label: "CPR / BLS", expires: "" },
+            { key: "dl", label: "Driver's license", expires: "" },
+          ],
+          updatedAt: Date.now(),
+        }, { merge: true });
         toast(on ? `Duty schedule β on for ${cur.name || email}` : `Duty schedule β off for ${cur.name || email}`);
       } catch { toast("Couldn't update schedule access."); }
       return;
@@ -1483,7 +1494,17 @@ function applyTheme(v){
 function goSchedule(){
   if (!S.schedule) return toast("Duty schedule β isn't enabled for your account yet.");
   $("#app").hidden = true;
-  startSchedule({ email: S.me, name: S.name || S.me, canManage: S.owner || S.scheduler || S.admin, staffMap: S.staff });
+  const staffMap = new Map(S.staff);
+  // Owner may not have a staff/{email} doc yet — seed a local schedule profile so hours/creds work.
+  if (!staffMap.has(S.me)) staffMap.set(S.me, {
+    schedule: true, name: S.name || S.me, memberType: "Regular", cleared: SCHED_POSITIONS,
+    credentials: [
+      { key: "emt", label: "NYS / NREMT EMT", expires: "" },
+      { key: "cpr", label: "CPR / BLS", expires: "" },
+      { key: "dl", label: "Driver's license", expires: "" },
+    ],
+  });
+  startSchedule({ email: S.me, name: S.name || S.me, canManage: S.owner || S.scheduler || S.admin, staffMap });
 }
 function switchTab(k){ flushAll(); if (S.ivMode && k !== "iv") exitIvMode(); S.tab = k; renderDetail(); const b = $("#dbody"), p = $("#dpanel"); if (b) b.scrollTop = 0; if (p) { p.classList.remove("tab-in"); void p.offsetWidth; p.classList.add("tab-in"); } }
 /* ---------- celebrations ---------- */
@@ -1657,7 +1678,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["newBtn", "New applicant"], ["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["newBtn", "New applicant"], ["slotsBtn", "Interview times"], ["schedBtn", "Duty schedule β"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av${S.photo ? " photo" : ""}" aria-hidden="true"${S.photo ? ` style="background-image:url(&quot;${esc(S.photo)}&quot;)"` : ""}>${S.photo ? "" : esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>

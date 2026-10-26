@@ -155,7 +155,16 @@ service cloud.firestore {
     match /staff/{email} {
       allow read: if isAdmin() || (verified() && email == myEmail())
         || (hasSchedule() && resource.data.get('schedule', false) == true);
-      allow write: if isOwner() && email != 'dkota@pvrs.org';
+      // Owner manages the roster (including their own schedule profile for credentials/hours).
+      // Schedule-β members may update their own credentials/clearances.
+      // Schedulers may set membership category + credentials on any schedule member.
+      allow create: if isOwner();
+      allow delete: if isOwner() && email != 'dkota@pvrs.org';
+      allow update: if isOwner()
+        || (verified() && email == myEmail() && hasSchedule()
+            && onlyChanged(['credentials', 'cleared', 'updatedAt']))
+        || (canManageSchedule()
+            && onlyChanged(['credentials', 'cleared', 'memberType', 'updatedAt', 'schedule', 'scheduler', 'name']));
     }
 
     // Duty schedule (eSchedule-style). Beta: only staff with schedule==true (and the owner).
