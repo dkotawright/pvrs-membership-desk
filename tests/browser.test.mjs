@@ -304,8 +304,29 @@ try {
     if (await page.locator("#schedule").isHidden() || !(await page.locator("body").evaluate(b => b.classList.contains("on-duty")))) fail("member didn't open Duty first"); else ok("phone: schedule members open on Duty crew");
     const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
     if (!items.includes("duty") || !items.includes("list")) fail("member menu: " + items); else ok("phone: members still reach Applicants from the floating menu");
+    const dutyTxt = await page.locator("#schedule").textContent();
+    if (!/Your hours/.test(dutyTxt) || !/Your credentials/.test(dutyTxt)) fail("member missing private hours/creds labels"); else ok("phone: members see only their own hours and credentials labels");
+    if (!/Crew roster/.test(dutyTxt) || !/Portable 14/.test(dutyTxt) || !/Casey Driver/.test(dutyTxt) || !/Portable 7/.test(dutyTxt)) fail("roster: " + dutyTxt.slice(0, 200)); else ok("phone: roster lists crew names and portable numbers");
+    if (/Crew settings/.test(dutyTxt) || await page.locator('[data-sc="crew"]').count()) fail("member sees Crew settings"); else ok("phone: members do not get Crew settings");
+    if (/Attendant/.test(dutyTxt)) fail("Attendant still shown"); else ok("phone: Attendant position removed");
     await page.click('#mnav [data-m="list"]'); await wait(page, 500);
     if (await page.locator("#schedule").isVisible() || await page.locator("#app").isHidden()) fail("member couldn't leave Duty for Applicants"); else ok("phone: members can leave Duty for the membership list");
+    await ctx.close();
+  }
+  { // owner: Crew settings + new positions
+    const { ctx, page } = await open(browser, { w: 1280, h: 820 });
+    await page.click("#schedBtn"); await wait(page, 700);
+    const t = await page.locator("#schedule").textContent();
+    if (!/Crew settings/.test(t) || !/Crew roster/.test(t)) fail("owner duty missing crew tools"); else ok("owner Duty shows Crew settings and roster");
+    await page.click('[data-sc="crew"]'); await wait(page, 400);
+    const crew = await page.locator("#modal").textContent();
+    if (!/Add to duty crew/.test(crew) || !/Alex Moore/.test(crew) || !/Portable 14/.test(crew) || !/Casey Driver/.test(crew)) fail("crew settings: " + crew.slice(0, 180)); else ok("Crew settings lists people with portables");
+    await page.click("#modal [data-x]"); await wait(page, 200);
+    await page.click('[data-sc="publish"]'); await wait(page, 300);
+    const pub = await page.locator("#modal").textContent();
+    const pos = await page.locator("#dsPos").evaluate(s => [...s.options].map(o => o.value).join(","));
+    if (pos !== "EMT,AEMT,Paramedic,Driver,Driver Trainer" || /Attendant/.test(pub)) fail("positions: " + pos); else ok("publish positions are EMT · AEMT · Paramedic · Driver · Driver Trainer");
+    await page.screenshot({ path: path.join(OUT, "16-duty-crew-settings.png") });
     await ctx.close();
   }
   for (const w of [360, 390]) { // the file's section bar fits a phone without scrolling (Checks = Screening + References)

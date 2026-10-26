@@ -8,7 +8,7 @@ import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysS
 import { portalHTML, threadHTML } from "./portal.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
-import { startSchedule, stopSchedule, POSITIONS as SCHED_POSITIONS } from "./schedule.js";
+import { startSchedule, stopSchedule, POSITIONS as SCHED_POSITIONS, blankCredentials } from "./schedule.js";
 
 /* ---------- form builders ---------- */
 const fid = k => "f-" + k.replace(/\./g, "-");
@@ -1302,7 +1302,7 @@ function teamHTML(){
     <div class="row" style="flex-wrap:wrap"><input id="tmEmail" type="email" placeholder="member@pvrs.org" class="inlinefield" style="flex:2 1 180px">
       <input id="tmName" type="text" placeholder="Name" class="inlinefield" style="flex:1 1 120px">
       <button class="btn small primary" type="button" id="tmAdd">Add member</button></div>
-    <p class="help" style="margin:4px 4px 0"><b>Duty schedule β</b> is our eSchedule-style crew board. Turn it on only for people trying it while we build it out. Clearances default to EMT · Driver · Attendant.</p>`;
+    <p class="help" style="margin:4px 4px 0"><b>Duty schedule β</b> is our eSchedule-style crew board. Turn it on for people who should see Duty. Positions: EMT · AEMT · Paramedic · Driver · Driver Trainer. You can also add people from Duty → Crew settings.</p>`;
 }
 function openSettings(){
   const s = S.settings;
@@ -1354,16 +1354,14 @@ function openSettings(){
       const email = sa.dataset.schedaccess, cur = S.staff.get(email) || {};
       const on = !cur.schedule;
       try {
+        const cleared = (Array.isArray(cur.cleared) ? cur.cleared : []).filter(p => SCHED_POSITIONS.includes(p));
         await setDoc(doc(db, "staff", email), {
           schedule: on,
-          cleared: cur.cleared || SCHED_POSITIONS,
+          cleared: cleared.length ? cleared : ["EMT"],
           scheduler: cur.role === "admin",
           memberType: cur.memberType || "Regular",
-          credentials: cur.credentials || [
-            { key: "emt", label: "NYS / NREMT EMT", expires: "" },
-            { key: "cpr", label: "CPR / BLS", expires: "" },
-            { key: "dl", label: "Driver's license", expires: "" },
-          ],
+          portable: cur.portable || "",
+          credentials: cur.credentials || blankCredentials(),
           updatedAt: Date.now(),
         }, { merge: true });
         toast(on ? `Duty schedule β on for ${cur.name || email}` : `Duty schedule β off for ${cur.name || email}`);
@@ -1508,12 +1506,8 @@ function goSchedule(){
   const staffMap = new Map(S.staff);
   // Owner may not have a staff/{email} doc yet — seed a local schedule profile so hours/creds work.
   if (!staffMap.has(S.me)) staffMap.set(S.me, {
-    schedule: true, name: S.name || S.me, memberType: "Regular", cleared: SCHED_POSITIONS,
-    credentials: [
-      { key: "emt", label: "NYS / NREMT EMT", expires: "" },
-      { key: "cpr", label: "CPR / BLS", expires: "" },
-      { key: "dl", label: "Driver's license", expires: "" },
-    ],
+    schedule: true, name: S.name || S.me, memberType: "Regular", cleared: ["EMT"], portable: "",
+    credentials: blankCredentials(),
   });
   S.surface = "duty";
   document.body.classList.add("on-duty");

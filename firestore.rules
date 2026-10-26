@@ -156,15 +156,17 @@ service cloud.firestore {
       allow read: if isAdmin() || (verified() && email == myEmail())
         || (hasSchedule() && resource.data.get('schedule', false) == true);
       // Owner manages the roster (including their own schedule profile for credentials/hours).
-      // Schedule-β members may update their own credentials/clearances.
-      // Schedulers may set membership category + credentials on any schedule member.
+      // Schedule-β members may update their own credentials + portable number.
+      // Schedulers may set membership category, clearances, credentials, portable on any schedule member.
+      // Note: peers can read schedule staff docs (needed for roster names/portables). The UI only
+      // shows each member their own hours/credentials; managers use Crew settings for everyone.
       allow create: if isOwner();
       allow delete: if isOwner() && email != 'dkota@pvrs.org';
       allow update: if isOwner()
         || (verified() && email == myEmail() && hasSchedule()
-            && onlyChanged(['credentials', 'cleared', 'updatedAt']))
+            && onlyChanged(['credentials', 'cleared', 'portable', 'updatedAt']))
         || (canManageSchedule()
-            && onlyChanged(['credentials', 'cleared', 'memberType', 'updatedAt', 'schedule', 'scheduler', 'name']));
+            && onlyChanged(['credentials', 'cleared', 'memberType', 'updatedAt', 'schedule', 'scheduler', 'name', 'portable']));
     }
 
     // Duty schedule (eSchedule-style). Beta: only staff with schedule==true (and the owner).

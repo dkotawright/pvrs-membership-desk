@@ -1510,7 +1510,7 @@ body:has(#signin:not([hidden]),#apply:not([hidden]),#reference:not([hidden]),#ho
 .hoursCard{padding:10px 14px 6px}
 .hoursCard .hbar{height:8px;border-radius:999px;background:var(--fill);overflow:hidden;margin:8px 0 6px}
 .hoursCard .hbar i{display:block;height:100%;background:linear-gradient(90deg,var(--honey),var(--navy));border-radius:inherit}
-.hoursCard .muted,.credrow small{color:var(--fg3)}
+.hoursCard .muted,.credrow small,.rosterCard .muted{color:var(--fg3)}
 .credrow{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--glass-line);font-size:13px}
 .credrow:last-of-type{border-bottom:0}
 .credrow b{display:block}
@@ -1518,6 +1518,9 @@ body:has(#signin:not([hidden]),#apply:not([hidden]),#reference:not([hidden]),#ho
 .credrow.soon b,.credrow small.cred-soon{color:var(--honey)}
 .credrow.ok b,.credrow small.cred-ok{color:var(--s-act)}
 .credrow.missing b,.credrow small.cred-missing{color:var(--fg3)}
+.rosterCard .srow.mine{border-color:color-mix(in srgb,var(--honey) 28%,transparent);background:var(--honey-soft)}
+.seg.wrap{flex-wrap:wrap;height:auto;min-height:36px;padding:4px;gap:4px}
+.seg.wrap button{flex:1 1 auto;min-width:calc(33% - 4px)}
 .todoitem.overdue .ot b{color:var(--honey)}
 .todoitem .when.overdue{color:var(--honey);font-weight:650}
 .ivday{margin-top:8px}

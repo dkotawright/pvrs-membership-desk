@@ -1,27 +1,37 @@
 // Duty schedule (eSchedule-style): week board, open-shift pickup, giveaways, trades,
-// credentials/expiry gates, and monthly hours by membership category.
+// credentials/expiry gates, monthly hours by membership category, and crew roster.
 // Gated by staff/{email}.schedule === true (owner always on).
-import { db, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc } from "./fb.js";
+// Members see only their own hours + credentials on the board; managers get Crew settings.
+import { db, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, getDoc } from "./fb.js";
 import { $, esc, toast, openModal, closeModal, copyText, lower, pad2, TYPES } from "./shared.js";
-import { CONTACT_EMAIL } from "./config.js";
+import { CONTACT_EMAIL, OWNER_EMAIL } from "./config.js";
 
-const POSITIONS = ["EMT", "Driver", "Attendant"];
+export const POSITIONS = ["EMT", "AEMT", "Paramedic", "Driver", "Driver Trainer"];
 const TEMPLATES = [
   { id: "duty-eve", label: "Duty crew · evening", startH: 18, startM: 0, hours: 12, position: "EMT" },
   { id: "duty-day", label: "Duty crew · day", startH: 6, startM: 0, hours: 12, position: "EMT" },
   { id: "driver-eve", label: "Driver · evening", startH: 18, startM: 0, hours: 12, position: "Driver" },
+  { id: "medic-eve", label: "Paramedic · evening", startH: 18, startM: 0, hours: 12, position: "Paramedic" },
 ];
 // Monthly hour expectations from PVRS membership categories (TYPE_INFO).
 export const HOUR_TARGETS = {
   "Regular": 24, "Associate": 24, "Driver Only": 24, "Non-Resident": 24,
   "Auxiliary": 16, "Non-Operational": 0,
 };
-const CRED_DEFS = [
+export const CRED_DEFS = [
   { key: "emt", label: "NYS / NREMT EMT", for: ["EMT"] },
-  { key: "cpr", label: "CPR / BLS", for: ["EMT", "Driver", "Attendant"] },
-  { key: "dl", label: "Driver's license", for: ["Driver"] },
+  { key: "aemt", label: "NYS AEMT", for: ["AEMT"] },
+  { key: "medic", label: "NYS / NREMT Paramedic", for: ["Paramedic"] },
+  { key: "cpr", label: "CPR / BLS", for: ["EMT", "AEMT", "Paramedic", "Driver", "Driver Trainer"] },
+  { key: "dl", label: "Driver's license", for: ["Driver", "Driver Trainer"] },
 ];
-const POSITION_CREDS = { EMT: ["emt", "cpr"], Driver: ["dl", "cpr"], Attendant: ["cpr"] };
+const POSITION_CREDS = {
+  EMT: ["emt", "cpr"],
+  AEMT: ["aemt", "cpr"],
+  Paramedic: ["medic", "cpr"],
+  Driver: ["dl", "cpr"],
+  "Driver Trainer": ["dl", "cpr"],
+};
 
 const Q = {
   me: "", name: "", canManage: false, shifts: new Map(), trades: new Map(), staff: new Map(),
@@ -47,14 +57,25 @@ const shiftHours = s => Math.max(0, ((s.end || s.start + 12 * 36e5) - s.start) /
 const meStaff = () => Q.staff.get(Q.me) || {};
 const memberType = (st = meStaff()) => st.memberType || "Regular";
 const hourTarget = (st = meStaff()) => HOUR_TARGETS[memberType(st)] ?? 24;
+const displayName = (email, st) => (st && st.name) || (email === Q.me ? Q.name : "") || email.split("@")[0];
+const portableOf = st => String(st?.portable || "").trim();
+const blankCredentials = () => CRED_DEFS.map(d => ({ key: d.key, label: d.label, expires: "" }));
 const myCleared = () => {
   const c = meStaff().cleared;
-  return Array.isArray(c) && c.length ? c : POSITIONS;
+  return Array.isArray(c) && c.length ? c.filter(p => POSITIONS.includes(p)) : [];
+};
+const myClearedFor = st => {
+  const c = st.cleared;
+  return Array.isArray(c) && c.length ? c.filter(p => POSITIONS.includes(p)) : [];
 };
 const credList = (st = meStaff()) => {
   const raw = st.credentials;
-  if (Array.isArray(raw) && raw.length) return raw.map(c => ({ key: c.key, label: c.label || c.key, expires: c.expires || "" }));
-  return CRED_DEFS.map(d => ({ key: d.key, label: d.label, expires: "" }));
+  const byKey = new Map((Array.isArray(raw) ? raw : []).map(c => [c.key, c]));
+  // Always show the current credential set (migrates off Attendant-era lists).
+  return CRED_DEFS.map(d => {
+    const c = byKey.get(d.key);
+    return { key: d.key, label: d.label, expires: c?.expires || "" };
+  });
 };
 const daysUntil = exp => {
   if (!exp) return null;
@@ -100,31 +121,52 @@ const monthHoursFor = email => {
   }
   return Math.round(h * 10) / 10;
 };
+const schedulePeople = () => [...Q.staff.entries()]
+  .filter(([email, s]) => s.schedule || email === Q.me || email === lower(OWNER_EMAIL))
+  .sort((a, b) => displayName(a[0], a[1]).localeCompare(displayName(b[0], b[1]), undefined, { sensitivity: "base" }));
+
 const stop = () => { Q.unsub.forEach(u => { try { u(); } catch {} }); Q.unsub = []; };
 export function stopSchedule(){ stop(); }
 
 function hoursCard(){
+  // Own hours only — members never see others' totals here.
   const st = meStaff(), target = hourTarget(st), got = monthHoursFor(Q.me), { label } = monthBounds();
   const pct = target > 0 ? Math.min(100, Math.round(got / target * 100)) : (got ? 100 : 0);
   const rem = target > 0 ? Math.max(0, Math.round((target - got) * 10) / 10) : 0;
   return `<section class="hoursCard">
-    <h3>Hours · ${esc(label)}<small>${esc(memberType(st))}</small></h3>
+    <h3>Your hours · ${esc(label)}<small>${esc(memberType(st))}</small></h3>
     <div class="hbar" aria-hidden="true"><i style="width:${pct}%"></i></div>
     <p class="help"><b>${got}</b> of <b>${target || "—"}</b> hours${target ? (rem ? ` · ${rem} to go` : " · met ✓") : " · no monthly target"}</p>
-    <p class="help muted">Targets follow membership category (Regular/Associate 24 · Auxiliary 16 · Non-Operational none). Hours count from shifts you've worked this month.</p>
+    <p class="help muted">Only you see this. Targets follow membership category (Regular/Associate 24 · Auxiliary 16 · Non-Operational none).</p>
   </section>`;
 }
 function credsCard(){
+  // Own credentials only.
   const list = credList();
   const rows = list.map(c => {
     const stt = credStatus(c);
     return `<div class="credrow ${stt.kind}"><span><b>${esc(c.label)}</b><small>${esc(stt.label)}</small></span></div>`;
   }).join("");
   const soon = list.filter(c => ["expired", "soon", "missing"].includes(credStatus(c).kind)).length;
-  return `<section><h3>Credentials<small>${soon ? soon + " need attention" : "ok"}</small></h3>
+  return `<section><h3>Your credentials<small>${soon ? soon + " need attention" : "ok"}</small></h3>
     ${rows}
-    <button class="btn small" type="button" data-sc="creds" style="margin-top:8px">Update credentials</button>
-    ${Q.canManage ? `<button class="btn small" type="button" data-sc="crewcreds" style="margin-top:6px">Crew credentials</button>` : ""}
+    <button class="btn small" type="button" data-sc="creds" style="margin-top:8px">Update mine</button>
+  </section>`;
+}
+function rosterCard(){
+  const people = schedulePeople();
+  const rows = people.map(([email, st]) => {
+    const port = portableOf(st);
+    const mine = email === Q.me;
+    return `<button type="button" class="srow roster${mine ? " mine" : ""}" data-roster="${esc(email)}">
+      <b>${esc(displayName(email, st))}${mine ? " · you" : ""}</b>
+      <span>${port ? "Portable " + esc(port) : "No portable on file"}</span>
+    </button>`;
+  }).join("");
+  return `<section class="rosterCard"><h3>Crew roster<small>${people.length}</small></h3>
+    <p class="help muted">Names and portable numbers for everyone on duty.</p>
+    ${rows || `<div class="oempty fun"><b>No one yet</b>${Q.canManage ? "Open Crew settings to add people." : "Ask a coordinator to add you."}</div>`}
+    ${Q.canManage ? `<button class="btn small" type="button" data-sc="crew" style="margin-top:8px">Crew settings</button>` : ""}
   </section>`;
 }
 
@@ -156,12 +198,13 @@ function paint(){
   root.innerHTML = `
     <header class="schedhead glass">
       <div class="schedbrand"><div class="eyebrow">PVRS · beta</div><h1>Duty schedule</h1>
-        <p>Week of ${esc(fmtDay(Q.weekStart))} — pick up shifts, track hours by membership category, keep credentials current.</p></div>
+        <p>Week of ${esc(fmtDay(Q.weekStart))} — pick up shifts, track your hours, keep credentials current.</p></div>
       <div class="schedacts">
         <button class="btn" type="button" data-sc="prev">‹ Prev</button>
         <button class="btn" type="button" data-sc="today">This week</button>
         <button class="btn" type="button" data-sc="next">Next ›</button>
-        ${Q.canManage ? `<button class="btn primary" type="button" data-sc="publish">Publish shifts</button>` : ""}
+        ${Q.canManage ? `<button class="btn primary" type="button" data-sc="publish">Publish shifts</button>
+        <button class="btn" type="button" data-sc="crew">Crew settings</button>` : ""}
         <button class="btn" type="button" data-sc="desk">${Q.onDesk ? "Membership" : "Membership desk"}</button>
         <button class="btn" type="button" data-signout>Sign out</button>
       </div>
@@ -170,6 +213,7 @@ function paint(){
       <aside class="schedside glass">
         ${hoursCard()}
         ${credsCard()}
+        ${rosterCard()}
         <section><h3>My shifts<small>${mine.length}</small></h3>
           ${mine.length ? mine.map(s => `<button type="button" class="srow" data-sid="${esc(s.id)}"><b>${esc(fmtDay(new Date(s.start)))}</b><span>${esc(s.position || "Duty")} · ${esc(fmtRange(new Date(s.start), new Date(s.end || s.start + 12 * 36e5)))} · ${shiftHours(s)}h</span></button>`).join("")
             : `<div class="oempty fun"><b>None this week</b>Pick up an open shift when you're free.</div>`}</section>
@@ -181,7 +225,7 @@ function paint(){
               <i>${ok ? "Tap to pick up" : block.length ? "Credential issue" : `Needs ${esc(s.position)}`}</i></button>`;
           }).join("") : `<div class="oempty fun"><b>Fully covered</b>Nice work, crew.</div>`}</section>
         <section><h3>Your clearances</h3>
-          <p class="help">${esc(myCleared().join(" · ") || "Not set — ask an admin.")}</p>
+          <p class="help">${esc(myCleared().join(" · ") || "Not set — ask a coordinator in Crew settings.")}</p>
           <p class="help">Questions? ${esc(CONTACT_EMAIL)}</p></section>
       </aside>
       <div class="schedgrid glass" role="grid" aria-label="Week schedule">
@@ -195,20 +239,26 @@ function openCreds(email){
   const target = lower(email || Q.me);
   const st = Q.staff.get(target) || {};
   const editingOther = target !== Q.me;
-  if (editingOther && !Q.canManage) return toast("Only schedulers can edit others' credentials.");
+  if (editingOther && !Q.canManage) return toast("Only coordinators can edit others' credentials.");
   const list = credList(st);
   const type = memberType(st);
-  const M = openModal(`<h3>${editingOther ? esc(st.name || target) + " · " : ""}Credentials & category</h3>
-    <p class="help">Expired or missing credentials block picking up shifts that need them (EMT needs EMT+CPR, Driver needs license+CPR, Attendant needs CPR).</p>
-    ${Q.canManage || !editingOther ? `<div class="field"><label for="crType">Membership category</label>
-      <select id="crType" ${Q.canManage ? "" : "disabled"}>${TYPES.map(t => `<option value="${esc(t)}" ${t === type ? "selected" : ""}>${esc(t)} · ${HOUR_TARGETS[t] ?? "—"}h/mo</option>`).join("")}</select></div>` : ""}
+  const port = portableOf(st);
+  const M = openModal(`<h3>${editingOther ? esc(displayName(target, st)) + " · " : ""}Credentials & category</h3>
+    <p class="help">${editingOther ? "Coordinator view — members only see their own hours and credentials on the board." : "Only you see your hours and credential details on the duty board. The roster shows your name and portable to the crew."}</p>
+    <div class="field"><label for="crPortable">Portable number</label>
+      <input id="crPortable" type="text" maxlength="20" inputmode="numeric" placeholder="e.g. 12" value="${esc(port)}"></div>
+    ${Q.canManage ? `<div class="field"><label for="crType">Membership category</label>
+      <select id="crType">${TYPES.map(t => `<option value="${esc(t)}" ${t === type ? "selected" : ""}>${esc(t)} · ${HOUR_TARGETS[t] ?? "—"}h/mo</option>`).join("")}</select></div>`
+      : `<p class="help">Category: <b>${esc(type)}</b> · ${HOUR_TARGETS[type] ?? "—"}h/mo</p>`}
     <div class="ios" style="padding:10px 12px">${list.map(c => {
       const stt = credStatus(c);
       return `<div class="row stack"><span class="lbl">${esc(c.label)}<small class="cred-${stt.kind}">${esc(stt.label)}</small></span>
-        <input type="date" data-cr="${esc(c.key)}" value="${esc(c.expires || "")}" aria-label="${esc(c.label)} expiry"></div>`;
+        <input type="date" data-cr="${esc(c.key)}" value="${esc(c.expires || "")}" aria-label="${esc(c.label)} expiry" ${Q.canManage || !editingOther ? "" : "disabled"}></div>`;
     }).join("")}</div>
-    <div class="field" style="margin-top:8px"><label for="crCleared">Cleared positions</label>
-      <div class="seg" id="crCleared" role="group">${POSITIONS.map(p => `<button type="button" data-cl="${esc(p)}" class="${myClearedFor(st).includes(p) ? "on" : ""}">${esc(p)}</button>`).join("")}</div></div>
+    ${Q.canManage ? `<div class="field" style="margin-top:8px"><label>Cleared positions</label>
+      <div class="seg wrap" id="crCleared" role="group">${POSITIONS.map(p => `<button type="button" data-cl="${esc(p)}" class="${myClearedFor(st).includes(p) ? "on" : ""}">${esc(p)}</button>`).join("")}</div>
+      <p class="help" style="margin-top:6px">EMT / AEMT / Paramedic need that cert + CPR. Driver and Driver Trainer need license + CPR.</p></div>`
+      : `<p class="help" style="margin-top:8px">Cleared: <b>${esc(myClearedFor(st).join(" · ") || "not set")}</b></p>`}
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" data-crsave>Save</button></div>`, true);
   const cleared = new Set(myClearedFor(st));
   M.querySelector("#crCleared")?.addEventListener("click", e => {
@@ -223,43 +273,105 @@ function openCreds(email){
       key: c.key, label: c.label,
       expires: (M.querySelector(`[data-cr="${c.key}"]`)?.value || "").slice(0, 10),
     }));
-    const patch = { credentials, cleared: [...cleared], updatedAt: Date.now() };
-    if (Q.canManage) patch.memberType = $("#crType")?.value || type;
+    const portable = ($("#crPortable")?.value || "").trim().slice(0, 20);
+    const patch = { credentials, portable, updatedAt: Date.now() };
+    if (Q.canManage) {
+      patch.cleared = [...cleared];
+      patch.memberType = $("#crType")?.value || type;
+    }
     try {
       await setDoc(doc(db, "staff", target), patch, { merge: true });
-      // Optimistic local update
       const cur = { ...(Q.staff.get(target) || {}), ...patch, schedule: true, name: st.name || (target === Q.me ? Q.name : target) };
       Q.staff.set(target, cur);
-      toast("Credentials saved"); closeModal(); paint();
+      toast("Saved"); closeModal(); paint();
     } catch (err) { console.error(err); toast("Couldn't save. Check you're on schedule β."); }
   };
 }
-function myClearedFor(st){
-  const c = st.cleared;
-  return Array.isArray(c) && c.length ? c : POSITIONS;
-}
 
-function openCrewCreds(){
-  if (!Q.canManage) return;
-  const people = [...Q.staff.entries()].filter(([, s]) => s.schedule).sort((a, b) => (a[1].name || a[0]).localeCompare(b[1].name || b[0]));
+function openDutySettings(){
+  if (!Q.canManage) return toast("Only coordinators can open Crew settings.");
+  const people = schedulePeople();
   const rows = people.map(([email, st]) => {
     const issues = credList(st).map(c => ({ c, stt: credStatus(c) })).filter(x => x.stt.kind !== "ok");
     const hrs = monthHoursFor(email), tgt = hourTarget(st);
+    const port = portableOf(st);
+    const cleared = myClearedFor(st);
     return `<button type="button" class="srow" data-credemail="${esc(email)}">
-      <b>${esc(st.name || email)}</b>
-      <span>${esc(memberType(st))} · ${hrs}/${tgt}h this month</span>
+      <b>${esc(displayName(email, st))}</b>
+      <span>${port ? "Portable " + esc(port) : "No portable"} · ${esc(memberType(st))} · ${hrs}/${tgt}h this month</span>
+      <span>${cleared.length ? esc(cleared.join(" · ")) : "No clearances set"}</span>
       <i class="${issues.length ? "warn" : ""}">${issues.length ? issues.map(x => x.c.label + ": " + x.stt.label).join(" · ") : "Credentials ok"}</i>
     </button>`;
   }).join("");
-  const M = openModal(`<h3>Crew credentials</h3>
-    <p class="help">Who's expiring soon, and monthly hours vs their membership category target.</p>
-    <div class="olist" style="max-height:60vh;overflow:auto">${rows || `<div class="oempty">No schedule β members yet.</div>`}</div>
+  const M = openModal(`<h3>Crew settings</h3>
+    <p class="help">Add people to duty, set portable numbers, clearances, and credentials. Members only see <b>their own</b> hours and credentials on the board — the roster shows names and portables to everyone.</p>
+    <div class="ios" style="padding:12px;margin-bottom:10px">
+      <div class="addslot">
+        <div class="field"><label for="crewEmail">Email</label><input id="crewEmail" type="email" placeholder="member@pvrs.org" autocomplete="off"></div>
+        <div class="field"><label for="crewName">Name</label><input id="crewName" type="text" maxlength="80" placeholder="First Last"></div>
+        <div class="field"><label for="crewPort">Portable #</label><input id="crewPort" type="text" maxlength="20" inputmode="numeric" placeholder="12"></div>
+      </div>
+      <button class="btn primary" type="button" data-crewadd style="margin-top:8px">Add to duty crew</button>
+    </div>
+    <h4 class="tabsec" style="margin:4px 0 8px">On duty · ${people.length}</h4>
+    <div class="olist" style="max-height:45vh;overflow:auto">${rows || `<div class="oempty">No schedule members yet — add someone above.</div>`}</div>
     <div class="acts"><button class="btn" type="button" data-x>Done</button></div>`, true);
-  M.onclick = e => {
+  M.onclick = async e => {
     if (e.target.closest("[data-x]")) return closeModal();
-    const b = e.target.closest("[data-credemail]"); if (!b) return;
-    closeModal(); openCreds(b.dataset.credemail);
+    const row = e.target.closest("[data-credemail]");
+    if (row) { closeModal(); return openCreds(row.dataset.credemail); }
+    if (!e.target.closest("[data-crewadd]")) return;
+    const email = lower($("#crewEmail")?.value || "");
+    const name = ($("#crewName")?.value || "").trim().slice(0, 80);
+    const portable = ($("#crewPort")?.value || "").trim().slice(0, 20);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Enter a valid email.");
+    if (email === lower(OWNER_EMAIL)) {
+      try {
+        await setDoc(doc(db, "staff", email), {
+          schedule: true, name: name || "Dkota Wright", portable, role: "admin",
+          memberType: "Regular", cleared: ["EMT", "Paramedic", "Driver"],
+          credentials: blankCredentials(), updatedAt: Date.now(),
+        }, { merge: true });
+        toast("Owner duty profile updated"); closeModal(); openDutySettings();
+      } catch (err) { console.error(err); toast("Couldn't update owner profile."); }
+      return;
+    }
+    try {
+      const ref = doc(db, "staff", email);
+      const existing = await getDoc(ref);
+      const cur = existing.exists() ? existing.data() : {};
+      await setDoc(ref, {
+        role: cur.role || "member",
+        name: name || cur.name || email.split("@")[0],
+        portable: portable || cur.portable || "",
+        schedule: true,
+        scheduler: cur.scheduler || cur.role === "admin",
+        memberType: cur.memberType || "Regular",
+        cleared: Array.isArray(cur.cleared) && cur.cleared.length ? cur.cleared.filter(p => POSITIONS.includes(p)) : ["EMT"],
+        credentials: Array.isArray(cur.credentials) && cur.credentials.length ? cur.credentials : blankCredentials(),
+        updatedAt: Date.now(),
+        ...(existing.exists() ? {} : { addedAt: Date.now(), addedBy: Q.me, via: "duty" }),
+      }, { merge: true });
+      toast(`${name || email} is on the duty crew`);
+      closeModal(); openDutySettings();
+    } catch (err) {
+      console.error(err);
+      toast(err?.code === "permission-denied"
+        ? "Couldn't add them — only the owner can create new team accounts. Try Membership → Settings → Team first, then turn Schedule on."
+        : "Couldn't add that person.");
+    }
   };
+}
+
+function onRosterTap(email){
+  const target = lower(email);
+  if (target === Q.me || Q.canManage) return openCreds(target);
+  const st = Q.staff.get(target) || {};
+  const port = portableOf(st);
+  const name = displayName(target, st);
+  if (port) {
+    copyText(port).then(ok => toast(ok ? `Copied portable ${port} (${name})` : `${name} · portable ${port}`));
+  } else toast(`${name} has no portable on file yet.`);
 }
 
 function openShift(id){
@@ -309,11 +421,13 @@ function openShift(id){
 
 function openTrade(shiftId){
   const s = Q.shifts.get(shiftId); if (!s || !isMine(s)) return;
-  const others = [...Q.staff.entries()].filter(([email, st]) => email !== Q.me && st.schedule).map(([email, st]) => ({ email, name: st.name || email }));
+  const others = schedulePeople().filter(([email]) => email !== Q.me).map(([email, st]) => ({
+    email, name: displayName(email, st), portable: portableOf(st),
+  }));
   const M = openModal(`<h3>Request a trade</h3>
-    <p class="help">Ask another schedule β member to take ${esc(fmtDay(new Date(s.start)))} (${esc(s.position || "Duty")}).</p>
+    <p class="help">Ask another crew member to take ${esc(fmtDay(new Date(s.start)))} (${esc(s.position || "Duty")}).</p>
     <div class="field"><label for="trTo">Trade with</label>
-      <select id="trTo">${others.length ? others.map(o => `<option value="${esc(o.email)}">${esc(o.name)}</option>`).join("") : `<option value="">No other beta members yet</option>`}</select></div>
+      <select id="trTo">${others.length ? others.map(o => `<option value="${esc(o.email)}">${esc(o.name)}${o.portable ? " · P" + esc(o.portable) : ""}</option>`).join("") : `<option value="">No other crew yet</option>`}</select></div>
     <label class="row stack"><span class="lbl">Note</span><textarea id="trNote" rows="2" maxlength="400" placeholder="Optional"></textarea></label>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" data-trsend ${others.length ? "" : "disabled"}>Send request</button></div>`);
   M.onclick = async e => {
@@ -336,7 +450,7 @@ function openPublish(){
   const d0 = addDays(new Date(), 1);
   const dStr = `${d0.getFullYear()}-${pad2(d0.getMonth() + 1)}-${pad2(d0.getDate())}`;
   const M = openModal(`<h3>Publish duty shifts</h3>
-    <p class="help">Open slots for cleared members whose credentials are current.</p>
+    <p class="help">Open slots for cleared members whose credentials are current. Positions: ${esc(POSITIONS.join(" · "))}.</p>
     <div class="ios" style="padding:12px">
       <div class="addslot">
         <div class="field"><label for="dsDate">Date</label><input id="dsDate" type="date" value="${dStr}" required></div>
@@ -394,7 +508,7 @@ function wire(){
       if (k === "today") { Q.weekStart = startOfWeek(new Date()); return paint(); }
       if (k === "publish") return openPublish();
       if (k === "creds") return openCreds();
-      if (k === "crewcreds") return openCrewCreds();
+      if (k === "crew" || k === "crewcreds") return openDutySettings();
       if (k === "desk") {
         if (Q.onDesk) return Q.onDesk();
         $("#schedule").hidden = true; $("#app").hidden = false;
@@ -402,6 +516,7 @@ function wire(){
         return;
       }
     }
+    const roster = e.target.closest("[data-roster]"); if (roster) return onRosterTap(roster.dataset.roster);
     const sid = e.target.closest("[data-sid]"); if (sid) return openShift(sid.dataset.sid);
   });
 }
@@ -449,11 +564,11 @@ export function startSchedule({ email, name, canManage, staffMap, onDesk }){
 export async function setScheduleAccess(email, on, cleared){
   const patch = {
     schedule: !!on, updatedAt: Date.now(),
-    cleared: cleared || POSITIONS,
+    cleared: cleared || ["EMT"],
     memberType: "Regular",
-    credentials: CRED_DEFS.map(d => ({ key: d.key, label: d.label, expires: "" })),
+    credentials: blankCredentials(),
   };
   await setDoc(doc(db, "staff", lower(email)), patch, { merge: true });
 }
 
-export { POSITIONS, CRED_DEFS };
+export { blankCredentials };
