@@ -39,4 +39,10 @@ await shot(MEMBER, "duty-member-home", 390, 844, async p => { await p.waitForTim
 await shot(OWNER, "duty-desk-sidebar", 1280, 820, async p => {
   await p.click("#schedBtn"); await p.waitForTimeout(700);
 });
+await shot(OWNER, "duty-day-board", 390, 844, async p => {
+  await p.click('#mnav [data-m="duty"]'); await p.waitForTimeout(800);
+  const n = await p.locator(".daycell[data-day]").count();
+  await p.locator(".daycell[data-day]").nth(Math.min(3, Math.max(0, n - 1))).click();
+  await p.waitForTimeout(500);
+});
 await browser.close();
