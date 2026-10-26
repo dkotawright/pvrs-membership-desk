@@ -1492,8 +1492,8 @@ function onKeys(e){
   const modalOpen = !$("#modal").hidden;
   if (e.isComposing || e.keyCode === 229) return;
   const tg = e.target, typing = tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName));
-  const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey;
-  if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
+  // ⌘K (Mac) and Ctrl+K (Windows/Linux) both open the palette — accept either so tests and every desk work.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
     e.preventDefault(); if (modalOpen) return;
     return openPalette();
   }
