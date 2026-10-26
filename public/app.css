@@ -1553,6 +1553,11 @@ body:has(#signin:not([hidden]),#apply:not([hidden]),#reference:not([hidden]),#ho
 .rosterCard .srow.mine{border-color:color-mix(in srgb,var(--honey) 28%,transparent);background:var(--honey-soft)}
 .seg.wrap{flex-wrap:wrap;height:auto;min-height:36px;padding:4px;gap:4px}
 .seg.wrap button{flex:1 1 auto;min-width:calc(33% - 4px)}
+.crewthread{display:flex;flex-direction:column;gap:10px;max-height:42vh;overflow:auto;padding:8px 4px 12px;margin:4px 0 10px;border-radius:16px;background:color-mix(in srgb,var(--fill) 55%,transparent)}
+.crewcompose{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-bottom:8px}
+.crewcompose textarea{width:100%;min-height:64px;resize:vertical;border-radius:14px;border:1px solid var(--glass-edge);background:var(--box);color:var(--fg);font:inherit;padding:10px 12px}
+.crewcompose .btn{height:44px;padding:0 16px}
+.btn .navbadge{position:relative;top:0;right:0;margin-left:6px;display:inline-grid}
 .todoitem.overdue .ot b{color:var(--honey)}
 .todoitem .when.overdue{color:var(--honey);font-weight:650}
 .ivday{margin-top:8px}

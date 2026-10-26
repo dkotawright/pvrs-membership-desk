@@ -8,7 +8,7 @@ import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysS
 import { portalHTML, threadHTML } from "./portal.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
-import { startSchedule, stopSchedule, POSITIONS as SCHED_POSITIONS, blankCredentials } from "./schedule.js";
+import { startSchedule, stopSchedule, openCrewInbox, POSITIONS as SCHED_POSITIONS, blankCredentials } from "./schedule.js";
 
 /* ---------- form builders ---------- */
 const fid = k => "f-" + k.replace(/\./g, "-");
@@ -1516,6 +1516,15 @@ function goSchedule(){
   startSchedule({
     email: S.me, name: S.name || S.me, canManage: S.owner || S.scheduler || S.admin, staffMap,
     onDesk: leaveDuty,
+    onUnread: n => {
+      const mb = $("#mnav [data-m=msgs] .navbadge");
+      if (mb && (S.surface === "duty" || (S.schedule && !S.admin))) {
+        // On Duty (or schedule-only members): badge is crew unread. Applicant unread stays for desk admins.
+        const appN = S.admin ? unreadTotal() : 0;
+        const total = S.surface === "duty" ? n : (appN || n);
+        mb.textContent = total || ""; mb.hidden = !total;
+      }
+    },
   });
   paintMnav();
 }
@@ -1671,17 +1680,23 @@ function paintMnav(){
   m.hidden = false;
   const duty = m.querySelector('[data-m="duty"]');
   if (duty) duty.hidden = !S.schedule;
-  m.querySelector('[data-m="msgs"]').hidden = $("#msgsBtn").hidden;
+  // Applicant inbox (admins) or crew DMs (schedule members / while on Duty).
+  m.querySelector('[data-m="msgs"]').hidden = $("#msgsBtn").hidden && !S.schedule;
   // Pure duty members: keep Applicants/Overview reachable but secondary (still shown if they have desk access).
   const onDuty = S.surface === "duty";
   const cur = onDuty ? "duty" : (S.mOv ? "ov" : "list");
   m.querySelectorAll("[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === cur));
+  if (onDuty) m.querySelector('[data-m="msgs"]')?.classList.remove("on");
   $("#app").classList.toggle("ovopen", !!S.mOv && !S.sel && !onDuty);
   document.body.classList.toggle("file-open", !!S.sel && !onDuty);
 }
 function mnavGo(k){
   if (k === "new") return openNew();
-  if (k === "msgs") { if (S.surface === "duty") leaveDuty(); return openInbox(); }
+  if (k === "msgs") {
+    if (S.surface === "duty" || (S.schedule && !S.admin && !S.owner)) return openCrewInbox();
+    if (S.surface === "duty") leaveDuty();
+    return openInbox();
+  }
   if (k === "more") { if (S.surface === "duty") leaveDuty(); return openMore(); }
   if (k === "duty") return goSchedule();
   if (S.surface === "duty") leaveDuty();

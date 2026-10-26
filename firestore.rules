@@ -222,6 +222,46 @@ service cloud.firestore {
       allow delete: if canManageSchedule() || (hasSchedule() && resource.data.from == myEmail() && resource.data.status == 'pending');
     }
 
+    // Crew DMs (duty members ↔ duty members). Thread id is the two emails sorted and joined with "__".
+    function isSchedulePeer(email) {
+      return email == 'dkota@pvrs.org'
+        || (exists(/databases/$(database)/documents/staff/$(email))
+            && get(/databases/$(database)/documents/staff/$(email)).data.get('schedule', false) == true);
+    }
+    function crewThreadPath(id) { return /databases/$(database)/documents/crewThreads/$(id); }
+    function inCrewThread(id) {
+      return hasSchedule() && exists(crewThreadPath(id)) && myEmail() in get(crewThreadPath(id)).data.participants;
+    }
+    match /crewThreads/{threadId} {
+      allow read: if hasSchedule() && myEmail() in resource.data.participants;
+      allow create: if hasSchedule()
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && myEmail() in request.resource.data.participants
+        && request.resource.data.participants[0] is string
+        && request.resource.data.participants[1] is string
+        && request.resource.data.participants[0] < request.resource.data.participants[1]
+        && isSchedulePeer(request.resource.data.participants[0] == myEmail()
+            ? request.resource.data.participants[1] : request.resource.data.participants[0])
+        && request.resource.data.updatedAt is int;
+      allow update: if hasSchedule() && myEmail() in resource.data.participants
+        && onlyChanged(['lastText', 'lastAt', 'lastBy', 'updatedAt', 'seenAt', 'names']);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if inCrewThread(threadId);
+        allow create: if inCrewThread(threadId)
+          && request.resource.data.keys().hasOnly(['text', 'by', 'name', 'at'])
+          && request.resource.data.by == myEmail()
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
+          && request.resource.data.get('name', '') is string && request.resource.data.get('name', '').size() <= 100
+          && request.resource.data.at is int
+          && request.resource.data.at > nowMs() - 300000 && request.resource.data.at < nowMs() + 300000;
+        allow update, delete: if false;
+      }
+    }
+
     // Application + interview (shared with members)
     match /applicants/{id} {
       allow read: if isStaff();

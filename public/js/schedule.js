@@ -2,8 +2,8 @@
 // and sign up for a slot matching your clearances & credentials. No "publish first".
 // Members see only their own hours + credentials; roster shows names + portables.
 // Gated by staff/{email}.schedule === true (owner always on).
-import { db, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, getDoc, runTransaction } from "./fb.js";
-import { $, esc, toast, openModal, closeModal, copyText, lower, pad2, TYPES } from "./shared.js";
+import { db, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, setDoc, getDoc, runTransaction, query, where } from "./fb.js";
+import { $, esc, toast, openModal, closeModal, copyText, lower, pad2, TYPES, ago } from "./shared.js";
 import { CONTACT_EMAIL, OWNER_EMAIL } from "./config.js";
 
 export const POSITIONS = ["EMT", "AEMT", "Paramedic", "Driver", "Driver Trainer"];
@@ -35,7 +35,8 @@ const DRIVING = new Set(["Driver", "Driver Trainer"]);
 
 const Q = {
   me: "", name: "", canManage: false, shifts: new Map(), trades: new Map(), staff: new Map(),
-  weekStart: null, monthStart: null, view: "week", unsub: [], onDesk: null,
+  threads: new Map(), weekStart: null, monthStart: null, view: "week", unsub: [], onDesk: null,
+  onUnread: null, msgsPrimed: false,
 };
 
 const startOfWeek = d => {
@@ -126,6 +127,40 @@ const schedulePeople = () => [...Q.staff.entries()]
   .filter(([email, s]) => s.schedule || email === Q.me || email === lower(OWNER_EMAIL))
   .sort((a, b) => displayName(a[0], a[1]).localeCompare(displayName(b[0], b[1]), undefined, { sensitivity: "base" }));
 
+/* ---------- Crew DMs ---------- */
+const pairId = (a, b) => { const x = lower(a), y = lower(b); return x < y ? `${x}__${y}` : `${y}__${x}`; };
+const otherOf = (t, me = Q.me) => (t.participants || []).find(e => e !== me) || "";
+const threadUnread = t => !!(t.lastAt && t.lastBy && t.lastBy !== Q.me && t.lastAt > ((t.seenAt || {})[Q.me] || 0));
+const crewUnreadTotal = () => [...Q.threads.values()].filter(threadUnread).length;
+const msgTime = ms => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+function bumpCrewBadge(){
+  const n = crewUnreadTotal();
+  if (typeof Q.onUnread === "function") Q.onUnread(n);
+  const btn = document.querySelector('[data-sc="crewmsg"]');
+  if (btn) {
+    let b = btn.querySelector(".navbadge"); if (!b) { b = document.createElement("b"); b.className = "navbadge"; btn.appendChild(b); }
+    b.textContent = n || ""; b.hidden = !n;
+  }
+}
+async function ensureThread(otherEmail){
+  const other = lower(otherEmail);
+  if (!other || other === Q.me) throw new Error("bad peer");
+  const id = pairId(Q.me, other);
+  const ref = doc(db, "crewThreads", id);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) {
+    const st = Q.staff.get(other) || {};
+    const a = lower(Q.me), b = other;
+    const participants = a < b ? [a, b] : [b, a];
+    await setDoc(ref, {
+      participants,
+      names: { [Q.me]: Q.name || Q.me, [other]: displayName(other, st) },
+      lastText: "", lastAt: 0, lastBy: "", seenAt: {}, updatedAt: Date.now(),
+    });
+  }
+  return id;
+}
+
 /** Resolve a calendar slot to an existing shift (deterministic id or legacy random id). */
 function findSlotShift(day, band, position) {
   const id = slotDocId(day, band.id, position);
@@ -205,16 +240,117 @@ function rosterCard(){
   const rows = people.map(([email, st]) => {
     const port = portableOf(st);
     const mine = email === Q.me;
+    const tid = pairId(Q.me, email);
+    const unread = !mine && Q.threads.has(tid) && threadUnread(Q.threads.get(tid));
     return `<button type="button" class="srow roster${mine ? " mine" : ""}" data-roster="${esc(email)}">
-      <b>${esc(displayName(email, st))}${mine ? " · you" : ""}</b>
-      <span>${port ? "Portable " + esc(port) : "No portable on file"}</span>
+      <b>${esc(displayName(email, st))}${mine ? " · you" : ""}${unread ? ` <span class="badge wait">new</span>` : ""}</b>
+      <span>${port ? "Portable " + esc(port) : "No portable on file"}${mine ? "" : " · tap to message"}</span>
     </button>`;
   }).join("");
+  const unread = crewUnreadTotal();
   return `<section class="rosterCard"><h3>Crew roster<small>${people.length}</small></h3>
-    <p class="help muted">Names and portable numbers for everyone on duty.</p>
+    <p class="help muted">Names, portables, and messages with other members.</p>
     ${rows || `<div class="oempty fun"><b>No one yet</b>${Q.canManage ? "Open Crew settings to add people." : "Ask a coordinator to add you."}</div>`}
-    ${Q.canManage ? `<button class="btn small" type="button" data-sc="crew" style="margin-top:8px">Crew settings</button>` : ""}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+      <button class="btn small" type="button" data-sc="crewmsg">Messages${unread ? ` · ${unread}` : ""}</button>
+      ${Q.canManage ? `<button class="btn small" type="button" data-sc="crew">Crew settings</button>` : ""}
+    </div>
   </section>`;
+}
+
+function crewThreadHTML(msgs){
+  if (!msgs.length) return `<div class="softempty thread-empty"><b>No messages yet</b>Say hi — shift coverage, trades, or a quick question.</div>`;
+  return msgs.map(m => `<div class="msg ${m.by === Q.me ? "me" : "them"}"><div class="bub">${esc(m.text)}</div>
+    <small>${m.by === Q.me ? "You" : esc(m.name || "Crew")} · ${esc(msgTime(m.at))}</small></div>`).join("");
+}
+
+export function openCrewInbox(){
+  const threads = [...Q.threads.values()].sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0));
+  const peers = schedulePeople().filter(([e]) => e !== Q.me);
+  const M = openModal(`<h3>Crew messages</h3>
+    <p class="help">Message other duty members. Applicant messages stay on the membership desk.</p>
+    <div class="ios">${threads.length ? threads.map(t => {
+      const other = otherOf(t);
+      const name = (t.names && t.names[other]) || displayName(other, Q.staff.get(other) || {});
+      const unread = threadUnread(t);
+      return `<button class="oitem" type="button" data-crewchat="${esc(other)}" style="width:100%">
+        <span class="ot"><b>${esc(name)}${unread ? ` <span class="badge wait">new</span>` : ""}</b>
+          <small>${t.lastBy === Q.me ? "You: " : ""}${esc((t.lastText || "No messages yet").slice(0, 90))}</small></span>
+        <span class="when">${t.lastAt ? esc(ago(t.lastAt)) : ""}</span></button>`;
+    }).join("") : `<div class="oempty">No conversations yet — pick someone below.</div>`}</div>
+    ${peers.length ? `<h4 class="tabsec" style="margin:14px 0 8px">Start a chat</h4>
+      <div class="ios">${peers.map(([email, st]) => `<button class="oitem" type="button" data-crewchat="${esc(email)}" style="width:100%">
+        <span class="ot"><b>${esc(displayName(email, st))}</b><small>${portableOf(st) ? "Portable " + esc(portableOf(st)) : esc(email)}</small></span>
+        <span class="chev" aria-hidden="true">›</span></button>`).join("")}</div>` : ""}
+    <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`, true);
+  M.onclick = e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    const b = e.target.closest("[data-crewchat]"); if (!b) return;
+    closeModal(); openCrewChat(b.dataset.crewchat);
+  };
+}
+
+export async function openCrewChat(otherEmail){
+  const other = lower(otherEmail);
+  if (!other || other === Q.me) return;
+  let id;
+  try { id = await ensureThread(other); }
+  catch (err) { console.error(err); return toast("Couldn't start that chat."); }
+  const st = Q.staff.get(other) || {};
+  const name = displayName(other, st);
+  const port = portableOf(st);
+  const M = openModal(`<h3>${esc(name)}</h3>
+    <p class="help">${port ? "Portable " + esc(port) + " · " : ""}${esc(other)}</p>
+    <div class="crewthread" id="crewThread"><div class="softempty thread-empty">Loading…</div></div>
+    <div class="crewcompose">
+      <textarea id="crewReply" rows="2" maxlength="2000" placeholder="Message ${esc(name.split(" ")[0] || "them")}…"></textarea>
+      <button class="btn primary" type="button" data-crewsend>Send</button>
+    </div>
+    <div class="acts"><button class="btn" type="button" data-crewback>All messages</button><button class="btn" type="button" data-x>Close</button></div>`, true);
+
+  let unsub = null;
+  const cleanup = () => { if (unsub) { unsub(); unsub = null; } };
+  M._cleanup = cleanup;
+
+  const markSeen = async () => {
+    try {
+      const cur = Q.threads.get(id) || {};
+      const seenAt = { ...(cur.seenAt || {}), [Q.me]: Date.now() };
+      await updateDoc(doc(db, "crewThreads", id), { seenAt, updatedAt: Date.now() });
+    } catch {}
+  };
+
+  unsub = onSnapshot(collection(db, "crewThreads", id, "messages"), snap => {
+    const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.at || 0) - (b.at || 0));
+    const el = $("#crewThread"); if (!el) return;
+    el.innerHTML = crewThreadHTML(msgs);
+    el.scrollTop = el.scrollHeight;
+    markSeen();
+  }, () => toast("Couldn't load messages."));
+
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) { cleanup(); return closeModal(); }
+    if (e.target.closest("[data-crewback]")) { cleanup(); closeModal(); return openCrewInbox(); }
+    if (!e.target.closest("[data-crewsend]")) return;
+    const ta = $("#crewReply"); const text = (ta?.value || "").trim();
+    if (!text) return ta?.focus();
+    if (text.length > 2000) return toast("Messages can be up to 2,000 characters.");
+    const btn = e.target.closest("[data-crewsend]"); btn.disabled = true;
+    try {
+      await addDoc(collection(db, "crewThreads", id, "messages"), {
+        text, by: Q.me, name: Q.name || Q.me, at: Date.now(),
+      });
+      const cur = Q.threads.get(id) || {};
+      await updateDoc(doc(db, "crewThreads", id), {
+        lastText: text.slice(0, 200), lastAt: Date.now(), lastBy: Q.me,
+        updatedAt: Date.now(),
+        seenAt: { ...(cur.seenAt || {}), [Q.me]: Date.now() },
+        names: { ...(cur.names || {}), [Q.me]: Q.name || Q.me },
+      });
+      if (ta) ta.value = "";
+    } catch (err) { console.error(err); toast("Couldn't send. Try again."); }
+    finally { btn.disabled = false; }
+  };
 }
 
 function weekCell(d){
@@ -287,6 +423,7 @@ function paint(){
         <button class="btn" type="button" data-sc="prev">‹</button>
         <button class="btn" type="button" data-sc="today">Today</button>
         <button class="btn" type="button" data-sc="next">›</button>
+        <button class="btn" type="button" data-sc="crewmsg">Messages${crewUnreadTotal() ? ` · ${crewUnreadTotal()}` : ""}</button>
         ${Q.canManage ? `<button class="btn" type="button" data-sc="crew">Crew settings</button>` : ""}
         <button class="btn" type="button" data-sc="desk">${Q.onDesk ? "Membership" : "Membership desk"}</button>
         <button class="btn" type="button" data-signout>Sign out</button>
@@ -569,12 +706,28 @@ function openDutySettings(){
 
 function onRosterTap(email){
   const target = lower(email);
-  if (target === Q.me || Q.canManage) return openCreds(target);
+  if (target === Q.me) return openCreds(target);
   const st = Q.staff.get(target) || {};
   const port = portableOf(st);
   const name = displayName(target, st);
-  if (port) copyText(port).then(ok => toast(ok ? `Copied portable ${port} (${name})` : `${name} · portable ${port}`));
-  else toast(`${name} has no portable on file yet.`);
+  if (Q.canManage) {
+    const M = openModal(`<h3>${esc(name)}</h3>
+      <p class="help">${port ? "Portable " + esc(port) : "No portable on file"} · ${esc(target)}</p>
+      <div class="acts">
+        <button class="btn primary" type="button" data-dm>Message</button>
+        <button class="btn" type="button" data-ed>Credentials</button>
+        ${port ? `<button class="btn" type="button" data-copyport>Copy portable</button>` : ""}
+        <button class="btn" type="button" data-x>Close</button>
+      </div>`);
+    M.onclick = e => {
+      if (e.target.closest("[data-x]")) return closeModal();
+      if (e.target.closest("[data-dm]")) { closeModal(); return openCrewChat(target); }
+      if (e.target.closest("[data-ed]")) { closeModal(); return openCreds(target); }
+      if (e.target.closest("[data-copyport]")) copyText(port).then(ok => toast(ok ? `Copied portable ${port}` : port));
+    };
+    return;
+  }
+  openCrewChat(target);
 }
 
 function openShift(id){
@@ -653,6 +806,7 @@ function wire(){
         return paint();
       }
       if (k === "creds") return openCreds();
+      if (k === "crewmsg") return openCrewInbox();
       if (k === "crew" || k === "crewcreds") return openDutySettings();
       if (k === "desk") {
         if (Q.onDesk) return Q.onDesk();
@@ -667,11 +821,14 @@ function wire(){
   });
 }
 
-export function startSchedule({ email, name, canManage, staffMap, onDesk }){
+export function startSchedule({ email, name, canManage, staffMap, onDesk, onUnread }){
   stop();
   Q.me = lower(email); Q.name = name || ""; Q.canManage = !!canManage;
   Q.staff = staffMap || new Map();
+  Q.threads = new Map();
   Q.onDesk = typeof onDesk === "function" ? onDesk : null;
+  Q.onUnread = typeof onUnread === "function" ? onUnread : null;
+  Q.msgsPrimed = false;
   Q.weekStart = startOfWeek(new Date());
   Q.monthStart = startOfMonth(new Date());
   Q.view = "week";
@@ -705,6 +862,24 @@ export function startSchedule({ email, name, canManage, staffMap, onDesk }){
       });
       try { sessionStorage.setItem(key, JSON.stringify(seen)); } catch {}
     }
+  }, () => {}));
+  Q.unsub.push(onSnapshot(query(collection(db, "crewThreads"), where("participants", "array-contains", Q.me)), snap => {
+    const prev = Q.threads;
+    const next = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
+    const fresh = [...next.values()].filter(t => {
+      if (!threadUnread(t) || t.lastBy === Q.me) return false;
+      const old = prev.get(t.id);
+      return !old || (old.lastAt || 0) < (t.lastAt || 0);
+    });
+    Q.threads = next;
+    bumpCrewBadge();
+    if (Q.msgsPrimed && fresh.length) {
+      const t = fresh[0];
+      const who = (t.names && t.names[t.lastBy]) || displayName(t.lastBy, Q.staff.get(t.lastBy) || {});
+      toast(`Message from ${who}`);
+    }
+    Q.msgsPrimed = true;
+    paint();
   }, () => {}));
 }
 

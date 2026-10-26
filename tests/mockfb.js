@@ -56,7 +56,16 @@ function matches(target, path){
 }
 function runQuery(target){
   let list = [...M.docs.keys()].filter(p => matches(target, p)).sort();
-  for (const c of target.cons || []) { if (c.f) list = list.filter(p => (M.docs.get(p) || {})[c.f] === c.v); if (c.limit) list = list.slice(0, c.limit); }
+  for (const c of target.cons || []) {
+    if (c.f) {
+      list = list.filter(p => {
+        const val = (M.docs.get(p) || {})[c.f];
+        if (c.op === "array-contains") return Array.isArray(val) && val.includes(c.v);
+        return val === c.v;
+      });
+    }
+    if (c.limit) list = list.slice(0, c.limit);
+  }
   const docs = list.map(snapDoc);
   return { docs, empty: !docs.length, size: docs.length, forEach: f => docs.forEach(f) };
 }

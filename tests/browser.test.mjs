@@ -303,12 +303,26 @@ try {
     await wait(page, 900);
     if (await page.locator("#schedule").isHidden() || !(await page.locator("body").evaluate(b => b.classList.contains("on-duty")))) fail("member didn't open Duty first"); else ok("phone: schedule members open on Duty crew");
     const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
-    if (!items.includes("duty") || !items.includes("list")) fail("member menu: " + items); else ok("phone: members still reach Applicants from the floating menu");
+    if (!items.includes("duty") || !items.includes("list") || !items.includes("msgs")) fail("member menu: " + items); else ok("phone: members still reach Applicants and Messages from the floating menu");
     const dutyTxt = await page.locator("#schedule").textContent();
     if (!/Your hours/.test(dutyTxt) || !/Your credentials/.test(dutyTxt)) fail("member missing private hours/creds labels"); else ok("phone: members see only their own hours and credentials labels");
     if (!/Crew roster/.test(dutyTxt) || !/Portable 14/.test(dutyTxt) || !/Casey Driver/.test(dutyTxt) || !/Portable 7/.test(dutyTxt)) fail("roster: " + dutyTxt.slice(0, 200)); else ok("phone: roster lists crew names and portable numbers");
     if (/Crew settings/.test(dutyTxt) || await page.locator('[data-sc="crew"]').count()) fail("member sees Crew settings"); else ok("phone: members do not get Crew settings");
     if (/Attendant/.test(dutyTxt)) fail("Attendant still shown"); else ok("phone: Attendant position removed");
+    await page.click('#mnav [data-m="msgs"]'); await wait(page, 400);
+    if (!/Crew messages/.test(await page.locator("#modal").textContent()) || !/Casey Driver/.test(await page.locator("#modal").textContent())) fail("crew inbox missing"); else ok("phone: Messages opens crew inbox (not applicants)");
+    await page.click('#modal [data-crewchat="casey.driver@pvrs.org"]'); await wait(page, 500);
+    if (!/Casey Driver/.test(await page.locator("#modal h3").textContent())) fail("crew chat didn't open"); else ok("phone: can open a chat with another member");
+    await page.fill("#crewReply", "Can you cover evening Friday?"); await page.click("[data-crewsend]"); await wait(page, 700);
+    const threadId = "alex@pvrs.org__casey.driver@pvrs.org";
+    const sent = await page.evaluate(id => {
+      const thr = window.__mock.docs.get("crewThreads/" + id);
+      const msgs = [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("crewThreads/" + id + "/messages/")).map(([, v]) => v);
+      return { thr, msgs };
+    }, threadId);
+    if (!sent.thr || sent.thr.lastText !== "Can you cover evening Friday?" || !sent.msgs.some(m => m.text.includes("Friday") && m.by === "alex@pvrs.org"))
+      fail("crew message not saved: " + JSON.stringify(sent)); else ok("crew DM is saved on the thread");
+    await page.click("#modal [data-x]"); await wait(page, 200);
     await page.click('#mnav [data-m="list"]'); await wait(page, 500);
     if (await page.locator("#schedule").isVisible() || await page.locator("#app").isHidden()) fail("member couldn't leave Duty for Applicants"); else ok("phone: members can leave Duty for the membership list");
     await ctx.close();
