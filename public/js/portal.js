@@ -25,11 +25,20 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
   const dis = preview ? "disabled" : "";
   const canChange = iv && iv.start > now + DAY;
   const nowStep = (pd.steps || []).find(s => s.state === "now");
-  const nowHero = nowStep
-    ? `<section class="card glass nowhero"><div class="eyebrow">Up next</div><h2>${esc(nowStep.label)}</h2><p>${esc(nowStep.detail || "We'll update this as your application moves forward.")}</p></section>`
-    : (pd.steps || []).length && (pd.steps || []).every(s => s.state === "done")
-      ? `<section class="card glass nowhero"><div class="eyebrow">You're in</div><h2>Welcome to PVRS</h2><p>Orientation and duty crew are next. Questions? Email ${esc(CONTACT_EMAIL)}.</p></section>`
-      : "";
+  const allDone = (pd.steps || []).length && (pd.steps || []).every(s => s.state === "done");
+  const needsDocs = docs.some(d => !d.received && !byKey(d.key).length);
+  const needsRefs = (pd.refs || []).some(r => r.replace);
+  const acts = [];
+  if (nowStep?.label === "Interview" && pd.bookingOpen && open.length && !iv) acts.push(`<a class="btn primary" href="#ivCard">Pick an interview time</a>`);
+  else if (iv && !ivDone) acts.push(`<a class="btn" href="#ivCard">See your interview</a>`);
+  if (needsRefs) acts.push(`<a class="btn primary" href="#refCard">Update a reference</a>`);
+  if (needsDocs) acts.push(`<a class="btn primary" href="#docCard">Upload documents</a>`);
+  acts.push(`<a class="btn" href="#msgCard">Message the squad</a>`);
+  const mission = nowStep
+    ? `<section class="card glass mission"><div class="eyebrow">Your next step</div><h2>${esc(nowStep.label)}</h2><p>${esc(nowStep.detail || "We'll update this as your application moves forward.")}</p><div class="macts">${acts.join("")}</div></section>`
+    : allDone
+      ? `<section class="card glass mission"><div class="eyebrow">You're in</div><h2>Welcome to PVRS</h2><p>Orientation and duty crew are next. Questions? Email ${esc(CONTACT_EMAIL)}.</p></section>`
+      : `<section class="card glass mission"><div class="eyebrow">Your application</div><h2>We've got your file</h2><p>Progress will show here as the membership committee reviews it.</p><div class="macts">${acts.join("")}</div></section>`;
 
   const docRows = docs.map(d => {
     const up = byKey(d.key);
@@ -58,9 +67,9 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
       <div class="info">${esc(pd.type ? pd.type + " membership" : "Membership application")}</div></div>
       ${preview ? `<span class="badge wait">Preview</span>` : `<button class="btn small" type="button" data-signout>Sign out</button>`}</div></section>
 
-    ${nowHero}
+    ${mission}
 
-    <section class="card glass"><h2>Your application</h2>${timelineHTML(pd.steps || [])}</section>
+    <section class="card glass story"><h2>Your path</h2>${timelineHTML(pd.steps || [])}</section>
 
     <section class="card glass" id="msgCard"><div class="ptop"><h2>Messages</h2>${msgs.some(m => m.from === "staff" && !m.seenAt) ? `<span class="badge wait">New reply</span>` : ""}</div>
       <p class="info" style="margin:0">Ask us anything about your application. We usually reply within a few days.</p>
@@ -72,30 +81,29 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
 
     <section class="card glass" id="refCard"><h2>References</h2>${refsBody(pd.refs || [], { ups: refUps, form: refForm, draft: refDraft, sending: refSending, dis })}</section>
 
-    <section class="card glass"><h2>Documents</h2>
+    <section class="card glass" id="docCard"><h2>Documents</h2>
       ${docs.length ? `<div>${docRows}</div>` : `<div class="softempty"><b>Nothing needed right now</b>If we need a document from you, it will show up here.</div>`}
       ${other.filter(f => !f.confidential).length ? `<div class="info"><b>Other files you sent:</b> ${other.filter(f => !f.confidential).map(f => esc(f.name)).join(", ")}</div>` : ""}
       ${other.some(f => f.confidential) ? `<div class="info"><b>Secure documents sent:</b> ${other.filter(f => f.confidential).length} file${other.filter(f => f.confidential).length === 1 ? "" : "s"} 🔒</div>` : ""}
       <div class="docbtns"><button class="btn small" type="button" data-upload="" ${dis}>Send another document</button>
-        <button class="btn small" type="button" data-upload="${CONF_KEY}" ${dis}>🔒 Secure document upload</button></div>
-      <p class="info" style="margin:0">Use <b>Secure document upload</b> for medical records, your Social Security card and other sensitive papers. Only our orientation paperwork coordinator can open them; the membership committee can't.</p>
-      <p class="info" style="margin:0">PDF or photo, up to 15 MB each. Trouble uploading? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></section>
+        <button class="btn small" type="button" data-upload="${CONF_KEY}" ${dis}>🔒 Secure document upload</button>
+        <label class="btn small" ${dis ? "aria-disabled=\"true\"" : ""}>📷 Take a photo<input type="file" accept="image/*" capture="environment" data-camupload ${dis} hidden></label></div>
+      <p class="info" style="margin:0">Use <b>Secure document upload</b> for medical records, your Social Security card and other sensitive papers. Only our orientation paperwork coordinator can open them.</p>
+      <p class="info" style="margin:0">PDF or photo, up to 15 MB each. Trouble? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></section>
 
-    <section class="card glass"><h2>What to expect</h2><div class="info">
-      <ul><li>Your application goes to the next board meeting once your references and all other prerequisites (interview, driving record and application review) are complete. You'll hear back within about a week of that meeting.</li>
-      <li>If the board approves you, the next step is a background check through Sterling Volunteers. Watch for an email from them.</li>
-      <li>Members complete orientation (including required medical documentation and online education), self-schedule at least 4 duty crew shifts a month, and attend the monthly membership meeting on the 2nd Tuesday unless excused in advance.</li>
+    <details class="morestuff card glass" style="padding:8px 18px 14px"><summary>What to expect at PVRS</summary>
+      <div class="info" style="padding:4px 0 8px"><ul><li>Your application goes to the next board meeting once your references and other prerequisites are complete. You'll hear back within about a week of that meeting.</li>
+      <li>If the board approves you, next is a Sterling Volunteers background check — watch for their email.</li>
+      <li>Members complete orientation, self-schedule at least 4 duty crew shifts a month, and attend the monthly membership meeting on the 2nd Tuesday unless excused.</li>
       <li>Monthly training is offered and all members are encouraged to take part.</li></ul>
-      <p style="margin:10px 0 0">Questions? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></div></section>
+      <p style="margin:10px 0 0">Questions? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></div></details>
   </div>`;
 }
-// Only names and received/waiting come through; contact details stay with the squad.
-// When the squad asks for a different reference, that row gets a short form; what they send replaces it in the squad's file.
 function refsBody(refs, { ups = [], form = null, draft = {}, sending = false, dis = "" } = {}){
   if (!refs.length) return `<div class="softempty"><b>References will appear here</b>Once we start contacting them, you'll see who's replied.</div>`;
   const pending = slot => ups.find(u => u.slot === slot && !u.appliedAt);
   const asks = refs.filter(r => r.replace && !pending(r.slot));
-  const got = refs.filter(r => r.received).length, need = Math.max(0, 3 - got);   // 3 received is enough (REFS_NEEDED)
+  const got = refs.filter(r => r.received).length, need = Math.max(0, 3 - got);
   const intro = asks.length
     ? `We need a different reference in place of ${asks.map(r => `<b>${esc(r.name)}</b>`).join(" and ")}. Please give us someone else who knows you well.`
     : need ? `We need 3 references before your application goes to the board. We've heard from ${got} so far, so we need ${need} more. It can help to give your references a quick reminder.` : "We've received the references we need. Thank you!";
@@ -127,24 +135,29 @@ function slotPicker(days, pick, dis, busy){
 }
 
 export function startPortal(id, email){
-  const P = { pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false, refUps: [], refForm: null, refDraft: {}, refSending: false };
+  const P = { pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false, refUps: [], refForm: null, refDraft: {}, refSending: false, lastNow: "" };
   const seen = new Set();
   const root = $("#portal");
   const render = () => {
     if (!P.pd) { root.innerHTML = `<div class="wrap"><div class="empty"><h3>Loading your application…</h3></div></div>`; return; }
     const pd = P.changing ? { ...P.pd, interview: null } : P.pd;
-    // Snapshots re-render the page; keep a half-typed message, its caret and the page scroll intact.
+    const nowLabel = (pd.steps || []).find(s => s.state === "now")?.label || "";
+    const celebrateStep = P.lastNow && nowLabel && P.lastNow !== nowLabel;
+    if (nowLabel) P.lastNow = nowLabel;
     const ta = $("#msgText"), focused = !!ta && document.activeElement === ta, caret = ta ? ta.selectionStart : 0, scroll = root.scrollTop;
     const rf = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.rf ? document.activeElement : null, rfCaret = rf ? rf.selectionStart : 0;
     if (ta) P.draft = ta.value;
     root.innerHTML = portalHTML({ pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending });
+    if (celebrateStep) {
+      const m = root.querySelector(".mission"); if (m) m.classList.add("popstep");
+      toast(`Nice — next up: ${nowLabel}`);
+    }
     if (rf) { const back = root.querySelector(`[data-rf="${rf.dataset.rf}"]`); if (back) { back.focus({ preventScroll: true }); try { back.setSelectionRange(rfCaret, rfCaret); } catch {} } }
     const t2 = $("#msgText"); if (t2) { t2.value = P.draft; if (focused) { t2.focus({ preventScroll: true }); t2.setSelectionRange(caret, caret); } }
     const th = $("#thread"); if (th) th.scrollTop = th.scrollHeight;
     root.scrollTop = scroll;
-    // Mark the squad's replies as seen once they've been shown.
     for (const m of P.msgs) if (m.from === "staff" && !m.seenAt && !seen.has(m.id)) { seen.add(m.id); updateDoc(doc(db, "portal", id, "messages", m.id), { seenAt: Date.now() }).catch(() => seen.delete(m.id)); }
-    if (P.changing) $("#ivCard").insertAdjacentHTML("beforeend", `<div><button class="btn small" type="button" data-keep>Keep my current time</button></div>`);
+    if (P.changing) { const iv = $("#ivCard"); if (iv) iv.insertAdjacentHTML("beforeend", `<div><button class="btn small" type="button" data-keep>Keep my current time</button></div>`); }
   };
   render();
   onSnapshot(doc(db, "portal", id), s => { P.pd = s.exists() ? s.data() : { steps: [] }; render(); }, () => toast("Couldn't load your application. Reload the page."));
@@ -182,8 +195,8 @@ export function startPortal(id, email){
 
   const picker = document.createElement("input"); picker.type = "file"; picker.accept = "application/pdf,image/*"; picker.multiple = true; picker.hidden = true; document.body.appendChild(picker);
   let uploadKey = "";
-  picker.addEventListener("change", async () => {
-    const list = [...picker.files]; picker.value = ""; if (!list.length) return;
+  const doUpload = async list => {
+    if (!list.length) return;
     const docEntry = (P.pd.docs || []).find(d => d.key === uploadKey);
     const label = docEntry ? docEntry.label : uploadKey === CONF_KEY ? "Secure document" : "Other";
     const conf = uploadKey === CONF_KEY || isConfidential(label), docKey = uploadKey === CONF_KEY ? "" : uploadKey;
@@ -194,7 +207,6 @@ export function startPortal(id, email){
         toast(`Uploading ${f.name}…`);
         const safe = `${Date.now()}-${f.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
         if (conf) {
-          // Private: the file and its name go only to the paperwork account; the squad sees a nameless placeholder.
           const path = `confidential/${id}/${safe}`;
           await uploadBytes(ref(storage, path), f, { contentType: f.type });
           await addDoc(collection(db, "vault"), { appId: id, appName: P.pd.name || "", label, name: f.name, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: email, from: "applicant" });
@@ -208,6 +220,12 @@ export function startPortal(id, email){
         }
       } catch (e) { console.error(e); toast(`Couldn't upload ${f.name}. Try again or email ${CONTACT_EMAIL}.`); }
     }
+  };
+  picker.addEventListener("change", async () => { const list = [...picker.files]; picker.value = ""; await doUpload(list); });
+
+  root.addEventListener("change", async e => {
+    const cam = e.target.closest("[data-camupload]"); if (!cam || cam.disabled) return;
+    const list = [...(cam.files || [])]; cam.value = ""; uploadKey = ""; await doUpload(list);
   });
 
   root.addEventListener("click", async e => {

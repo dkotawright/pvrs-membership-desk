@@ -19,7 +19,7 @@ export const refQuestions = f => [
 ];
 export const TRUST_Q = f => `Within Potsdam Rescue we deal with large amounts of personal information. Do you feel ${f} is trustworthy and would not disclose such information?`;
 
-const R = { token: "", link: null, a: null, state: "loading", sending: false };
+const R = { token: "", link: null, a: null, state: "loading", sending: false, wiz: 0 };
 const KEY = () => "pvrsRef." + R.token;
 const blank = () => ({ known: "", skills: "", getAlong: "", criticism: "", ratings: {}, trustworthy: "", reservations: "", other: "", others: "", signName: "" });
 const today = () => new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
@@ -49,22 +49,32 @@ function render(){
   const a = R.a;
   const area = (k, label, req) => `<div class="af"><label for="rf-${k}">${label}${req ? ' <i aria-hidden="true">*</i>' : ' <span class="opt">optional</span>'}</label><textarea id="rf-${k}" data-r="${k}" rows="3" maxlength="4000">${esc(a[k] || "")}</textarea></div>`;
   const qs = refQuestions(f);
-  root.innerHTML = card(`${CREST}<div class="applyhead"><div><div class="eyebrow">Reference check · about 5 minutes</div><h1>Reference for ${full}</h1></div></div>
-    <p class="lead2">${L.refName ? `Hi ${esc(String(L.refName).split(" ")[0])}, ` : ""}${full} has applied to volunteer with the Potsdam Volunteer Rescue Squad and listed you as a reference. Your answers go only to the Membership Committee; ${f} won't see them.</p>
-    <form class="applybody" id="refForm" novalidate>
-      <input type="text" id="rf-hp" tabindex="-1" autocomplete="off" aria-hidden="true" class="hp">
-      ${qs.slice(0, 4).map(([k, label, req]) => area(k, label, req)).join("")}
-      <fieldset class="afs"><legend>Please rate ${f} on the following <i aria-hidden="true">*</i></legend>
+  const ratings = `<fieldset class="afs"><legend>Please rate ${f} on the following <i aria-hidden="true">*</i></legend>
         ${RATINGS.map(([k, label]) => `<div class="rate" data-rk="${k}"><span class="rl" id="rl-${k}">${label}</span><div class="rscale"><small aria-hidden="true">Poor</small><div class="choice" role="radiogroup" aria-labelledby="rl-${k}">
           ${[1,2,3,4,5].map(n => `<button type="button" role="radio" aria-checked="${a.ratings[k] === n}" aria-label="${label}: ${n} of 5" data-rate="${k}" data-v="${n}">${n}</button>`).join("")}</div><small aria-hidden="true">Excellent</small></div></div>`).join("")}
       </fieldset>
       <div class="af" data-rk="trustworthy"><span class="aflabel">${TRUST_Q(f)} <i aria-hidden="true">*</i></span><div class="choice" role="radiogroup" aria-label="Trustworthy with personal information">
-        ${[["yes", "Yes"], ["no", "No"]].map(([v, t]) => `<button type="button" role="radio" aria-checked="${a.trustworthy === v}" data-trust="${v}">${t}</button>`).join("")}</div></div>
-      ${qs.slice(4).map(([k, label, req]) => area(k, label, req)).join("")}
-      <div class="afgrid"><div class="af half"><label for="rf-signName">Your name <i aria-hidden="true">*</i></label><input id="rf-signName" data-r="signName" type="text" maxlength="200" autocomplete="name" value="${esc(a.signName || "")}"></div>
-        <div class="af half"><span class="aflabel">Date</span><div class="rdate">${esc(today())}</div></div></div>
+        ${[["yes", "Yes"], ["no", "No"]].map(([v, t]) => `<button type="button" role="radio" aria-checked="${a.trustworthy === v}" data-trust="${v}">${t}</button>`).join("")}</div></div>`;
+  const sign = `<div class="afgrid"><div class="af half"><label for="rf-signName">Your name <i aria-hidden="true">*</i></label><input id="rf-signName" data-r="signName" type="text" maxlength="200" autocomplete="name" value="${esc(a.signName || "")}"></div>
+        <div class="af half"><span class="aflabel">Date</span><div class="rdate">${esc(today())}</div></div></div>`;
+  // Phone: one question (or block) at a time. Desktop CSS shows every step at once.
+  const steps = [
+    ...qs.slice(0, 4).map(([k, label, req]) => area(k, label, req)),
+    ratings,
+    ...qs.slice(4).map(([k, label, req]) => area(k, label, req)),
+    sign,
+  ];
+  const n = steps.length; R.wiz = Math.max(0, Math.min(R.wiz || 0, n - 1));
+  root.innerHTML = card(`${CREST}<div class="applyhead"><div><div class="eyebrow">Reference check · about 5 minutes</div><h1>Reference for ${full}</h1></div></div>
+    <p class="lead2">${L.refName ? `Hi ${esc(String(L.refName).split(" ")[0])}, ` : ""}${full} has applied to volunteer with the Potsdam Volunteer Rescue Squad and listed you as a reference. Your answers go only to the Membership Committee; ${f} won't see them.</p>
+    <form class="applybody refwiz" id="refForm" novalidate>
+      <input type="text" id="rf-hp" tabindex="-1" autocomplete="off" aria-hidden="true" class="hp">
+      <div class="rwprog">Step ${R.wiz + 1} of ${n}</div>
+      ${steps.map((html, i) => `<div class="rwstep${i === R.wiz ? " on" : ""}" data-rw="${i}">${html}</div>`).join("")}
       <div class="aperr" id="rfErr" role="alert" hidden></div>
-      <div class="applyfoot"><span></span><button type="submit" class="btn primary" ${R.sending ? "disabled" : ""}>${R.sending ? "Sending…" : "Send reference"}</button></div>
+      <div class="applyfoot rwnav">${R.wiz ? `<button type="button" class="btn" data-rwback>← Back</button>` : `<span></span>`}
+        ${R.wiz < n - 1 ? `<button type="button" class="btn primary" data-rwnext>Continue →</button>` : `<button type="submit" class="btn primary" ${R.sending ? "disabled" : ""}>${R.sending ? "Sending…" : "Send reference"}</button>`}</div>
+      <div class="applyfoot" style="display:none" id="rwDeskSubmit"><span></span><button type="submit" class="btn primary" ${R.sending ? "disabled" : ""}>${R.sending ? "Sending…" : "Send reference"}</button></div>
     </form>
     <p class="applyfine">Required fields are marked <i>*</i>. Draft saves on this device. <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p>`);
 }
@@ -113,7 +123,9 @@ function bind(){
   root.addEventListener("input", e => { const k = e.target.dataset && e.target.dataset.r; if (k) { R.a[k] = e.target.value; save(); } });
   root.addEventListener("click", e => {
     const r = e.target.closest("[data-rate]"); if (r) { R.a.ratings[r.dataset.rate] = +r.dataset.v; save(); render(); return; }
-    const t = e.target.closest("[data-trust]"); if (t) { R.a.trustworthy = t.dataset.trust; save(); render(); }
+    const t = e.target.closest("[data-trust]"); if (t) { R.a.trustworthy = t.dataset.trust; save(); render(); return; }
+    if (e.target.closest("[data-rwnext]")) { R.wiz = (R.wiz || 0) + 1; saveNow(); render(); const g = $("#reference"); if (g) g.scrollTop = 0; return; }
+    if (e.target.closest("[data-rwback]")) { R.wiz = Math.max(0, (R.wiz || 0) - 1); render(); const g = $("#reference"); if (g) g.scrollTop = 0; }
   });
   root.addEventListener("submit", e => { e.preventDefault(); send(); });
 }

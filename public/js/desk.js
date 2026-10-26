@@ -249,8 +249,8 @@ function paintList(){
   const L = $("#list");
   if (!S.sel) renderOverview();
   if (!S.ready) { L.innerHTML = `<div class="skel" aria-busy="true" aria-label="Loading roster">${Array.from({ length: 6 }, () => `<div class="skel-row"><span class="skel-av"></span><span class="skel-stack"><span class="skel-line w80"></span><span class="skel-line w60"></span><span class="skel-line w40"></span></span></div>`).join("")}</div>`; return; }
-  if (!rows.length) { L.innerHTML = `<div class="empty"><h3>No applicants yet</h3><p>When an application comes in, start their file here.</p>${S.canEdit ? `<button class="btn primary empty-cta" type="button" data-cmd="new">New applicant</button>` : ""}</div>`; return; }
-  if (!vis.length) { L.innerHTML = `<div class="empty"><h3>${S.filter==="board"&&!q?"Board queue is empty":"No matches"}</h3><p>${S.filter==="board"&&!q?"People show up here once the committee approves them.":q?`Nothing matches “${esc(S.q.trim())}”${S.filter!=="all"?` in ${esc(filterLabel(S.filter))}`:""}.`:"Try a different stage."}</p>${S.filter==="board"&&!q?`<button class="btn empty-cta" type="button" data-filter="screen">Open Screening</button>`:q?`<button class="btn empty-cta" type="button" data-filter="all">Clear filters</button>`:""}</div>`; return; }
+  if (!rows.length) { L.innerHTML = `<div class="empty"><h3>No applicants yet</h3><p>Empty roster — the calm before the next application.</p>${S.canEdit ? `<button class="btn primary empty-cta" type="button" data-cmd="new">New applicant</button>` : ""}</div>`; return; }
+  if (!vis.length) { L.innerHTML = `<div class="empty"><h3>${S.filter==="board"&&!q?"Board queue is empty":"No matches"}</h3><p>${S.filter==="board"&&!q?"Enjoy the quiet. People show up here once the committee approves them.":q?`Nothing matches “${esc(S.q.trim())}”${S.filter!=="all"?` in ${esc(filterLabel(S.filter))}`:""}.`:"Try a different stage."}</p>${S.filter==="board"&&!q?`<button class="btn empty-cta" type="button" data-filter="screen">Open Screening</button>`:q?`<button class="btn empty-cta" type="button" data-filter="all">Clear filters</button>`:""}</div>`; return; }
   L.innerHTML = vis.map(({a,p}) => {
     const d = daysSince(get(a,"app.received"));
     const iv = a._booked ? `${slotDay(a._booked.start)} · ${slotTime(a._booked.start)}` : get(a,"sched.scheduled") ? `${fmtDate(get(a,"sched.scheduled"))}${get(a,"sched.time")?" · "+get(a,"sched.time"):""}` : "";
@@ -330,8 +330,55 @@ function todoCard(){
       <button class="todomain" type="button" data-todo="${esc(x.id)}" data-totab="${esc(x.tab)}"><span class="av" style="--stage-c:${stageVar(view(x.a).stage)}" aria-hidden="true">${esc(initials(x.a.name))}</span>
         <span class="ot"><b>${esc(x.text)}</b><small>${esc(x.a.name || "Applicant")}${x.sub ? " · " + esc(x.sub) : ""}</small></span></button>
       ${x.act && S.canEdit ? `<button class="btn small primary" type="button" data-todoact="${esc(x.act)}" data-id="${esc(x.id)}">${esc(x.btn)}</button>` : `<span class="when">${x.age ? x.age + "d" : ""}</span>`}</div>`).join("")
-    : `<div class="oempty">All caught up.</div>`}
+    : `<div class="oempty fun"><b>All caught up</b>Enjoy the quiet for a minute.</div>`}
     ${items.length > 6 ? `<button class="oitem showall" type="button" data-cmd="todoall">${S.todoAll ? "Show fewer" : `Show all ${items.length}`}</button>` : ""}</div></section>`;
+}
+function todayPathHTML(){
+  if (!S.admin) return "";
+  const x = todoItems()[0];
+  if (!x) return `<div class="todaypath"><span class="tp-ic" aria-hidden="true">✓</span><div class="tp-body"><div class="eyebrow">Today's path</div><b>Nothing waiting on you</b><small>You're clear — nice work.</small></div></div>`;
+  return `<div class="todaypath"><span class="tp-ic" aria-hidden="true">→</span><div class="tp-body"><div class="eyebrow">Today's path</div><b>${esc(x.text)}</b><small>${esc(x.a.name || "Applicant")}${x.sub ? " · " + esc(x.sub) : ""}</small></div>
+    ${x.act && S.canEdit ? `<button class="btn small primary" type="button" data-todoact="${esc(x.act)}" data-id="${esc(x.id)}">${esc(x.btn)}</button>` : `<button class="btn small" type="button" data-todo="${esc(x.id)}" data-totab="${esc(x.tab)}">Open</button>`}</div>`;
+}
+function waitingOnThem(){
+  const out = [];
+  for (const a of S.apps.values()) {
+    const p = progress(a); if (!IN_PROCESS.includes(p.stage)) continue;
+    const rs = refStatus(a), waiting = rs.list.filter(r => !r.received && get(a, `refs.r${r.i}.contacted`));
+    if (waiting.length && !rs.done) out.push({ id: a._id, a, text: `Waiting on ${waiting.length} reference${waiting.length === 1 ? "" : "s"}`, sub: waiting.map(r => r.name).join(", ") });
+    else if (get(a, "portal.bookingOpen") === "yes" && !a._booked && !get(a, "sched.completed") && !get(a, "sched.scheduled"))
+      out.push({ id: a._id, a, text: "Waiting for them to book", sub: "Interview booking is open" });
+  }
+  return out.slice(0, 8);
+}
+function sinceLeftHTML(){
+  if (!S.admin) return "";
+  const since = S.seenBefore || 0;
+  if (!since) return "";
+  const bits = [];
+  let newApps = 0, refIn = 0;
+  for (const a of S.apps.values()) {
+    if ((a.createdAt || 0) > since) newApps++;
+    [1,2,3,4].forEach(i => { const f = get(a, `refs.r${i}.form`); if (f && ((f.at || f.date && Date.parse(f.date)) > since || (typeof f.date === "number" && f.date > since))) refIn++; });
+  }
+  const msgs = S.msgs.filter(m => m.from === "applicant" && (m.at || 0) > since).length;
+  if (newApps) bits.push(`${newApps} new application${newApps === 1 ? "" : "s"}`);
+  if (refIn) bits.push(`${refIn} reference answer${refIn === 1 ? "" : "s"}`);
+  if (msgs) bits.push(`${msgs} new message${msgs === 1 ? "" : "s"}`);
+  if (!bits.length) return "";
+  return `<div class="changedcard"><b>Since you were last here</b><ul>${bits.map(b => `<li>${esc(b)}</li>`).join("")}</ul></div>`;
+}
+function dispatchHTML(){
+  if (!S.admin) return "";
+  const needs = todoItems().slice(0, 5);
+  const wait = waitingOnThem();
+  const board = sorted().filter(r => inBoardQueue(r.a)).slice(0, 5);
+  const row = (id, a, text, sub, tab) => `<button class="oitem" type="button" data-todo="${esc(id)}" data-totab="${esc(tab || "app")}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(text)}</b><small>${esc(a.name || "Applicant")}${sub ? " · " + esc(sub) : ""}</small></span></button>`;
+  return `<div class="dispatch">
+    <section class="ovcard needs"><h3>Needs you<small>${needs.length || ""}</small></h3><div class="olist">${needs.length ? needs.map(x => row(x.id, x.a, x.text, x.sub, x.tab)).join("") : `<div class="oempty fun"><b>You're clear</b>Nothing needs you right now.</div>`}</div></section>
+    <section class="ovcard wait"><h3>Waiting on them<small>${wait.length || ""}</small></h3><div class="olist">${wait.length ? wait.map(x => row(x.id, x.a, x.text, x.sub, "checks")).join("") : `<div class="oempty fun"><b>Nobody's holding you up</b>Nice.</div>`}</div></section>
+    <section class="ovcard boardq"><h3>Board queue<small>${board.length || ""}</small></h3><div class="olist">${board.length ? board.map(r => row(r.a._id, r.a, r.a.name || "Applicant", "Ready for the board", "board")).join("") : `<div class="oempty fun"><b>Board queue is empty</b>Enjoy the quiet.<button class="btn small" type="button" data-filter="screen">Open Screening</button></div>`}</div></section>
+  </div>`;
 }
 
 /* ---------- year at a glance (overview) ---------- */
@@ -394,14 +441,16 @@ function renderOverview(){
     return oitem(a, `<b>${esc(d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}))}</b>${esc(slotTime(s.start))}`, esc([a.type, s.location].filter(Boolean).join(" · ") || "Interview")); }).join("");
   // One strip of stage counts (replaces the separate count tiles and pipeline bar); each filters the list.
   const stage = (k, label, sub) => `<button class="stg" type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}"><span class="v">${c[k] || 0}</span><span class="k">${label}</span>${sub ? `<span class="s">${sub}</span>` : ""}</button>`;
-  const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.canEdit ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.${S.canEdit ? `<button class="btn small" type="button" data-cmd="slots">Add interview times</button>` : ""}</div>`}</div></section>`;
+  const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.canEdit ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty fun"><b>No interviews booked</b>${S.canEdit ? `Quiet calendar — nice.<button class="btn small" type="button" data-cmd="slots">Add interview times</button>` : ""}</div>`}</div></section>`;
   const html = `<div class="ov"><div class="ovin">
     <div class="ovhead"><div><div class="eyebrow">${esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))}</div>
       <h2>${greet}${S.name ? ", " + esc(first(S.name)) : ""}</h2>
       <p>${rows.length ? `${inProc.length} in process${S.admin && c.board ? ` · ${c.board} on the board queue` : ""}${thisWeek ? ` · ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet — start one when a form comes in."}</p></div>
       <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
+    ${sinceLeftHTML()}
+    ${todayPathHTML()}
     <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
-    ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
+    ${S.admin ? `${dispatchHTML()}<div class="ovmain"><div class="ovcol">${todoCard()}
       ${S.admin && unreadTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open inbox</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => m.from === "applicant" && !m.readAt && S.apps.has(m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
         return `<button class="oitem" type="button" data-openmsg="${esc(id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name)}</b><small>${esc(last.text.slice(0, 80))}</small></span><span class="when"><span class="newdot"></span>${esc(ago(last.at))}</span></button>`; }).join("")}</div></section>` : ""}
       ${S.owner && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="settings">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}</div>
@@ -435,6 +484,18 @@ const signHTML = k => !SIGN_ROOT[k] ? "" : `<section class="group signoff" id="s
 const viewOnlyNote = k => S.canEdit ? "" : k === "iv"
   ? `<div class="viewonly"><b>You can fill in this page.</b> Answer the questionnaire, record who was at the interview, then add the completed date, your initials and the page sign-off. Scheduling is view only.</div>`
   : `<div class="viewonly"><b>View only.</b> You can fill in the <button class="copy" type="button" data-tab="iv">Interview</button> tab; everything else is changed by the owner.</div>`;
+function coverHTML(a){
+  if (!a || !S.admin) return "";
+  const p = view(a), next = p.next || "Checklist complete";
+  const acts = [];
+  if (S.canEdit && !get(a, "portal.invited") && a.email) acts.push(`<button class="btn small primary" type="button" data-act="invite">Send portal invite</button>`);
+  if (S.canEdit) acts.push(`<button class="btn small" type="button" data-act="book">${a._booked ? "Change interview" : "Book interview"}</button>`);
+  if (S.canEdit) acts.push(`<button class="btn small" type="button" data-act="snap">📷 Snap a record</button>`);
+  if (S.tab !== "iv") acts.push(`<button class="btn small" type="button" data-act="ivmode">Interview mode</button>`);
+  return `<div class="cover glass"><div><div class="eyebrow">Folder · ${esc(STAGES[p.stage].label)}</div><div class="cnext">${p.next ? "Next: " + esc(next) : esc(next)}</div>
+    <div class="cmeta">${esc([a.type, loc(a), p.n + "/" + MILESTONES.length + " steps"].filter(Boolean).join(" · "))}</div></div>
+    <div class="cacts">${acts.join("")}</div></div>`;
+}
 function syncSignoff(a){
   document.querySelectorAll(".tabdock [data-tab]").forEach(b => { const k = b.dataset.tab; b.classList.toggle("signed", !!(SIGN_ROOT[k] && get(a, signPath(k, "done")))); });
   const box = $("#signBox"); if (!box) return;
@@ -495,7 +556,7 @@ function paintDetail(){
         </div>` : ""}</div>
       ${S.admin?`<div class="prog" id="dProg"></div>`:""}
     </div>
-    <div class="dinner tab-in" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${viewOnlyNote(S.tab)}${tabHTML(S.tab)}${signHTML(S.tab)}</div></div>
+    <div class="dinner tab-in" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${coverHTML(a)}${viewOnlyNote(S.tab)}${tabHTML(S.tab)}${signHTML(S.tab)}</div></div>
     <nav class="tabdock" aria-label="Applicant file sections"><div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="dpanel" data-tab="${k}" aria-selected="${S.tab===k}" title="${l} (${i+1})"><span class="tl-long">${l}</span><span class="tl-short" aria-hidden="true">${TAB_SHORT[k] || l}</span></button>`).join("")}</div>
       <span class="save" id="saveState" role="status"></span></nav>`;
   stackCols($("#dbody"));
@@ -789,11 +850,18 @@ function openBook(id){
     try { await bookFor(id, s); closeModal(); toast(`Booked ${slotLong(s.start)}`); } catch (err) { console.error(err); toast("Couldn't book that time. It may have just been taken."); }
   };
 }
+function needBookingPeople(){
+  return [...S.apps.values()].filter(a => {
+    const p = progress(a);
+    return IN_PROCESS.includes(p.stage) && !a._booked && !get(a, "sched.completed");
+  }).sort((x, y) => (x.name || "").localeCompare(y.name || ""));
+}
 function openSlots(){
   if (!S.canEdit) return ownerOnlyToast();
   const def = S.settings.defaultLocation || "";
   const d0 = new Date(Date.now() + 3*864e5), dStr = `${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,"0")}-${String(d0.getDate()).padStart(2,"0")}`;
-  const M = openModal(`<h3>Interview times</h3><p class="help">Applicants with booking turned on can pick any open time at least 24 hours out.</p>
+  const M = openModal(`<h3>Interview times</h3><p class="help">Drag someone onto an open time to book them. Applicants with booking on can also pick a time themselves (≥24 hours out).</p>
+    <div id="dragPeople" class="dragpeople"></div>
     <form id="slotForm" class="ios" style="padding:14px"><div class="addslot">
       <div class="field"><label for="slDate">Date</label><input id="slDate" type="date" value="${dStr}" required></div>
       <div class="field"><label for="slTime">First start time</label><input id="slTime" type="time" value="18:00" required></div>
@@ -803,14 +871,24 @@ function openSlots(){
       <div class="full" style="display:flex;justify-content:flex-end"><button class="btn primary" type="submit">Add times</button></div></div></form>
     <div id="slotList"></div>
     <div class="acts"><button class="btn" type="button" id="slIcs" title="Every booked interview as one calendar file">Add booked interviews to Calendar</button><button class="btn" type="button" data-x>Done</button></div>`, true);
+  const paintPeople = () => {
+    const el = $("#dragPeople"); if (!el) return;
+    const people = needBookingPeople();
+    el.innerHTML = people.length
+      ? `<span class="help" style="width:100%;margin:0">Needs a time — drag onto an open slot:</span>${people.map(a => `<button type="button" class="dragchip" draggable="true" data-dragid="${esc(a._id)}">${esc(a.name || "Applicant")}</button>`).join("")}`
+      : `<span class="help" style="margin:0">Everyone who needs an interview already has a time.</span>`;
+  };
   const paint = () => {
     if (!$("#slotList")) return;
+    paintPeople();
     const up = [...S.slots.values()].filter(s => s.start > Date.now() - 864e5).sort((x,y) => x.start - y.start);
     const days = {}; up.forEach(s => { const k = slotDay(s.start); (days[k] = days[k] || []).push(s); });
+    const bookable = needBookingPeople();
     $("#slotList").innerHTML = up.length ? Object.entries(days).map(([day, list]) => `<div class="group"><h3><span>${esc(day)}</span></h3><div class="ios slotlist">${list.map(s => {
       const who = s.bookedBy ? (S.apps.get(s.bookedBy)?.name || "Applicant") : "";
-      return `<div class="row"><span class="lbl"><span class="when">${esc(slotTime(s.start))}</span><small>${esc([s.duration?s.duration+" min":"", s.location].filter(Boolean).join(" · "))}</small></span>
-        ${who ? `<span class="badge ok">${esc(who)}</span><button class="btn small" type="button" data-rel="${esc(s.id)}">Release</button>` : `<span class="badge wait">Open</span><button class="btn small danger" type="button" data-del="${esc(s.id)}">Delete</button>`}</div>`; }).join("")}</div></div>`).join("")
+      return `<div class="row slotdrop" data-slotdrop="${esc(s.id)}"><span class="lbl"><span class="when">${esc(slotTime(s.start))}</span><small>${esc([s.duration?s.duration+" min":"", s.location].filter(Boolean).join(" · "))}</small></span>
+        ${who ? `<span class="badge ok">${esc(who)}</span><button class="btn small" type="button" data-rel="${esc(s.id)}">Release</button>`
+          : `<select class="inlinefield" data-booksel="${esc(s.id)}" aria-label="Book someone" style="max-width:11em"><option value="">Book…</option>${bookable.map(a => `<option value="${esc(a._id)}">${esc(a.name || "Applicant")}</option>`).join("")}</select><button class="btn small danger" type="button" data-del="${esc(s.id)}">Delete</button>`}</div>`; }).join("")}</div></div>`).join("")
       : `<p class="help">No upcoming interview times yet.</p>`;
   };
   paint(); S._slotPaint = paint;
@@ -826,6 +904,19 @@ function openSlots(){
       toast(`Added ${n} time${n>1?"s":""}`);
     } catch (err) { console.error(err); toast("Couldn't add those times."); }
   };
+  const dropBook = async (appId, slotId) => {
+    const s = S.slots.get(slotId); if (!s || s.bookedBy) return toast("That time isn't open.");
+    try { await bookFor(appId, s); toast(`Booked ${S.apps.get(appId)?.name || "them"} · ${slotLong(s.start)}`); playChime(); paint(); }
+    catch (err) { console.error(err); toast("Couldn't book that time."); }
+  };
+  M.addEventListener("dragstart", e => { const c = e.target.closest("[data-dragid]"); if (!c || !e.dataTransfer) return; e.dataTransfer.setData("text/appid", c.dataset.dragid); e.dataTransfer.effectAllowed = "copy"; });
+  M.addEventListener("dragover", e => { const row = e.target.closest("[data-slotdrop]"); if (!row || S.slots.get(row.dataset.slotdrop)?.bookedBy) return; e.preventDefault(); row.classList.add("over"); });
+  M.addEventListener("dragleave", e => { const row = e.target.closest("[data-slotdrop]"); if (row) row.classList.remove("over"); });
+  M.addEventListener("drop", e => {
+    const row = e.target.closest("[data-slotdrop]"); if (!row) return;
+    e.preventDefault(); row.classList.remove("over");
+    const id = e.dataTransfer.getData("text/appid"); if (id) dropBook(id, row.dataset.slotdrop);
+  });
   M.onclick = async e => {
     if (e.target.closest("[data-x]")) { S._slotPaint = null; return closeModal(); }
     if (e.target.id === "slIcs") {
@@ -836,6 +927,10 @@ function openSlots(){
     const del = e.target.closest("[data-del]"); if (del) { try { await deleteDoc(doc(db, "slots", del.dataset.del)); } catch { toast("Couldn't delete that time."); } return; }
     const rel = e.target.closest("[data-rel]"); if (rel) { const s = S.slots.get(rel.dataset.rel); try { await releaseFor(s.bookedBy); toast("Time released"); } catch (err) { console.error(err); toast("Couldn't release that time."); } }
   };
+  M.addEventListener("change", e => {
+    const sel = e.target.closest("[data-booksel]"); if (!sel || !sel.value) return;
+    const id = sel.value; sel.value = ""; dropBook(id, sel.dataset.booksel);
+  });
 }
 
 const icsEvent = (a, s) => ({ uid: "iv-" + (s.slotId || s.id), start: s.start, duration: s.duration || 30, title: `PVRS interview: ${a.name || "Applicant"}`, location: s.location || "",
@@ -968,6 +1063,7 @@ function openUploadRecords(id){
     <p class="help lockline" id="recConf" hidden>🔒 Secure document: this goes only to ${esc(PAPERWORK_EMAIL)}. Once uploaded, you won't be able to open it.</p>
     <label class="dropzone" id="recDrop" for="recFiles"><input type="file" id="recFiles" accept="application/pdf,image/*" multiple hidden>
       <b>Drop files here</b><span>or click to choose from your Mac</span></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><label class="btn small" for="recCam">📷 Take a photo<input type="file" id="recCam" accept="image/*" capture="environment" hidden></label></div>
     <div id="recQueue" class="ios" hidden></div>
     <div class="acts"><button class="btn" type="button" data-x>Done</button></div>`);
   const queue = $("#recQueue");
@@ -998,11 +1094,17 @@ function openUploadRecords(id){
     }
   };
   $("#recFiles").addEventListener("change", e => { const l = [...e.target.files]; e.target.value = ""; if (l.length) upload(l); });
+  $("#recCam").addEventListener("change", e => { const l = [...e.target.files]; e.target.value = ""; if (l.length) upload(l); });
   const dz = $("#recDrop");
   ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("over"); }));
   ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("over"); }));
   dz.addEventListener("drop", e => { const l = [...(e.dataTransfer?.files || [])]; if (l.length) upload(l); });
   M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); };
+}
+function openSnapRecord(id){
+  if (!S.canEdit) return ownerOnlyToast();
+  openUploadRecords(id);
+  setTimeout(() => { const cam = $("#recCam"); if (cam) cam.click(); }, 80);
 }
 async function removeRecord(rid){
   const r = S.records.find(x => x.id === rid); if (!r || !S.canEdit) return;
@@ -1123,6 +1225,9 @@ function openSettings(){
       <label class="row stack"><span class="lbl">Default interview location</span><input type="text" id="sLoc" placeholder="PVRS building" value="${esc(s.defaultLocation||"")}"></label></div></div>
     <div class="group"><h3><span>Security</span></h3><div class="ios">
       <label class="row"><span class="lbl">Sign out after inactivity<small>Minutes with no mouse or keyboard use, for everyone on the team (5–240)</small></span><input type="number" id="sIdle" min="5" max="240" placeholder="30" value="${esc(s.idleMinutes||"")}"></label></div></div>
+    <div class="group"><h3><span>This Mac</span></h3><div class="ios">
+      <label class="row"><span class="lbl">Celebration sounds<small>Soft chime on board approval and new members (this browser only)</small></span>
+        <div class="seg" role="group" aria-label="Sounds"><button type="button" class="${prefs.get("sound") !== "0" ? "on" : ""}" id="sSoundOn">On</button><button type="button" class="${prefs.get("sound") === "0" ? "on" : ""}" id="sSoundOff">Off</button></div></label></div></div>
     <div class="group"><h3><span>Online application</span></h3><div class="ios">
       <div class="row"><span class="lbl">Application link for the squad website<small>${esc(location.origin)}/apply</small></span><button class="btn small" type="button" id="sCopyApply">Copy link</button><a class="btn small" href="/apply" target="_blank" rel="noopener">Open</a></div></div>
       <p class="help" style="margin:4px 4px 0">New applications appear in your list automatically (marked Online) the next time your desk is open, with the full form under Application → Online application.</p></div>
@@ -1137,6 +1242,8 @@ function openSettings(){
   M.onclick = async e => {
     const id = e.target.id;
     if (id === "sCancel") closeModal();
+    if (id === "sSoundOn") { prefs.set("sound", "1"); $("#sSoundOn").classList.add("on"); $("#sSoundOff").classList.remove("on"); playChime(); }
+    if (id === "sSoundOff") { prefs.set("sound", "0"); $("#sSoundOff").classList.add("on"); $("#sSoundOn").classList.remove("on"); }
     if (id === "sPreview") openPreview(S.sel);
     if (id === "sCopyApply") { const u = location.origin + "/apply"; toast((await copyText(u)) ? "Copied " + u : u); }
     if (id === "sFull") exportFull();
@@ -1268,8 +1375,18 @@ const prefs = { get(k){ try { return localStorage.getItem("pvrsDesk." + k); } ca
 function switchTab(k){ flushAll(); if (S.ivMode && k !== "iv") exitIvMode(); S.tab = k; renderDetail(); const b = $("#dbody"), p = $("#dpanel"); if (b) b.scrollTop = 0; if (p) { p.classList.remove("tab-in"); void p.offsetWidth; p.classList.add("tab-in"); } }
 /* ---------- celebrations ---------- */
 // A short confetti burst in squad colours (skipped when the system asks for reduced motion) plus a toast.
+function playChime(){
+  if (prefs.get("sound") === "0") return;
+  try {
+    const ctx = playChime._ctx || (playChime._ctx = new (window.AudioContext || window.webkitAudioContext)());
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(523.25, ctx.currentTime); o.frequency.exponentialRampToValueAtTime(784, ctx.currentTime + .12);
+    g.gain.setValueAtTime(.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(.08, ctx.currentTime + .02); g.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + .35);
+    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + .4);
+  } catch {}
+}
 function celebrate(msg){
-  toast(msg);
+  toast(msg); playChime();
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const c = document.createElement("canvas"); c.className = "confetti"; c.setAttribute("aria-hidden", "true");
   const dpr = Math.min(2, devicePixelRatio || 1); c.width = innerWidth * dpr; c.height = innerHeight * dpr; document.body.appendChild(c);
@@ -1580,6 +1697,7 @@ function bindEvents(){
       if (k === "ivmode") return enterIvMode();
       if (k === "docs") return openRequestDocs(S.sel);
       if (k === "records") return openUploadRecords(S.sel);
+      if (k === "snap") return openSnapRecord(S.sel);
       if (k === "viewform") return openForm(S.sel);
       if (k === "printform") { const a = S.apps.get(S.sel); if (a && a.form) printHTML(`<section class="pk">${formHTML(a.form, true)}</section>`); return; }
       if (k === "book") return openBook(S.sel);
@@ -1686,14 +1804,15 @@ function openBoardMtg(){
   if (!el) { el = document.createElement("div"); el.id = "boardMtg"; el.className = "bmtg"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Board meeting"); document.body.appendChild(el); wireBoardMtg(el); }
   el.hidden = false; document.body.classList.add("bmopen"); $("#app").inert = true; paintBoardMtg(); el.querySelector("[data-bm=close]")?.focus();
 }
-function closeBoardMtg(){ const el = $("#boardMtg"); if (el) el.hidden = true; document.body.classList.remove("bmopen"); $("#app").inert = false; flushAll(); renderList(); if (!S.sel) renderOverview(); }
+function closeBoardMtg(){ const el = $("#boardMtg"); if (el) { el.hidden = true; el.classList.remove("bmpresent"); } document.body.classList.remove("bmopen"); $("#app").inert = false; flushAll(); renderList(); if (!S.sel) renderOverview(); }
 const avgRating = a => { const vals = []; [1,2,3,4].forEach(i => Object.values(get(a,`refs.r${i}.form.answers.ratings`) || {}).forEach(v => { if (typeof v === "number") vals.push(v); })); return vals.length ? (vals.reduce((x, y) => x + y, 0) / vals.length) : null; };
 function paintBoardMtg(){
   const el = $("#boardMtg"); if (!el) return;
   const n = BM.ids.length, id = BM.ids[BM.i], a = id && S.apps.get(id), ro = !S.canEdit ? "disabled" : "";
+  const present = el.classList.contains("bmpresent");
   const top = `<div class="bmtop glass"><div class="bmt"><b>Board meeting</b><label>Meeting date <input type="date" id="bmDate" value="${esc(BM.date)}" ${ro}></label></div>
-    <div class="bmacts"><button class="btn small" type="button" data-bm="agenda">Copy agenda</button><button class="btn small" type="button" data-bm="packet" ${n ? "" : "disabled"}>Print packet</button><button class="btn small primary" type="button" data-bm="close">Done</button></div></div>`;
-  if (!a) { el.innerHTML = top + `<div class="bmbody"><div class="bmempty"><h2>Nobody is on the board queue</h2><p>Applicants show up here once the membership committee approves them and their references are in.</p></div></div>`; return; }
+    <div class="bmacts"><button class="btn small" type="button" data-bm="present" aria-pressed="${present}">${present ? "Exit presenter" : "Presenter mode"}</button><button class="btn small" type="button" data-bm="agenda">Copy agenda</button><button class="btn small" type="button" data-bm="packet" ${n ? "" : "disabled"}>Print packet</button><button class="btn small primary" type="button" data-bm="close">Done</button></div></div>`;
+  if (!a) { el.innerHTML = top + `<div class="bmbody"><div class="bmempty"><h2>Nobody is on the board queue</h2><p>Quiet night — nobody's ready yet. They show up here once the committee approves them and references are in.</p></div></div>`; return; }
   const g = k => get(a, k), rs = refStatus(a), avg = avgRating(a);
   const chk = (ok, label, detail, bad) => `<div class="bmchk ${bad ? "bad" : ok ? "ok" : "no"}"><span class="dot" aria-hidden="true">${bad ? "!" : ok ? "✓" : "–"}</span><span><b>${esc(label)}</b><small>${esc(detail || "")}</small></span></div>`;
   const panel = [1,2,3,4,5].map(i => g("iv.panel.m" + i)).filter(Boolean).join(", ");
@@ -1730,6 +1849,7 @@ function wireBoardMtg(el){
     if (!b) return;
     const k = b.dataset.bm;
     if (k === "close") return closeBoardMtg();
+    if (k === "present") { el.classList.toggle("bmpresent"); paintBoardMtg(); return; }
     if (k === "agenda") return copyAgenda();
     if (k === "packet") { flushAll(); return printPacket(BM.ids.map(x => S.apps.get(x)).filter(Boolean)); }
     if (k === "prev" && BM.i > 0) { flushAll(); BM.i--; paintBoardMtg(); }
@@ -1936,21 +2056,43 @@ function refNudge(a, i){
   if (!String(g("name") || "").trim() || g("form") || (g("returned") && !g("replace")) || !g("contacted")) return false;
   return daysSince(g("contacted")) >= NUDGE_DAYS && (!g("reminded") || daysSince(g("reminded")) >= NUDGE_DAYS);
 }
-async function remindRefLink(id, i){
+function pickTone(){
+  // Browser tests drive mailto clicks without a human; skip the chooser there.
+  if (typeof window !== "undefined" && window.__mock) return Promise.resolve("gentle");
+  return new Promise(resolve => {
+    const M = openModal(`<h3>Email tone</h3><p class="help">Same link either way — pick the voice that fits.</p>
+      <div class="tonepick">
+        <button type="button" data-tone="gentle"><b>Gentle</b><span>Warm and thank-you heavy. Good for a first ask or a soft reminder.</span></button>
+        <button type="button" data-tone="firm"><b>Firm</b><span>Clear and short. Good when the board meeting is coming up.</span></button>
+      </div>
+      <div class="acts"><button class="btn" type="button" data-x>Cancel</button></div>`);
+    M.onclick = e => {
+      if (e.target.closest("[data-x]")) { closeModal(); resolve(null); return; }
+      const t = e.target.closest("[data-tone]"); if (!t) return; closeModal(); resolve(t.dataset.tone);
+    };
+  });
+}
+async function remindRefLink(id, i, tone){
   const a = S.apps.get(id); if (!a) return;
   const to = lower(get(a,`refs.r${i}.email`) || ""), name = String(get(a,`refs.r${i}.name`) || "").trim();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) { toast("Add the reference's email address first."); return; }
+  if (!tone) { tone = await pickTone(); if (!tone) return; }
   const url = await refLink(id, i); if (!url) return;
-  const body = `Hi ${first(name)},\n\nJust a friendly reminder: ${a.name} listed you as a reference for the Potsdam Volunteer Rescue Squad, and we'd still love to hear from you. It takes about 5 minutes:\n\n${url}\n\nIf you've already sent it, thank you, and please ignore this note.\n\nThank you,\n${sig()}`;
+  const body = tone === "firm"
+    ? `Hi ${first(name)},\n\nWe're preparing ${a.name}'s application for the next PVRS board meeting and still need your reference. Please complete it when you can (about 5 minutes):\n\n${url}\n\nIf you already sent it, thank you — you can ignore this.\n\n${sig()}`
+    : `Hi ${first(name)},\n\nJust a friendly reminder: ${a.name} listed you as a reference for the Potsdam Volunteer Rescue Squad, and we'd still love to hear from you. It takes about 5 minutes:\n\n${url}\n\nIf you've already sent it, thank you, and please ignore this note.\n\nThank you,\n${sig()}`;
   const l = document.createElement("a"); l.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(`Reminder: reference for ${a.name}`)}&body=${encodeURIComponent(body)}`; l.click();
   edit(id, `refs.r${i}.reminded`, today());
 }
-async function emailRefLink(id, i){
+async function emailRefLink(id, i, tone){
   const a = S.apps.get(id); if (!a) return;
   const to = lower(get(a,`refs.r${i}.email`) || ""), name = String(get(a,`refs.r${i}.name`) || "").trim();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) { toast("Add the reference's email address first."); $(`#f-refs-r${i}-email`)?.focus(); return; }
+  if (!tone) { tone = await pickTone(); if (!tone) return; }
   const url = await refLink(id, i); if (!url) return;
-  const body = `Hi ${first(name)},\n\n${a.name} has applied to volunteer with the Potsdam Volunteer Rescue Squad and listed you as a reference. We'd be grateful if you could answer a few questions about them. It takes about 5 minutes:\n\n${url}\n\nThe link is just for you and works once. Your answers go only to the PVRS Membership Committee.\n\nThank you,\n${sig()}`;
+  const body = tone === "firm"
+    ? `Hi ${first(name)},\n\n${a.name} applied to volunteer with the Potsdam Volunteer Rescue Squad and listed you as a reference. Please answer a short form (about 5 minutes):\n\n${url}\n\nThe link is only for you and works once. Answers go only to the Membership Committee.\n\nThank you,\n${sig()}`
+    : `Hi ${first(name)},\n\n${a.name} has applied to volunteer with the Potsdam Volunteer Rescue Squad and listed you as a reference. We'd be grateful if you could answer a few questions about them. It takes about 5 minutes:\n\n${url}\n\nThe link is just for you and works once. Your answers go only to the PVRS Membership Committee.\n\nThank you,\n${sig()}`;
   const l = document.createElement("a"); l.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(`Reference for ${a.name}: Potsdam Volunteer Rescue Squad`)}&body=${encodeURIComponent(body)}`; l.click();
   if (!get(a,`refs.r${i}.contacted`)) { edit(id, `refs.r${i}.contacted`, today()); edit(id, `refs.r${i}.method`, "Email"); }
 }
@@ -1974,6 +2116,7 @@ function openRefsAll(id){
     $("#rallNote").textContent = todo ? `${todo} to send. Click each button, then press Send in Mail.` : "Everyone here has answered or been received.";
   };
   const sent = new Set();
+  let tone = null;
   const M = openModal(`<h3>Email reference forms</h3>
     <p class="help">Each reference gets their own email with a private link to the reference form for ${esc(a.name || "this applicant")}, so they go one at a time.</p>
     <div class="ios" id="rallList"></div><p class="help" id="rallNote"></p>
@@ -1982,7 +2125,8 @@ function openRefsAll(id){
   M.onclick = async e => {
     if (e.target.closest("[data-x]")) return closeModal();
     const b = e.target.closest("[data-allmail]"); if (!b) return;
-    b.disabled = true; await (b.dataset.nudge ? remindRefLink : emailRefLink)(id, +b.dataset.allmail); sent.add(+b.dataset.allmail); paint();
+    if (!tone) { tone = await pickTone(); if (!tone) return; }
+    b.disabled = true; await (b.dataset.nudge ? remindRefLink : emailRefLink)(id, +b.dataset.allmail, tone); sent.add(+b.dataset.allmail); paint();
   };
 }
 function refAnswersHTML(a, i){
