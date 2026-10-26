@@ -271,9 +271,12 @@ try {
     const { ctx, page } = await open(browser, { w: 390, h: 844 });
     if (await page.locator(".app > .side").isVisible() || await page.locator("#mnav").isHidden()) fail("phone: sidebar strip still showing / no bottom menu"); else ok("phone: bottom menu replaces the icon strip");
     const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
-    if (items.join() !== "list,ov,msgs,more") fail("phone menu items: " + items); else ok("phone menu: Applicants, Overview, Messages, More (no big +)");
+    if (items.join() !== "duty,list,ov,msgs,more") fail("phone menu items: " + items); else ok("phone menu: Duty, Applicants, Overview, Messages, More");
+    await page.click('#mnav [data-m="duty"]'); await wait(page, 600);
+    if (await page.locator("#schedule").isHidden() || !(await page.locator("#schedule").textContent()).includes("Duty schedule")) fail("phone Duty didn't open"); else ok("phone: Duty opens the crew schedule");
+    if (!(await page.locator('#mnav [data-m="duty"]').evaluate(b => b.classList.contains("on")))) fail("Duty not highlighted in menu"); else ok("phone: Duty stays selected in the floating menu");
     await page.click('#mnav [data-m="ov"]'); await wait(page, 500);
-    if (await page.locator(".ov").isHidden() || !/Good (morning|afternoon|evening)/.test(await page.locator(".ov").textContent())) fail("phone overview not shown"); else ok("phone: Overview shows the dashboard");
+    if (await page.locator("#schedule").isVisible() || await page.locator(".ov").isHidden() || !/Good (morning|afternoon|evening)/.test(await page.locator(".ov").textContent())) fail("phone overview not shown after Duty"); else ok("phone: Overview leaves Duty and shows the dashboard");
     await page.click('#mnav [data-m="list"]'); await wait(page, 500);
     if (await page.locator("#app").evaluate(a => a.classList.contains("ovopen"))) fail("Applicants didn't close overview"); else ok("phone: Applicants returns to the list");
     await page.click('#mnav [data-m="more"]'); await wait(page, 300);
@@ -289,8 +292,20 @@ try {
   }
   {
     const { ctx, page } = await open(browser, { w: 390, h: 844, user: { email: "admin@pvrs.org", displayName: "Casey" } });
+    const adminItems = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
+    if (adminItems.includes("duty")) fail("admin without schedule β still sees Duty"); else ok("phone: Duty stays hidden until schedule β is on");
     await page.click('#mnav [data-m="more"]'); await wait(page, 300);
     if (/New applicant/.test(await page.locator("#modal").textContent())) fail("admin sees New applicant in More"); else ok("phone: only the owner gets New applicant (in More)");
+    await ctx.close();
+  }
+  { // schedule members land on Duty; membership is background
+    const { ctx, page } = await open(browser, { w: 390, h: 844, user: { email: "alex@pvrs.org", displayName: "Alex Moore" } });
+    await wait(page, 900);
+    if (await page.locator("#schedule").isHidden() || !(await page.locator("body").evaluate(b => b.classList.contains("on-duty")))) fail("member didn't open Duty first"); else ok("phone: schedule members open on Duty crew");
+    const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
+    if (!items.includes("duty") || !items.includes("list")) fail("member menu: " + items); else ok("phone: members still reach Applicants from the floating menu");
+    await page.click('#mnav [data-m="list"]'); await wait(page, 500);
+    if (await page.locator("#schedule").isVisible() || await page.locator("#app").isHidden()) fail("member couldn't leave Duty for Applicants"); else ok("phone: members can leave Duty for the membership list");
     await ctx.close();
   }
   for (const w of [360, 390]) { // the file's section bar fits a phone without scrolling (Checks = Screening + References)

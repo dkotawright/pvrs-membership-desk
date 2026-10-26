@@ -119,7 +119,8 @@ if (!M.seeded) {
   put("portal/a2", { email: "marcus.bell@example.com", name: "Marcus Bell", firstName: "Marcus", type: "Associate", steps: [], docs: [], refs: [{ slot: 1, name: "Coach Dan Price", received: true }], bookingOpen: false });
   put("settings/main", { signature: "Dkota Wright, NREMT", docsEmail: "membership@pvrs.org" });
   put("staff/admin@pvrs.org", { role: "admin", name: "Casey Admin" });
-  put("staff/alex@pvrs.org", { role: "member", name: "Alex Moore" });
+  put("staff/alex@pvrs.org", { role: "member", name: "Alex Moore", schedule: true, cleared: ["EMT", "Driver", "Attendant"], memberType: "Regular",
+    credentials: [{ key: "emt", label: "NYS / NREMT EMT", expires: "2027-06-01" }, { key: "cpr", label: "CPR / BLS", expires: "2027-01-15" }, { key: "dl", label: "Driver's license", expires: "2028-03-01" }] });
   put("refLinks/linkGoodToken123456789", { appId: "a1", slot: 1, applicant: "Georgia Thurmond", first: "Georgia", refName: "Ann Lee", createdAt: now - day, expiresAt: now + 59 * day, by: "dkota@pvrs.org" });
   put("refLinks/linkOldToken1234567890", { appId: "a1", slot: 2, applicant: "Georgia Thurmond", first: "Georgia", refName: "Sam Ortiz", createdAt: now - 90 * day, expiresAt: now - day, by: "dkota@pvrs.org" });
   put("refLinks/linkUsedToken12345678", { appId: "a1", slot: 2, applicant: "Georgia Thurmond", first: "Georgia", refName: "Sam Ortiz", createdAt: now - 9 * day, expiresAt: now + 50 * day, by: "dkota@pvrs.org", submittedAt: now - day });

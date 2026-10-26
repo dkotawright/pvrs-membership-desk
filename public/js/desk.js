@@ -8,7 +8,7 @@ import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysS
 import { portalHTML, threadHTML } from "./portal.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
-import { startSchedule, POSITIONS as SCHED_POSITIONS } from "./schedule.js";
+import { startSchedule, stopSchedule, POSITIONS as SCHED_POSITIONS } from "./schedule.js";
 
 /* ---------- form builders ---------- */
 const fid = k => "f-" + k.replace(/\./g, "-");
@@ -1491,9 +1491,20 @@ function applyTheme(v){
   const root = document.documentElement;
   if (!v) root.removeAttribute("data-theme"); else root.setAttribute("data-theme", v);
 }
+function leaveDuty(){
+  stopSchedule();
+  const el = $("#schedule"); if (el) el.hidden = true;
+  $("#app").hidden = false;
+  S.surface = "desk";
+  document.body.classList.remove("on-duty");
+  $("#schedBtn")?.classList.remove("on");
+  $("#overviewBtn")?.classList.toggle("on", !S.sel);
+  paintMnav();
+}
 function goSchedule(){
-  if (!S.schedule) return toast("Duty schedule β isn't enabled for your account yet.");
-  $("#app").hidden = true;
+  if (!S.schedule) return toast("Duty crew isn't enabled for your account yet.");
+  if (S.sel) deselect();
+  flushAll();
   const staffMap = new Map(S.staff);
   // Owner may not have a staff/{email} doc yet — seed a local schedule profile so hours/creds work.
   if (!staffMap.has(S.me)) staffMap.set(S.me, {
@@ -1504,7 +1515,15 @@ function goSchedule(){
       { key: "dl", label: "Driver's license", expires: "" },
     ],
   });
-  startSchedule({ email: S.me, name: S.name || S.me, canManage: S.owner || S.scheduler || S.admin, staffMap });
+  S.surface = "duty";
+  document.body.classList.add("on-duty");
+  $("#schedBtn")?.classList.add("on");
+  $("#overviewBtn")?.classList.remove("on");
+  startSchedule({
+    email: S.me, name: S.name || S.me, canManage: S.owner || S.scheduler || S.admin, staffMap,
+    onDesk: leaveDuty,
+  });
+  paintMnav();
 }
 function switchTab(k){ flushAll(); if (S.ivMode && k !== "iv") exitIvMode(); S.tab = k; renderDetail(); const b = $("#dbody"), p = $("#dpanel"); if (b) b.scrollTop = 0; if (p) { p.classList.remove("tab-in"); void p.offsetWidth; p.classList.add("tab-in"); } }
 /* ---------- celebrations ---------- */
@@ -1556,7 +1575,7 @@ function openPalette(){
     { label: "Overview", show: true, words: "overview home dashboard to do", run: go(() => narrow ? mnavGo("ov") : (S.sel ? deselect() : renderOverview())) },
     { label: "Board meeting", show: S.admin, words: "board meeting agenda packet vote", run: go(openBoardMtg) },
     { label: "Interview times", show: S.canEdit, words: "interview times slots schedule calendar", run: go(openSlots) },
-    { label: "Duty schedule", show: S.schedule, words: "duty schedule eschedule shifts crew beta", run: go(goSchedule) },
+    { label: "Duty crew", show: S.schedule, words: "duty schedule eschedule shifts crew calendar hours", run: go(goSchedule) },
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(openInbox) },
     { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
     { label: "Sign-in password", show: true, words: "password key sign in", run: go(openPassword) },
@@ -1652,17 +1671,26 @@ function ivGo(d){
 }
 
 /* ---------- phone menu (floating glass bar at the bottom) ---------- */
-// It mirrors the sidebar: each item is shown only when the matching sidebar button is, so roles stay the same.
+// Duty is first-class for schedule members; membership items stay available for coordinators.
 function paintMnav(){
   const m = $("#mnav"); if (!m) return;
+  m.hidden = false;
+  const duty = m.querySelector('[data-m="duty"]');
+  if (duty) duty.hidden = !S.schedule;
   m.querySelector('[data-m="msgs"]').hidden = $("#msgsBtn").hidden;
-  m.querySelectorAll("[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === (S.mOv ? "ov" : "list")));
-  $("#app").classList.toggle("ovopen", !!S.mOv && !S.sel);
+  // Pure duty members: keep Applicants/Overview reachable but secondary (still shown if they have desk access).
+  const onDuty = S.surface === "duty";
+  const cur = onDuty ? "duty" : (S.mOv ? "ov" : "list");
+  m.querySelectorAll("[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === cur));
+  $("#app").classList.toggle("ovopen", !!S.mOv && !S.sel && !onDuty);
+  document.body.classList.toggle("file-open", !!S.sel && !onDuty);
 }
 function mnavGo(k){
   if (k === "new") return openNew();
-  if (k === "msgs") return openInbox();
-  if (k === "more") return openMore();
+  if (k === "msgs") { if (S.surface === "duty") leaveDuty(); return openInbox(); }
+  if (k === "more") { if (S.surface === "duty") leaveDuty(); return openMore(); }
+  if (k === "duty") return goSchedule();
+  if (S.surface === "duty") leaveDuty();
   S.mOv = k === "ov";
   if (S.sel) deselect(); else renderDetail();
   if (k === "list") { const l = $("#list"); if (l) l.scrollTop = 0; }
@@ -1678,7 +1706,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["newBtn", "New applicant"], ["slotsBtn", "Interview times"], ["schedBtn", "Duty schedule β"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["schedBtn", "Duty crew"], ["newBtn", "New applicant"], ["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av${S.photo ? " photo" : ""}" aria-hidden="true"${S.photo ? ` style="background-image:url(&quot;${esc(S.photo)}&quot;)"` : ""}>${S.photo ? "" : esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
@@ -2439,8 +2467,12 @@ function startIdleLock(){
 export function startDesk({ email, role, owner, name, photo, schedule, scheduler }){
   S.me = email; S.admin = role === "admin"; S.owner = !!owner; S.canEdit = !!owner; S.name = name || ""; S.photo = photo || "";
   S.schedule = !!schedule || !!owner; S.scheduler = !!scheduler || !!owner;
+  S.surface = "desk";
   S.sort = SORTS[prefs.get("sort")] ? prefs.get("sort") : "stage";
   applyTheme();
+  document.body.classList.add("staff-ui");
+  // Members on schedule: Duty is home. Owner/admins keep membership desk as default (applications still matter to them).
+  if (S.schedule && !S.owner && !S.admin) document.body.classList.add("member-home");
   bindEvents(); renderList(); renderDetail();
   const conn = $("#conn");
   conn.textContent = S.owner ? "Owner" : S.admin ? "Admin" : "Member";
@@ -2457,11 +2489,13 @@ export function startDesk({ email, role, owner, name, photo, schedule, scheduler
   if (!S.canEdit) document.body.classList.add("viewonly-user");
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
   startIdleLock();
-  // Resume where you left off (same browser, within a week).
+  // Resume applicant file only when staying on the membership desk (not for duty-first members).
   try {
     const r = JSON.parse(prefs.get("resume") || "null");
-    if (r && r.id && r.at && Date.now() - r.at < 7 * 864e5) S._resume = r;
+    if (r && r.id && r.at && Date.now() - r.at < 7 * 864e5 && (S.owner || S.admin)) S._resume = r;
   } catch { S._resume = null; }
+  // Duty-first: open the crew board once the first applicants snapshot settles (so staff map is warm).
+  if (S.schedule && !S.owner && !S.admin) S._openDuty = true;
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
 
   onSnapshot(collection(db, "applicants"), snap => {
@@ -2476,6 +2510,8 @@ export function startDesk({ email, role, owner, name, photo, schedule, scheduler
       select(r.id);
       toast("Picked up where you left off");
     }
+    // Duty-first members land on the crew board once data is warm (membership stays one tap away).
+    if (S._openDuty) { S._openDuty = false; goSchedule(); }
     if (S.canEdit) { syncAllPortals(); mirrorStages(); }
   }, lost);
   onSnapshot(collection(db, "slots"), snap => {

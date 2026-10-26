@@ -25,7 +25,7 @@ const POSITION_CREDS = { EMT: ["emt", "cpr"], Driver: ["dl", "cpr"], Attendant: 
 
 const Q = {
   me: "", name: "", canManage: false, shifts: new Map(), trades: new Map(), staff: new Map(),
-  weekStart: null, unsub: [],
+  weekStart: null, unsub: [], onDesk: null,
 };
 
 const startOfWeek = d => {
@@ -101,6 +101,7 @@ const monthHoursFor = email => {
   return Math.round(h * 10) / 10;
 };
 const stop = () => { Q.unsub.forEach(u => { try { u(); } catch {} }); Q.unsub = []; };
+export function stopSchedule(){ stop(); }
 
 function hoursCard(){
   const st = meStaff(), target = hourTarget(st), got = monthHoursFor(Q.me), { label } = monthBounds();
@@ -161,7 +162,7 @@ function paint(){
         <button class="btn" type="button" data-sc="today">This week</button>
         <button class="btn" type="button" data-sc="next">Next ›</button>
         ${Q.canManage ? `<button class="btn primary" type="button" data-sc="publish">Publish shifts</button>` : ""}
-        <button class="btn" type="button" data-sc="desk">Membership desk</button>
+        <button class="btn" type="button" data-sc="desk">${Q.onDesk ? "Membership" : "Membership desk"}</button>
         <button class="btn" type="button" data-signout>Sign out</button>
       </div>
     </header>
@@ -394,16 +395,22 @@ function wire(){
       if (k === "publish") return openPublish();
       if (k === "creds") return openCreds();
       if (k === "crewcreds") return openCrewCreds();
-      if (k === "desk") { $("#schedule").hidden = true; $("#app").hidden = false; history.replaceState(null, "", "/"); return; }
+      if (k === "desk") {
+        if (Q.onDesk) return Q.onDesk();
+        $("#schedule").hidden = true; $("#app").hidden = false;
+        history.replaceState(null, "", "/");
+        return;
+      }
     }
     const sid = e.target.closest("[data-sid]"); if (sid) return openShift(sid.dataset.sid);
   });
 }
 
-export function startSchedule({ email, name, canManage, staffMap }){
+export function startSchedule({ email, name, canManage, staffMap, onDesk }){
   stop();
   Q.me = lower(email); Q.name = name || ""; Q.canManage = !!canManage;
   Q.staff = staffMap || new Map();
+  Q.onDesk = typeof onDesk === "function" ? onDesk : null;
   Q.weekStart = startOfWeek(new Date());
   $("#app").hidden = true; $("#portal").hidden = true;
   const el = $("#schedule"); el.hidden = false;

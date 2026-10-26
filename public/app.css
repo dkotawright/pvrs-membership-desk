@@ -1060,28 +1060,40 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .welcome .greet{overflow:visible;line-height:1.12;padding-bottom:2px}   /* room for descenders (the g in "evening") */
 .refsum-act{display:flex;justify-content:flex-start;margin-top:8px}
 
-/* Phones and narrow windows: floating glass menu at the bottom instead of the sidebar strip */
+/* Phones: floating glass menu (sibling of .app / .schedule so Duty stays one tap away) */
 .mnav{display:none}
+body.staff-ui .mnav{display:none}
 @media (max-width:860px){
   .app>.side{display:none}
   .app{grid-template-rows:minmax(0,1fr)}
-  .mnav{display:flex;align-items:center;gap:2px;position:fixed;z-index:40;left:50%;bottom:calc(12px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
-    padding:6px;border-radius:999px;max-width:calc(100% - 20px);transition:transform .3s cubic-bezier(.2,.8,.2,1),opacity .2s}
-  .mnav button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:64px;height:52px;padding:4px 8px;border:0;border-radius:999px;
+  body.staff-ui .mnav{display:flex;align-items:center;gap:1px;position:fixed;z-index:40;left:50%;bottom:calc(12px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+    padding:6px;border-radius:999px;max-width:calc(100% - 16px);transition:transform .3s cubic-bezier(.2,.8,.2,1),opacity .2s}
+  .mnav button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:58px;height:52px;padding:4px 6px;border:0;border-radius:999px;
     background:transparent;color:var(--fg2);font:inherit;font-size:10.5px;font-weight:650;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s,color .15s}
-  .mnav button svg{width:23px;height:23px}
+  .mnav button svg{width:22px;height:22px}
   .mnav button.on{color:var(--accent);background:color-mix(in srgb,var(--accent) 13%,transparent)}
+  .mnav button[data-m="duty"].on{color:var(--honey);background:var(--honey-soft)}
   .mnav button:active{transform:scale(.94)}
   .mnav .mnew{min-width:52px;width:52px;height:52px;margin:0 4px;border-radius:50%;color:#fff;background:linear-gradient(140deg,#ff4d5e,#c8102e);box-shadow:0 10px 24px -8px rgba(200,16,46,.75)}
   .mnav .mnew.on{background:linear-gradient(140deg,#ff4d5e,#c8102e);color:#fff}
-  .mnav .navbadge{position:absolute;top:3px;right:12px;min-width:17px;height:17px;font-size:10px}
-  .app.open .mnav{transform:translate(-50%,170%);opacity:0;pointer-events:none}
+  .mnav .navbadge{position:absolute;top:3px;right:10px;min-width:17px;height:17px;font-size:10px}
+  body.file-open .mnav{transform:translate(-50%,170%);opacity:0;pointer-events:none}
   .app.ovopen .detail{transform:none}
   .app .ov{display:block;padding:18px 14px calc(110px + env(safe-area-inset-bottom,0px))}
   .list{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+  .schedule{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
   .toast{bottom:calc(86px + env(safe-area-inset-bottom,0px))}
 }
-@media (max-width:380px){ .mnav button{min-width:56px;padding:4px 4px} }
+@media (max-width:380px){ .mnav button{min-width:52px;padding:4px 3px;font-size:10px} }
+/* Members who live on Duty: membership stays available but visually secondary */
+body.member-home .side .navsec[aria-label="Filter applicants"],
+body.member-home .side .navsec:not([aria-label="Squad"]),
+body.member-home .side .newbtn{opacity:.68}
+body.member-home .side .navsec[aria-label="Squad"]{opacity:1}
+body.member-home .side .navsec[aria-label="Squad"] .navh{color:var(--honey)}
+#schedBtn.on{background:var(--honey-soft);color:var(--fg)}
+#schedBtn.on .nl{font-weight:700}
+body.on-duty .mnav{z-index:50}
 /* More sheet */
 .moreme{display:flex;align-items:center;gap:12px;padding:2px 2px 4px}
 .moreme .av{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;background:var(--accent);flex:none}

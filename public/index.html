@@ -182,11 +182,14 @@
       <div class="navh">Applicants</div>
       <div class="nav" id="chips"></div>
     </nav>
+    <nav class="navsec tools" aria-label="Squad">
+      <div class="navh">Squad</div>
+      <button class="nav-i" id="schedBtn" type="button" title="Duty crew" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><path d="M1.5 6.5h13M5 1v3M11 1v3M4.5 9.5h2v3h-2zm5 0h2v3h-2z"/></svg><span class="nl">Duty crew</span></button>
+    </nav>
     <div class="navsec tools">
-      <div class="navh">Desk</div>
+      <div class="navh">Membership</div>
       <button class="nav-i" id="overviewBtn" type="button" title="Overview (Esc)"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.5"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.5"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.5"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.5"/></svg><span class="nl">Overview</span></button>
       <button class="nav-i" id="slotsBtn" type="button" title="Interview times" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><path d="M1.5 6.5h13M5 1v3M11 1v3"/></svg><span class="nl">Interview times</span></button>
-      <button class="nav-i" id="schedBtn" type="button" title="Duty schedule (beta)" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><path d="M1.5 6.5h13M5 1v3M11 1v3M5 9.5h2M9 9.5h2M5 12h6"/></svg><span class="nl">Duty schedule</span><b class="navbadge beta">β</b></button>
       <button class="nav-i" id="boardBtn" type="button" title="Board meeting" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5h12M3.5 13.5V7M12.5 13.5V7M8 13.5V7M1.5 6h13L8 2.2z"/></svg><span class="nl">Board meeting</span></button>
       <button class="nav-i" id="settingsBtn" type="button" title="Settings" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="7" width="11" height="7.5" rx="2"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg><span class="nl">Settings</span></button>
       <button class="nav-i" id="msgsBtn" type="button" title="Messages from applicants" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7l-3 2.5V11.5H2.5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z"/></svg><span class="nl">Messages</span></button>
@@ -199,13 +202,6 @@
       <button class="iconbtn" type="button" data-signout title="Sign out" aria-label="Sign out"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5H3.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1H6M10.5 11l3-3-3-3M13.5 8H6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
   </aside>
-  <!-- Phones and narrow windows: floating glass menu at the bottom (replaces the sidebar) -->
-  <nav class="mnav glass" id="mnav" aria-label="Desk">
-    <button type="button" data-m="list" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M16 5.5a3.2 3.2 0 0 1 0 6.2M18 14.3c1.6.7 2.6 2.3 3 4.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Applicants</span></button>
-    <button type="button" data-m="ov"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span>Overview</span></button>
-    <button type="button" data-m="msgs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5h15a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17h-1A1.5 1.5 0 0 1 3 15.5v-9A1.5 1.5 0 0 1 4.5 5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Messages</span><b class="navbadge" hidden></b></button>
-    <button type="button" data-m="more"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="18.5" cy="12" r="1.8" fill="currentColor"/></svg><span>More</span></button>
-  </nav>
   <div class="main">
     <section class="pane roster" aria-label="Applicants">
       <div class="rhandle" aria-hidden="true"><span>Applicants</span></div>
@@ -230,8 +226,17 @@
 <div class="portal" id="portal" hidden></div>
 <div class="portal" id="vault" hidden></div>
 
-<!-- Duty schedule (eSchedule-style beta; gated per staff member) -->
+<!-- Duty crew (eSchedule-style; gated per staff member) -->
 <div class="schedule" id="schedule" hidden><div class="schedwrap" id="schedRoot"></div></div>
+
+<!-- Phones: floating menu for desk + duty (lives outside .app so Duty stays reachable) -->
+<nav class="mnav glass" id="mnav" aria-label="Squad" hidden>
+  <button type="button" data-m="duty" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 9.5h17M8 3v4M16 3v4M8 13.5h3v4H8zm5 0h3v4h-3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Duty</span></button>
+  <button type="button" data-m="list" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M16 5.5a3.2 3.2 0 0 1 0 6.2M18 14.3c1.6.7 2.6 2.3 3 4.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Applicants</span></button>
+  <button type="button" data-m="ov"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span>Overview</span></button>
+  <button type="button" data-m="msgs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5h15a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17h-1A1.5 1.5 0 0 1 3 15.5v-9A1.5 1.5 0 0 1 4.5 5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Messages</span><b class="navbadge" hidden></b></button>
+  <button type="button" data-m="more"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="18.5" cy="12" r="1.8" fill="currentColor"/></svg><span>More</span></button>
+</nav>
 
 <div class="toast glass" id="toast" role="status"></div>
 <div class="modal" id="modal" hidden></div>

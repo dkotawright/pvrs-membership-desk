@@ -9,8 +9,6 @@ import { startApply } from "./apply.js";
 import { startVault } from "./vault.js";
 import { startReference } from "./reference.js";
 import { startWeather } from "./weather.js";
-import { startSchedule } from "./schedule.js";
-
 const LINK_KEY = "pvrsEmailForSignIn";
 const VIEWS = ["loading","home","apply","signin","confirm","verify","noaccess","app","portal","vault","reference","schedule"];
 const PUBLIC = ["home","apply","signin","confirm"];
