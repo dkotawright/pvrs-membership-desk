@@ -145,9 +145,54 @@ service cloud.firestore {
     }
 
     // Team roster. Everyone can read their own entry (so the app knows their role).
+    // Schedule-beta members can also read other schedule members (names + clearances for the duty board).
+    function hasSchedule() {
+      return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.get('schedule', false) == true);
+    }
+    function canManageSchedule() {
+      return isOwner() || (hasSchedule() && (isAdmin() || get(staffPath()).data.get('scheduler', false) == true));
+    }
     match /staff/{email} {
-      allow read: if isAdmin() || (verified() && email == myEmail());
+      allow read: if isAdmin() || (verified() && email == myEmail())
+        || (hasSchedule() && resource.data.get('schedule', false) == true);
       allow write: if isOwner() && email != 'dkota@pvrs.org';
+    }
+
+    // Duty schedule (eSchedule-style). Beta: only staff with schedule==true (and the owner).
+    match /dutyShifts/{shiftId} {
+      allow read: if hasSchedule();
+      allow create: if canManageSchedule()
+        && request.resource.data.start is int
+        && request.resource.data.end is int
+        && request.resource.data.position is string && request.resource.data.position.size() <= 40;
+      allow delete: if canManageSchedule();
+      allow update: if canManageSchedule() || (
+        hasSchedule()
+        && onlyChanged(['assignee', 'assigneeName', 'status', 'posted', 'updatedAt'])
+        && (
+          // Pick up an open shift (or claim a giveaway)
+          (resource.data.get('assignee', null) == null || resource.data.get('posted', false) == true)
+            && request.resource.data.assignee == myEmail()
+            && request.resource.data.assigneeName is string && request.resource.data.assigneeName.size() <= 100
+          // Post / cancel own giveaway
+          || (resource.data.assignee == myEmail() && request.resource.data.assignee == myEmail()
+            && onlyChanged(['posted', 'updatedAt']))
+          // Clear own shift back to open (drop)
+          || (resource.data.assignee == myEmail() && request.resource.data.assignee == null)
+        )
+      );
+    }
+    match /dutyTrades/{tradeId} {
+      allow read: if hasSchedule() && (resource.data.from == myEmail() || resource.data.to == myEmail() || canManageSchedule());
+      allow create: if hasSchedule()
+        && request.resource.data.from == myEmail()
+        && request.resource.data.to is string
+        && request.resource.data.shiftId is string
+        && request.resource.data.status == 'pending';
+      allow update: if hasSchedule()
+        && (resource.data.to == myEmail() || resource.data.from == myEmail() || canManageSchedule())
+        && onlyChanged(['status', 'decidedAt', 'decidedBy']);
+      allow delete: if canManageSchedule() || (hasSchedule() && resource.data.from == myEmail() && resource.data.status == 'pending');
     }
 
     // Application + interview (shared with members)

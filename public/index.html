@@ -186,6 +186,7 @@
       <div class="navh">Desk</div>
       <button class="nav-i" id="overviewBtn" type="button" title="Overview (Esc)"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.5"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.5"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.5"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.5"/></svg><span class="nl">Overview</span></button>
       <button class="nav-i" id="slotsBtn" type="button" title="Interview times" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><path d="M1.5 6.5h13M5 1v3M11 1v3"/></svg><span class="nl">Interview times</span></button>
+      <button class="nav-i" id="schedBtn" type="button" title="Duty schedule (beta)" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><path d="M1.5 6.5h13M5 1v3M11 1v3M5 9.5h2M9 9.5h2M5 12h6"/></svg><span class="nl">Duty schedule</span><b class="navbadge beta">β</b></button>
       <button class="nav-i" id="boardBtn" type="button" title="Board meeting" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5h12M3.5 13.5V7M12.5 13.5V7M8 13.5V7M1.5 6h13L8 2.2z"/></svg><span class="nl">Board meeting</span></button>
       <button class="nav-i" id="settingsBtn" type="button" title="Settings" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="7" width="11" height="7.5" rx="2"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg><span class="nl">Settings</span></button>
       <button class="nav-i" id="msgsBtn" type="button" title="Messages from applicants" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H7l-3 2.5V11.5H2.5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1z"/></svg><span class="nl">Messages</span></button>
@@ -228,6 +229,9 @@
 <!-- Applicant portal -->
 <div class="portal" id="portal" hidden></div>
 <div class="portal" id="vault" hidden></div>
+
+<!-- Duty schedule (eSchedule-style beta; gated per staff member) -->
+<div class="schedule" id="schedule" hidden><div class="schedwrap" id="schedRoot"></div></div>
 
 <div class="toast glass" id="toast" role="status"></div>
 <div class="modal" id="modal" hidden></div>

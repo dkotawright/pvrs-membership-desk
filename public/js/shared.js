@@ -27,7 +27,7 @@ export async function copyText(text, fallbackEl){
 }
 // One modal at a time. Opening makes the page behind it inert and moves focus into the sheet;
 // closing runs the sheet's cleanup (M._cleanup) and puts focus back where it was.
-const behind = () => ["#app", "#portal"].map(s => $(s)).filter(Boolean);
+const behind = () => ["#app", "#portal", "#schedule", "#vault"].map(s => $(s)).filter(Boolean);
 export function openModal(html, wide){
   const M = $("#modal");
   if (M.hidden) M._prev = document.activeElement;
