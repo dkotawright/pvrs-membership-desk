@@ -43,6 +43,21 @@ await shot("home_phone", "/", null, 390, 844);
 await shot("apply", "/apply", null, 1440, 900, async p => { await p.waitForSelector("#applyForm"); });
 await shot("ref_done", "/ref/notARealLinkCode12345", null);
 await shot("desk", "/", OWNER, 1440, 900, async p => { await p.waitForSelector("#app:not([hidden])"); await p.waitForTimeout(800); });
-await shot("portal", "/", APPLICANT, 1440, 900, async p => { await p.waitForSelector("#portal:not([hidden])"); await p.waitForTimeout(600); });
+await shot("portal", "/", APPLICANT, 1440, 900, async p => {
+  await p.waitForSelector("#portal:not([hidden])");
+  await p.evaluate(() => {
+    const d = window.__mock.docs, portal = d.get("portal/a2");
+    portal.steps = [
+      { label: "Application received", detail: "We have your application.", state: "done" },
+      { label: "Application review", detail: "The membership committee is reviewing your file.", state: "done" },
+      { label: "Interview", detail: "Pick a time below once interview times open.", state: "now" },
+      { label: "Board review", detail: "Your application goes to the next board meeting.", state: "todo" },
+      { label: "Background check", detail: "After the board approves you.", state: "todo" },
+      { label: "Welcome to PVRS", detail: "Orientation and duty crew.", state: "todo" },
+    ];
+    d.set("portal/a2", portal); window.__mock.emit();
+  });
+  await p.waitForTimeout(500);
+});
 await b.close();
 console.log(errs.length ? "ERRORS:\n" + errs.join("\n") : "polish shots ok → " + ART);
