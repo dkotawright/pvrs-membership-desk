@@ -29,8 +29,9 @@ const save = () => { clearTimeout(saveT); saveT = setTimeout(saveNow, 300); };
 
 // The card fades in once; later redraws (a rating tap, say) must not replay it.
 let shown = false;
+const CREST = `<div class="refcrest" aria-hidden="true"><svg viewBox="-120 -120 240 240"><g fill="var(--navy)"><rect x="-24" y="-100" width="48" height="200" rx="7"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(60)"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(-60)"/></g><rect x="-5" y="-78" width="10" height="156" rx="5" fill="var(--red-fill)"/></svg><div class="eyebrow">Potsdam Volunteer Rescue Squad</div></div>`;
 function card(inner){ const c = `<div class="applycard glass refcard${shown ? " noanim" : ""}">${inner}</div>`; shown = true; return c; }
-function message(title, body){ return card(`<div class="applyhead"><div><div class="eyebrow">Potsdam Volunteer Rescue Squad · Reference</div><h1>${title}</h1></div></div><p class="lead2">${body}</p>`); }
+function message(title, body){ return card(`${CREST}<div class="applyhead"><div><h1>${title}</h1></div></div><p class="lead2">${body}</p>`); }
 
 function render(){
   const root = $("#refRoot"); if (!root) return;
@@ -40,16 +41,16 @@ function render(){
   if (R.state === "expired") { root.innerHTML = message("This link has expired", `Please contact <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> and we'll send you a new one.`); return; }
   if (R.state === "already") { root.innerHTML = message("We already have your reference", `Thank you! Your reference for ${full} is with the PVRS Membership Committee. Questions? <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a>`); return; }
   if (R.state === "done") {
-    root.innerHTML = card(`<div class="donemark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    root.innerHTML = card(`${CREST}<div class="donemark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h1>Thank you${R.a.signName ? ", " + esc(R.a.signName.split(" ")[0]) : ""}!</h1>
-      <p class="lead2">Your reference for ${full} is with the PVRS Membership Committee. We appreciate you taking the time.</p>`);
+      <p class="lead2">Your reference for ${full} is with the Membership Committee. We appreciate your time.</p>`);
     return;
   }
   const a = R.a;
   const area = (k, label, req) => `<div class="af"><label for="rf-${k}">${label}${req ? ' <i aria-hidden="true">*</i>' : ' <span class="opt">optional</span>'}</label><textarea id="rf-${k}" data-r="${k}" rows="3" maxlength="4000">${esc(a[k] || "")}</textarea></div>`;
   const qs = refQuestions(f);
-  root.innerHTML = card(`<div class="applyhead"><div><div class="eyebrow">Potsdam Volunteer Rescue Squad · Reference check</div><h1>Reference for ${full}</h1></div></div>
-    <p class="lead2">${L.refName ? `Hi ${esc(String(L.refName).split(" ")[0])}, ` : ""}${full} has applied to volunteer with the Potsdam Volunteer Rescue Squad and listed you as a reference. This takes about 5 minutes. Your answers go only to the PVRS Membership Committee; ${f} won't see them.</p>
+  root.innerHTML = card(`${CREST}<div class="applyhead"><div><div class="eyebrow">Reference check · about 5 minutes</div><h1>Reference for ${full}</h1></div></div>
+    <p class="lead2">${L.refName ? `Hi ${esc(String(L.refName).split(" ")[0])}, ` : ""}${full} has applied to volunteer with the Potsdam Volunteer Rescue Squad and listed you as a reference. Your answers go only to the Membership Committee; ${f} won't see them.</p>
     <form class="applybody" id="refForm" novalidate>
       <input type="text" id="rf-hp" tabindex="-1" autocomplete="off" aria-hidden="true" class="hp">
       ${qs.slice(0, 4).map(([k, label, req]) => area(k, label, req)).join("")}
@@ -65,7 +66,7 @@ function render(){
       <div class="aperr" id="rfErr" role="alert" hidden></div>
       <div class="applyfoot"><span></span><button type="submit" class="btn primary" ${R.sending ? "disabled" : ""}>${R.sending ? "Sending…" : "Send reference"}</button></div>
     </form>
-    <p class="applyfine">Fields marked <i>*</i> are required. Your answers are kept on this device until you send them. Questions? <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p>`);
+    <p class="applyfine">Required fields are marked <i>*</i>. Draft saves on this device. <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p>`);
 }
 
 function problems(){

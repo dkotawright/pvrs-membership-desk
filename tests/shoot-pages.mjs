@@ -4,10 +4,10 @@ import fs from "node:fs"; import path from "node:path";
 globalThis.WX = JSON.parse(fs.readFileSync(new URL("./wx-sample.json", import.meta.url), "utf8"));
 const PUB = new URL("../public/", import.meta.url).pathname, OUT = new URL("./shots/", import.meta.url).pathname; fs.mkdirSync(OUT, { recursive: true });
 const MOCK = fs.readFileSync(new URL("./mockfb.js", import.meta.url), "utf8");
-const TYPES = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".png": "image/png", ".webmanifest": "application/manifest+json" };
+const TYPES = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webmanifest": "application/manifest+json" };
 const pre = process.argv[2] || "page", errs = [];
 const b = await chromium.launch();
-for (const [url, w, h, dark, who] of [["/signin", 1440, 900, false, "staff"], ["/signin", 1440, 900, false, "applicant"], ["/signin", 390, 844, false, "staff"], ["/", 1440, 900, false, ""]]) {
+for (const [url, w, h, dark, who] of [["/signin", 1440, 900, false, "staff"], ["/signin", 1440, 900, false, "applicant"], ["/signin", 390, 844, false, "staff"], ["/", 1440, 900, false, ""], ["/apply", 1440, 900, false, ""], ["/", 390, 844, false, ""]]) {
   const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: dark ? "dark" : "light" });
   await ctx.addInitScript(x => { window.__MOCK_USER = null; try { if (x) localStorage.setItem("pvrsWho", x); } catch {} }, who);
   await ctx.route("**/*", r => { const u = new URL(r.request().url());

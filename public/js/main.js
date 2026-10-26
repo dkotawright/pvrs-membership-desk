@@ -232,9 +232,9 @@ async function startFor(user){
   const email = lower(user.email);
   try {
     if (email === lower(PAPERWORK_EMAIL)) { homeView = "vault"; show("vault"); return startVault(email); }
-    if (email === lower(OWNER_EMAIL)) { homeView = "app"; show("app"); return startDesk({ email, role: "admin", owner: true, name: user.displayName || "" }); }
+    if (email === lower(OWNER_EMAIL)) { homeView = "app"; show("app"); return startDesk({ email, role: "admin", owner: true, name: user.displayName || "", photo: user.photoURL || "" }); }
     const staff = await getDoc(doc(db, "staff", email));
-    if (staff.exists()) { homeView = "app"; show("app"); return startDesk({ email, role: staff.data().role === "admin" ? "admin" : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
+    if (staff.exists()) { homeView = "app"; show("app"); return startDesk({ email, role: staff.data().role === "admin" ? "admin" : "member", owner: false, name: staff.data().name || user.displayName || "", photo: user.photoURL || "" }); }
     const p = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1)));
     if (!p.empty) { homeView = "portal"; show("portal"); return startPortal(p.docs[0].id, email); }
     const req = await getDoc(doc(db, "accessRequests", email));

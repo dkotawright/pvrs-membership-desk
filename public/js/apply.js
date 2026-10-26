@@ -10,13 +10,13 @@ const DRAFT_KEY = "pvrsApplyDraft";
 const STATES = "NY AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split(" ");
 const CERTS = ["EMT", "AEMT", "Paramedic", "EMR / CFR", "CPR / BLS", "First Aid", "Nurse (RN / LPN)", "Firefighter"];
 const STEPS = [
-  { key: "you", title: "About you" },
-  { key: "edu", title: "Education" },
-  { key: "exp", title: "EMS experience" },
-  { key: "work", title: "Employment" },
-  { key: "bg", title: "Background" },
-  { key: "refs", title: "References" },
-  { key: "sign", title: "Review & sign" },
+  { key: "you", title: "About you", blurb: "Name, contact, addresses, driver's license and membership type." },
+  { key: "edu", title: "Education", blurb: "High school, college and any other training." },
+  { key: "exp", title: "EMS experience", blurb: "Certifications and any other public safety agencies." },
+  { key: "work", title: "Employment", blurb: "Recent jobs, community service and other work." },
+  { key: "bg", title: "Background", blurb: "A required honesty question about convictions." },
+  { key: "refs", title: "References", blurb: "Three or four people who know you well (not relatives)." },
+  { key: "sign", title: "Review & sign", blurb: "Check your answers, then sign the release." },
 ];
 const RELEASE = [
   "I hereby make application for membership to the Potsdam Volunteer Rescue Squad, Incorporated. I understand that if accepted I will serve as a probationary member for the applicable time period of three (3) months without the right to franchise.",
@@ -215,24 +215,24 @@ function render(){
   if (A.done) {
     R.innerHTML = `<div class="applycard glass done"><div class="donemark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <h1>Application received</h1>
-      <p class="lead2">Thank you, ${esc(A.done.first)}. Your application is on its way to the PVRS Membership Committee.</p>
-      <ol class="nextsteps"><li><b>Watch your email</b> (${esc(A.done.email)}). We'll send a link to your applicant portal, where you can follow your application, upload documents and book your interview.</li>
-        <li><b>Give your references a heads-up.</b> We contact them by email, and we need to hear from all of them before the board meeting.</li>
-        <li><b>Questions?</b> Email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a>.</li></ol>
+      <p class="lead2">Thank you, ${esc(A.done.first)}. It's with the Membership Committee.</p>
+      <ol class="nextsteps"><li><b>Watch your email</b> at ${esc(A.done.email)} for a link to your applicant portal.</li>
+        <li><b>Tell your references</b> we'll email them — we need three replies before the board.</li>
+        <li><b>Questions?</b> <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></li></ol>
       <a class="btn primary" href="/" data-nav="/">Back to the start page</a></div>`;
     return;
   }
   const n = STEPS.length, st = STEPS[A.step];
   R.innerHTML = `<div class="applycard glass${settled ? " noanim" : ""}">
-    <div class="applyhead"><div><div class="eyebrow">Membership application · Step ${A.step + 1} of ${n}</div><h1>${esc(st.title)}</h1></div>
+    <div class="applyhead"><div><div class="eyebrow">Membership application · Chapter ${A.step + 1} of ${n}</div><h1>${esc(st.title)}</h1>${st.blurb ? `<p class="applyblurb">${esc(st.blurb)}</p>` : ""}</div>
       <span class="saved" id="apSaved">Saved on this device</span></div>
-    <ol class="apsteps" aria-label="Progress">${STEPS.map((s, i) => `<li class="${i < A.step ? "done" : i === A.step ? "cur" : ""}"><button type="button" data-goto="${i}" ${i > A.maxStep ? "disabled" : ""} aria-current="${i === A.step ? "step" : "false"}"><span>${i + 1}</span><em>${esc(s.title)}</em></button></li>`).join("")}</ol>
+    <ol class="apsteps" aria-label="Progress">${STEPS.map((s, i) => `<li class="${i < A.step ? "done" : i === A.step ? "cur" : ""}"><button type="button" data-goto="${i}" ${i > A.maxStep ? "disabled" : ""} aria-current="${i === A.step ? "step" : "false"}" title="${esc(s.title)}"><span>${i + 1}</span><em>${esc(s.title)}</em></button></li>`).join("")}</ol>
     <form class="applybody" id="applyForm" novalidate>${stepHTML()}
       <div class="aperr" id="apErr" role="alert" hidden></div>
       <div class="applyfoot">${A.step ? `<button type="button" class="btn" data-back>← Back</button>` : `<span></span>`}
         <button type="submit" class="btn primary">${A.step === n - 1 ? "Submit application" : "Continue →"}</button></div>
     </form>
-    <p class="applyfine">Fields marked <i>*</i> are required. Your answers are kept on this device until you submit. Questions? <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p></div>`;
+    <p class="applyfine">Required fields are marked <i>*</i>. Draft saves on this device. <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p></div>`;
 }
 function showErrors(list){
   const box = $("#apErr");
@@ -278,7 +278,7 @@ function bind(){
     const el = e.target.closest("[data-p]"); if (!el) return;
     set(A.data, el.dataset.p, el.type === "checkbox" ? el.checked : el.value);
     if (el.type === "checkbox") render();
-    const sv = $("#apSaved"); if (sv) sv.textContent = "Saving…"; save(); setTimeout(() => { const s2 = $("#apSaved"); if (s2) s2.textContent = "Saved on this device"; }, 500);
+    const sv = $("#apSaved"); if (sv) { sv.textContent = "Saving…"; sv.classList.remove("pulse"); } save(); setTimeout(() => { const s2 = $("#apSaved"); if (s2) { s2.textContent = "Saved on this device"; s2.classList.add("pulse"); } }, 500);
   });
   R.addEventListener("change", e => { if (e.target.matches("select[data-p]")) { set(A.data, e.target.dataset.p, e.target.value); save(); if (e.target.dataset.p === "person.dlState") render(); } });
   R.addEventListener("click", e => {

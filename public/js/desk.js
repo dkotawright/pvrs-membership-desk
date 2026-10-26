@@ -248,9 +248,9 @@ function paintList(){
   $("#rosterCount").textContent = S.ready ? (vis.length === rows.length ? String(rows.length) : `${vis.length} of ${rows.length}`) : "";
   const L = $("#list");
   if (!S.sel) renderOverview();
-  if (!S.ready) { L.innerHTML = `<div class="empty"><span class="spin" aria-hidden="true"></span><h3>Loading roster…</h3></div>`; return; }
-  if (!rows.length) { L.innerHTML = `<div class="empty"><h3>No applicants yet</h3>When an application comes in, click <strong>New applicant</strong> or press <kbd>N</kbd> to start their file.</div>`; return; }
-  if (!vis.length) { L.innerHTML = `<div class="empty"><h3>${S.filter==="board"&&!q?"Board queue is empty":"No matches"}</h3>${S.filter==="board"&&!q?"Applicants show up here once the committee approves them.":q?`Nothing matches “${esc(S.q.trim())}”${S.filter!=="all"?` in ${esc(filterLabel(S.filter))}`:""}.`:"Try a different stage."}</div>`; return; }
+  if (!S.ready) { L.innerHTML = `<div class="skel" aria-busy="true" aria-label="Loading roster">${Array.from({ length: 6 }, () => `<div class="skel-row"><span class="skel-av"></span><span class="skel-stack"><span class="skel-line w80"></span><span class="skel-line w60"></span><span class="skel-line w40"></span></span></div>`).join("")}</div>`; return; }
+  if (!rows.length) { L.innerHTML = `<div class="empty"><h3>No applicants yet</h3><p>When an application comes in, start their file here.</p>${S.canEdit ? `<button class="btn primary empty-cta" type="button" data-cmd="new">New applicant</button>` : ""}</div>`; return; }
+  if (!vis.length) { L.innerHTML = `<div class="empty"><h3>${S.filter==="board"&&!q?"Board queue is empty":"No matches"}</h3><p>${S.filter==="board"&&!q?"People show up here once the committee approves them.":q?`Nothing matches “${esc(S.q.trim())}”${S.filter!=="all"?` in ${esc(filterLabel(S.filter))}`:""}.`:"Try a different stage."}</p>${S.filter==="board"&&!q?`<button class="btn empty-cta" type="button" data-filter="screen">Open Screening</button>`:q?`<button class="btn empty-cta" type="button" data-filter="all">Clear filters</button>`:""}</div>`; return; }
   L.innerHTML = vis.map(({a,p}) => {
     const d = daysSince(get(a,"app.received"));
     const iv = a._booked ? `${slotDay(a._booked.start)} · ${slotTime(a._booked.start)}` : get(a,"sched.scheduled") ? `${fmtDate(get(a,"sched.scheduled"))}${get(a,"sched.time")?" · "+get(a,"sched.time"):""}` : "";
@@ -330,7 +330,7 @@ function todoCard(){
       <button class="todomain" type="button" data-todo="${esc(x.id)}" data-totab="${esc(x.tab)}"><span class="av" style="--stage-c:${stageVar(view(x.a).stage)}" aria-hidden="true">${esc(initials(x.a.name))}</span>
         <span class="ot"><b>${esc(x.text)}</b><small>${esc(x.a.name || "Applicant")}${x.sub ? " · " + esc(x.sub) : ""}</small></span></button>
       ${x.act && S.canEdit ? `<button class="btn small primary" type="button" data-todoact="${esc(x.act)}" data-id="${esc(x.id)}">${esc(x.btn)}</button>` : `<span class="when">${x.age ? x.age + "d" : ""}</span>`}</div>`).join("")
-    : `<div class="oempty">Nothing needs you right now. 🎉</div>`}
+    : `<div class="oempty">All caught up.</div>`}
     ${items.length > 6 ? `<button class="oitem showall" type="button" data-cmd="todoall">${S.todoAll ? "Show fewer" : `Show all ${items.length}`}</button>` : ""}</div></section>`;
 }
 
@@ -382,7 +382,7 @@ function renderOverview(){
   $("#app").classList.remove("open");
   $("#overviewBtn").classList.add("on");
   const keepScroll = D.querySelector(".ov")?.scrollTop || 0;
-  if (!S.ready) { D._ovHTML = ""; D.innerHTML = `<div class="empty"><span class="spin" aria-hidden="true"></span><h3>Loading…</h3></div>`; return; }
+  if (!S.ready) { D._ovHTML = ""; D.innerHTML = `<div class="ov"><div class="ovin"><div class="skel" aria-busy="true" aria-label="Loading overview">${Array.from({ length: 4 }, () => `<div class="skel-row"><span class="skel-av"></span><span class="skel-stack"><span class="skel-line w60"></span><span class="skel-line w80"></span></span></div>`).join("")}</div></div></div>`; return; }
   const rows = sorted(), now = Date.now(), wk = now + 7*864e5;
   const c = S.counts || {};
   const inProc = rows.filter(r => IN_PROCESS.includes(r.p.stage));
@@ -394,11 +394,11 @@ function renderOverview(){
     return oitem(a, `<b>${esc(d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}))}</b>${esc(slotTime(s.start))}`, esc([a.type, s.location].filter(Boolean).join(" · ") || "Interview")); }).join("");
   // One strip of stage counts (replaces the separate count tiles and pipeline bar); each filters the list.
   const stage = (k, label, sub) => `<button class="stg" type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}"><span class="v">${c[k] || 0}</span><span class="k">${label}</span>${sub ? `<span class="s">${sub}</span>` : ""}</button>`;
-  const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.canEdit ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>`;
+  const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.canEdit ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.${S.canEdit ? `<button class="btn small" type="button" data-cmd="slots">Add interview times</button>` : ""}</div>`}</div></section>`;
   const html = `<div class="ov"><div class="ovin">
     <div class="ovhead"><div><div class="eyebrow">${esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))}</div>
       <h2>${greet}${S.name ? ", " + esc(first(S.name)) : ""}</h2>
-      <p>${rows.length ? `${inProc.length} applicant${inProc.length===1?"":"s"} in process${S.admin && c.board ? `, ${c.board} waiting on the board` : ""}${thisWeek ? `, ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet."}</p></div>
+      <p>${rows.length ? `${inProc.length} in process${S.admin && c.board ? ` · ${c.board} on the board queue` : ""}${thisWeek ? ` · ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet — start one when a form comes in."}</p></div>
       <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
     <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
     ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
@@ -495,7 +495,7 @@ function paintDetail(){
         </div>` : ""}</div>
       ${S.admin?`<div class="prog" id="dProg"></div>`:""}
     </div>
-    <div class="dinner" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${viewOnlyNote(S.tab)}${tabHTML(S.tab)}${signHTML(S.tab)}</div></div>
+    <div class="dinner tab-in" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${viewOnlyNote(S.tab)}${tabHTML(S.tab)}${signHTML(S.tab)}</div></div>
     <nav class="tabdock" aria-label="Applicant file sections"><div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="dpanel" data-tab="${k}" aria-selected="${S.tab===k}" title="${l} (${i+1})"><span class="tl-long">${l}</span><span class="tl-short" aria-hidden="true">${TAB_SHORT[k] || l}</span></button>`).join("")}</div>
       <span class="save" id="saveState" role="status"></span></nav>`;
   stackCols($("#dbody"));
@@ -924,7 +924,7 @@ function openInbox(){
     <div class="ios">${threads.length ? threads.map(t => { const a = S.apps.get(t.id);
       return `<button class="oitem" type="button" data-thread="${esc(t.id)}" style="width:100%"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span>
         <span class="ot"><b>${esc(a.name || "Applicant")}${t.unread ? ` <span class="badge wait">${t.unread} new</span>` : ""}</b><small>${t.last.from === "staff" ? "You: " : ""}${esc(t.last.text.slice(0, 90))}</small></span>
-        <span class="when">${esc(ago(t.last.at))}</span></button>`; }).join("") : `<div class="oempty">No messages yet. Applicants can send questions from their portal.</div>`}</div>
+        <span class="when">${esc(ago(t.last.at))}</span></button>`; }).join("") : `<div class="oempty">No messages yet.</div>`}</div>
     <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`, true);
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const t = e.target.closest("[data-thread]"); if (t) { closeModal(); select(t.dataset.thread); switchTab("msgs"); } };
 }
@@ -1265,7 +1265,7 @@ async function deleteApplicant(id){
 
 /* ---------- events ---------- */
 const prefs = { get(k){ try { return localStorage.getItem("pvrsDesk." + k); } catch { return null; } }, set(k, v){ try { localStorage.setItem("pvrsDesk." + k, v); } catch {} } };
-function switchTab(k){ flushAll(); if (S.ivMode && k !== "iv") exitIvMode(); S.tab = k; renderDetail(); const b = $("#dbody"); if (b) b.scrollTop = 0; }
+function switchTab(k){ flushAll(); if (S.ivMode && k !== "iv") exitIvMode(); S.tab = k; renderDetail(); const b = $("#dbody"), p = $("#dpanel"); if (b) b.scrollTop = 0; if (p) { p.classList.remove("tab-in"); void p.offsetWidth; p.classList.add("tab-in"); } }
 /* ---------- celebrations ---------- */
 // A short confetti burst in squad colours (skipped when the system asks for reduced motion) plus a toast.
 function celebrate(msg){
@@ -1429,7 +1429,7 @@ function openMore(){
   const tools = [["newBtn", "New applicant"], ["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
-  const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
+  const M = openModal(`<div class="moreme"><span class="av${S.photo ? " photo" : ""}" aria-hidden="true"${S.photo ? ` style="background-image:url(&quot;${esc(S.photo)}&quot;)"` : ""}>${S.photo ? "" : esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
     <div class="ios morelist">${tools.map(([id, label]) => `<button class="row" type="button" data-more="${id}"><span class="mi">${icon(id)}</span><span class="lbl">${esc(label)}</span><span class="chev" aria-hidden="true">›</span></button>`).join("")}
       <button class="row" type="button" data-signout><span class="mi">${$(".me [data-signout] svg")?.outerHTML || ""}</span><span class="lbl" style="color:var(--s-dec)">Sign out</span></button></div>
     <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`);
@@ -1492,8 +1492,8 @@ function onKeys(e){
   const modalOpen = !$("#modal").hidden;
   if (e.isComposing || e.keyCode === 229) return;
   const tg = e.target, typing = tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName));
-  const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? e.metaKey : e.ctrlKey;
-  if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
+  // ⌘K (Mac) and Ctrl+K (Windows/Linux) both open the palette — accept either so tests and every desk work.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
     e.preventDefault(); if (modalOpen) return;
     return openPalette();
   }
@@ -1563,7 +1563,7 @@ function bindEvents(){
       if (k === "invite") return inviteToPortal(id);
       if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
       return; }
-    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); return; }
+    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); if (cmd.dataset.cmd === "new") return openNew(); return; }
     const om = t.closest("[data-openmsg]"); if (om) { select(om.dataset.openmsg); switchTab("msgs"); return; }
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
@@ -1793,7 +1793,7 @@ function packetPage(a){
     <table class="vote"><tr><th>Meeting date</th><td>${g("board.date") && g("board.date") >= today() ? esc(longDate(g("board.date"))) : ""}</td><th>Motion</th><td></td><th>Second</th><td></td></tr>
       <tr><th>For</th><td></td><th>Against</th><td></td><th>Abstain</th><td></td></tr></table>
     <p class="pk-res">Result: ☐ Approved &nbsp;&nbsp; ☐ Tabled &nbsp;&nbsp; ☐ Denied</p>
-    <footer>Potsdam Volunteer Rescue Squad · Confidential: for the Board of Directors only · Printed ${esc(new Date().toLocaleDateString())}</footer>
+    <footer><span class="pk-mark">Potsdam Volunteer Rescue Squad</span><span>Confidential · Board of Directors only · Printed ${esc(new Date().toLocaleDateString())}</span></footer>
   </section>`;
 }
 function printPacket(list){
@@ -2130,8 +2130,8 @@ function startIdleLock(){
 }
 
 /* ---------- start ---------- */
-export function startDesk({ email, role, owner, name }){
-  S.me = email; S.admin = role === "admin"; S.owner = !!owner; S.canEdit = !!owner; S.name = name || "";
+export function startDesk({ email, role, owner, name, photo }){
+  S.me = email; S.admin = role === "admin"; S.owner = !!owner; S.canEdit = !!owner; S.name = name || ""; S.photo = photo || "";
   S.sort = SORTS[prefs.get("sort")] ? prefs.get("sort") : "stage";
   bindEvents(); renderList(); renderDetail();
   const conn = $("#conn");
@@ -2139,7 +2139,9 @@ export function startDesk({ email, role, owner, name }){
   conn.classList.add("on");
   $("#meName").textContent = S.name || email;
   $("#meName").title = email;
-  $("#meAv").textContent = initials(S.name || email);
+  const meAv = $("#meAv");
+  if (S.photo) { meAv.textContent = ""; meAv.classList.add("photo"); meAv.style.backgroundImage = `url("${S.photo}")`; }
+  else { meAv.textContent = initials(S.name || email); meAv.classList.remove("photo"); meAv.style.backgroundImage = ""; }
   if (S.owner) $("#settingsBtn").hidden = false;
   if (S.canEdit) $("#slotsBtn").hidden = false;
   $("#newBtn").hidden = !S.canEdit; paintMnav();
