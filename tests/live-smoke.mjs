@@ -3,7 +3,7 @@ import { chromium } from "playwright";
 const BASE = "https://pvrs-membership.web.app", errs = [], notes = [];
 const b = await chromium.launch();
 for (const [path, w, check] of [
-  ["/", 1440, async p => /volunteer EMS/.test(await p.locator("#home h1").textContent()) && await p.locator(".homecard.featured").isVisible()],
+  ["/", 1440, async p => /volunteer EMS/.test(await p.locator("#home h1").textContent()) && await p.locator(".hero-apply.featured").isVisible()],
   ["/apply", 1440, async p => (await p.locator("#applyForm").count()) === 1 && /About you/.test(await p.locator("#applyRoot h1").textContent())],
   ["/signin", 1440, async p => (await p.locator("#googleBtn").count()) === 1 && /Good (morning|afternoon|evening)/.test(await p.locator("#greet").textContent())],
   ["/signin", 390, async p => (await p.locator(".joincta").isVisible()) && (await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 1],

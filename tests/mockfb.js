@@ -56,7 +56,16 @@ function matches(target, path){
 }
 function runQuery(target){
   let list = [...M.docs.keys()].filter(p => matches(target, p)).sort();
-  for (const c of target.cons || []) { if (c.f) list = list.filter(p => (M.docs.get(p) || {})[c.f] === c.v); if (c.limit) list = list.slice(0, c.limit); }
+  for (const c of target.cons || []) {
+    if (c.f) {
+      list = list.filter(p => {
+        const val = (M.docs.get(p) || {})[c.f];
+        if (c.op === "array-contains") return Array.isArray(val) && val.includes(c.v);
+        return val === c.v;
+      });
+    }
+    if (c.limit) list = list.slice(0, c.limit);
+  }
   const docs = list.map(snapDoc);
   return { docs, empty: !docs.length, size: docs.length, forEach: f => docs.forEach(f) };
 }
@@ -119,7 +128,22 @@ if (!M.seeded) {
   put("portal/a2", { email: "marcus.bell@example.com", name: "Marcus Bell", firstName: "Marcus", type: "Associate", steps: [], docs: [], refs: [{ slot: 1, name: "Coach Dan Price", received: true }], bookingOpen: false });
   put("settings/main", { signature: "Dkota Wright, NREMT", docsEmail: "membership@pvrs.org" });
   put("staff/admin@pvrs.org", { role: "admin", name: "Casey Admin" });
-  put("staff/alex@pvrs.org", { role: "member", name: "Alex Moore" });
+  put("staff/alex@pvrs.org", { role: "member", name: "Alex Moore", schedule: true, portable: "14", cleared: ["EMT", "Driver"], memberType: "Regular",
+    credentials: [
+      { key: "emt", label: "NYS / NREMT EMT", expires: "2027-06-01" },
+      { key: "aemt", label: "NYS AEMT", expires: "" },
+      { key: "medic", label: "NYS / NREMT Paramedic", expires: "" },
+      { key: "cpr", label: "CPR / BLS", expires: "2027-01-15" },
+      { key: "dl", label: "Driver's license", expires: "2028-03-01" },
+    ] });
+  put("staff/casey.driver@pvrs.org", { role: "member", name: "Casey Driver", schedule: true, portable: "7", cleared: ["Driver", "Driver Trainer"], memberType: "Driver Only",
+    credentials: [
+      { key: "emt", label: "NYS / NREMT EMT", expires: "" },
+      { key: "aemt", label: "NYS AEMT", expires: "" },
+      { key: "medic", label: "NYS / NREMT Paramedic", expires: "" },
+      { key: "cpr", label: "CPR / BLS", expires: "2027-04-01" },
+      { key: "dl", label: "Driver's license", expires: "2029-01-01" },
+    ] });
   put("refLinks/linkGoodToken123456789", { appId: "a1", slot: 1, applicant: "Georgia Thurmond", first: "Georgia", refName: "Ann Lee", createdAt: now - day, expiresAt: now + 59 * day, by: "dkota@pvrs.org" });
   put("refLinks/linkOldToken1234567890", { appId: "a1", slot: 2, applicant: "Georgia Thurmond", first: "Georgia", refName: "Sam Ortiz", createdAt: now - 90 * day, expiresAt: now - day, by: "dkota@pvrs.org" });
   put("refLinks/linkUsedToken12345678", { appId: "a1", slot: 2, applicant: "Georgia Thurmond", first: "Georgia", refName: "Sam Ortiz", createdAt: now - 9 * day, expiresAt: now + 50 * day, by: "dkota@pvrs.org", submittedAt: now - day });

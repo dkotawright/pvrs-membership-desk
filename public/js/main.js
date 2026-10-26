@@ -9,9 +9,8 @@ import { startApply } from "./apply.js";
 import { startVault } from "./vault.js";
 import { startReference } from "./reference.js";
 import { startWeather } from "./weather.js";
-
 const LINK_KEY = "pvrsEmailForSignIn";
-const VIEWS = ["loading","home","apply","signin","confirm","verify","noaccess","app","portal","vault","reference"];
+const VIEWS = ["loading","home","apply","signin","confirm","verify","noaccess","app","portal","vault","reference","schedule"];
 const PUBLIC = ["home","apply","signin","confirm"];
 const show = id => {
   VIEWS.forEach(v => { $("#" + v).hidden = v !== id; });
@@ -232,9 +231,21 @@ async function startFor(user){
   const email = lower(user.email);
   try {
     if (email === lower(PAPERWORK_EMAIL)) { homeView = "vault"; show("vault"); return startVault(email); }
-    if (email === lower(OWNER_EMAIL)) { homeView = "app"; show("app"); return startDesk({ email, role: "admin", owner: true, name: user.displayName || "" }); }
+    if (email === lower(OWNER_EMAIL)) { homeView = "app"; show("app"); return startDesk({ email, role: "admin", owner: true, name: user.displayName || "", photo: user.photoURL || "", schedule: true, scheduler: true }); }
     const staff = await getDoc(doc(db, "staff", email));
-    if (staff.exists()) { homeView = "app"; show("app"); return startDesk({ email, role: staff.data().role === "admin" ? "admin" : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
+    if (staff.exists()) {
+      const sd = staff.data();
+      homeView = "app"; show("app");
+      return startDesk({
+        email,
+        role: sd.role === "admin" ? "admin" : "member",
+        owner: false,
+        name: sd.name || user.displayName || "",
+        photo: user.photoURL || "",
+        schedule: !!sd.schedule,
+        scheduler: !!sd.scheduler || sd.role === "admin",
+      });
+    }
     const p = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1)));
     if (!p.empty) { homeView = "portal"; show("portal"); return startPortal(p.docs[0].id, email); }
     const req = await getDoc(doc(db, "accessRequests", email));

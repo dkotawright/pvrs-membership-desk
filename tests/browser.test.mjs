@@ -79,7 +79,8 @@ try {
     const { ctx, page } = await open(browser, { url: "/ref/linkGoodToken123456789", user: null, w: 390, h: 844 });
     const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     if (over > 1) fail("reference form scrolls sideways on a phone"); else ok("reference form fits a phone");
-    await page.locator(".rate").first().scrollIntoViewIfNeeded(); await snap(page, "04-ref-phone");
+    // Phone uses a one-question wizard; just capture the visible card (don't hunt for .rate — it's on a later step).
+    await snap(page, "04-ref-phone");
     await ctx.close();
   }
   // ---- the owner sends the link, the answers come back
@@ -270,9 +271,12 @@ try {
     const { ctx, page } = await open(browser, { w: 390, h: 844 });
     if (await page.locator(".app > .side").isVisible() || await page.locator("#mnav").isHidden()) fail("phone: sidebar strip still showing / no bottom menu"); else ok("phone: bottom menu replaces the icon strip");
     const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
-    if (items.join() !== "list,ov,msgs,more") fail("phone menu items: " + items); else ok("phone menu: Applicants, Overview, Messages, More (no big +)");
+    if (items.join() !== "duty,list,ov,msgs,more") fail("phone menu items: " + items); else ok("phone menu: Duty, Applicants, Overview, Messages, More");
+    await page.click('#mnav [data-m="duty"]'); await wait(page, 600);
+    if (await page.locator("#schedule").isHidden() || !(await page.locator("#schedule").textContent()).includes("Duty schedule")) fail("phone Duty didn't open"); else ok("phone: Duty opens the crew schedule");
+    if (!(await page.locator('#mnav [data-m="duty"]').evaluate(b => b.classList.contains("on")))) fail("Duty not highlighted in menu"); else ok("phone: Duty stays selected in the floating menu");
     await page.click('#mnav [data-m="ov"]'); await wait(page, 500);
-    if (await page.locator(".ov").isHidden() || !/Good (morning|afternoon|evening)/.test(await page.locator(".ov").textContent())) fail("phone overview not shown"); else ok("phone: Overview shows the dashboard");
+    if (await page.locator("#schedule").isVisible() || await page.locator(".ov").isHidden() || !/Good (morning|afternoon|evening)/.test(await page.locator(".ov").textContent())) fail("phone overview not shown after Duty"); else ok("phone: Overview leaves Duty and shows the dashboard");
     await page.click('#mnav [data-m="list"]'); await wait(page, 500);
     if (await page.locator("#app").evaluate(a => a.classList.contains("ovopen"))) fail("Applicants didn't close overview"); else ok("phone: Applicants returns to the list");
     await page.click('#mnav [data-m="more"]'); await wait(page, 300);
@@ -288,8 +292,73 @@ try {
   }
   {
     const { ctx, page } = await open(browser, { w: 390, h: 844, user: { email: "admin@pvrs.org", displayName: "Casey" } });
+    const adminItems = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
+    if (adminItems.includes("duty")) fail("admin without schedule β still sees Duty"); else ok("phone: Duty stays hidden until schedule β is on");
     await page.click('#mnav [data-m="more"]'); await wait(page, 300);
     if (/New applicant/.test(await page.locator("#modal").textContent())) fail("admin sees New applicant in More"); else ok("phone: only the owner gets New applicant (in More)");
+    await ctx.close();
+  }
+  { // schedule members land on Duty; membership is background
+    const { ctx, page } = await open(browser, { w: 390, h: 844, user: { email: "alex@pvrs.org", displayName: "Alex" } });
+    await wait(page, 900);
+    if (await page.locator("#schedule").isHidden() || !(await page.locator("body").evaluate(b => b.classList.contains("on-duty")))) fail("member didn't open Duty first"); else ok("phone: schedule members open on Duty crew");
+    const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
+    if (!items.includes("duty") || !items.includes("list") || !items.includes("msgs")) fail("member menu: " + items); else ok("phone: members still reach Applicants and Messages from the floating menu");
+    const dutyTxt = await page.locator("#schedule").textContent();
+    if (!/Your hours/.test(dutyTxt) || !/Your credentials/.test(dutyTxt)) fail("member missing private hours/creds labels"); else ok("phone: members see only their own hours and credentials labels");
+    if (!/Crew roster/.test(dutyTxt) || !/Portable 14/.test(dutyTxt) || !/Casey Driver/.test(dutyTxt) || !/Portable 7/.test(dutyTxt)) fail("roster: " + dutyTxt.slice(0, 200)); else ok("phone: roster lists crew names and portable numbers");
+    if (/Crew settings/.test(dutyTxt) || await page.locator('[data-sc="crew"]').count()) fail("member sees Crew settings"); else ok("phone: members do not get Crew settings");
+    if (/Attendant/.test(dutyTxt)) fail("Attendant still shown"); else ok("phone: Attendant position removed");
+    await page.click('#mnav [data-m="msgs"]'); await wait(page, 400);
+    if (!/Crew messages/.test(await page.locator("#modal").textContent()) || !/Casey Driver/.test(await page.locator("#modal").textContent())) fail("crew inbox missing"); else ok("phone: Messages opens crew inbox (not applicants)");
+    await page.click('#modal [data-crewchat="casey.driver@pvrs.org"]'); await wait(page, 500);
+    if (!/Casey Driver/.test(await page.locator("#modal h3").textContent())) fail("crew chat didn't open"); else ok("phone: can open a chat with another member");
+    await page.fill("#crewReply", "Can you cover evening Friday?"); await page.click("[data-crewsend]"); await wait(page, 700);
+    const threadId = "alex@pvrs.org__casey.driver@pvrs.org";
+    const sent = await page.evaluate(id => {
+      const thr = window.__mock.docs.get("crewThreads/" + id);
+      const msgs = [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("crewThreads/" + id + "/messages/")).map(([, v]) => v);
+      return { thr, msgs };
+    }, threadId);
+    if (!sent.thr || sent.thr.lastText !== "Can you cover evening Friday?" || !sent.msgs.some(m => m.text.includes("Friday") && m.by === "alex@pvrs.org"))
+      fail("crew message not saved: " + JSON.stringify(sent)); else ok("crew DM is saved on the thread");
+    await page.click("#modal [data-x]"); await wait(page, 200);
+    await page.click('#mnav [data-m="list"]'); await wait(page, 500);
+    if (await page.locator("#schedule").isVisible() || await page.locator("#app").isHidden()) fail("member couldn't leave Duty for Applicants"); else ok("phone: members can leave Duty for the membership list");
+    await ctx.close();
+  }
+  { // owner: Crew settings + eSchedule calendar (no publish)
+    const { ctx, page } = await open(browser, { w: 1280, h: 820 });
+    await page.click("#schedBtn"); await wait(page, 700);
+    const t = await page.locator("#schedule").textContent();
+    if (!/Crew settings/.test(t) || !/Crew roster/.test(t)) fail("owner duty missing crew tools"); else ok("owner Duty shows Crew settings and roster");
+    if (/Publish shifts/.test(t)) fail("publish still shown"); else ok("no Publish button — self-serve calendar");
+    if (!(await page.locator(".daycell[data-day]").count())) fail("week calendar days missing"); else ok("week calendar shows clickable days");
+    await page.click('[data-sc="view-month"]'); await wait(page, 300);
+    if (!(await page.locator(".mcell[data-day]").count())) fail("month grid missing"); else ok("month calendar view works");
+    await page.click('[data-sc="view-week"]'); await wait(page, 200);
+    await page.locator(".daycell[data-day]").first().click(); await wait(page, 400);
+    const day = await page.locator("#modal").textContent();
+    if (!/Day/.test(day) || !/Evening/.test(day) || !/EMT/.test(day) || !/Driver Trainer/.test(day) || /Attendant/.test(day)) fail("day board: " + day.slice(0, 200)); else ok("day board lists Day/Evening slots for EMT · AEMT · Paramedic · Driver · Driver Trainer");
+    await page.screenshot({ path: path.join(OUT, "16-duty-day-board.png") });
+    await page.click("#modal [data-x]"); await wait(page, 200);
+    await page.click('[data-sc="crew"]'); await wait(page, 400);
+    const crew = await page.locator("#modal").textContent();
+    if (!/Add to duty crew/.test(crew) || !/Alex Moore/.test(crew) || !/Portable 14/.test(crew) || !/Casey Driver/.test(crew)) fail("crew settings: " + crew.slice(0, 180)); else ok("Crew settings lists people with portables");
+    await page.screenshot({ path: path.join(OUT, "16-duty-crew-settings.png") });
+    await ctx.close();
+  }
+  { // member signs up from the calendar for a cleared position
+    const { ctx, page } = await open(browser, { w: 390, h: 844, user: { email: "alex@pvrs.org", displayName: "Alex" } });
+    await wait(page, 900);
+    // Pick a future day in the week grid (skip past evenings when possible).
+    const dayKey = await page.locator(".daycell[data-day]").last().getAttribute("data-day");
+    await page.locator(`.daycell[data-day="${dayKey}"]`).click(); await wait(page, 400);
+    const claim = page.locator('#modal [data-claim][data-pos="EMT"]').first();
+    if (!(await claim.count())) fail("no EMT Sign up for Alex on " + dayKey); else ok("cleared member sees Sign up on open EMT slots");
+    await claim.click(); await wait(page, 800);
+    const saved = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k, v]) => k.startsWith("dutyShifts/") && v.assignee === "alex@pvrs.org"));
+    if (!saved.length || saved[0][1].position !== "EMT") fail("signup not saved: " + JSON.stringify(saved)); else ok("calendar signup writes a filled duty shift for the member");
     await ctx.close();
   }
   for (const w of [360, 390]) { // the file's section bar fits a phone without scrolling (Checks = Screening + References)
@@ -355,6 +424,11 @@ try {
   // ---- Interview mode
   for (const [w, h, who] of [[1440, 900, OWNER], [390, 844, { email: "alex@pvrs.org", displayName: "Alex" }]]) {
     const { ctx, page } = await open(browser, { w, h, user: who });
+    await wait(page, 800);
+    // Schedule members auto-open Duty; leave it so the membership file is reachable.
+    if (await page.locator("#schedule").isVisible()) {
+      await page.click('#mnav [data-m="list"]'); await wait(page, 500);
+    }
     await pickApplicant(page, "Georgia Thurmond");
     await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
     await page.locator('[data-act="ivmode"]').click(); await wait(page, 400);
