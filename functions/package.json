@@ -1,7 +1,7 @@
 {
   "name": "pvrs-membership-functions",
   "private": true,
-  "description": "Emails orientationpaperwork@pvrs.org when confidential paperwork arrives.",
+  "description": "Slack desk pings + email for confidential paperwork (orientationpaperwork@pvrs.org).",
   "main": "index.js",
   "engines": { "node": "22" },
   "dependencies": {
