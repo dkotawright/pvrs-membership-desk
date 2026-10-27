@@ -17,7 +17,7 @@ for (const [path, w, check] of [
   p.on("response", r => { if (r.status() >= 400 && r.url().startsWith(BASE)) bad.push(`HTTP ${r.status()} ${r.url()}`); });
   await p.goto(BASE + path, { waitUntil: "load" }); await p.waitForTimeout(3500);
   const okv = await check(p).catch(e => (bad.push("check threw: " + e.message), false));
-  if (path === "/signin" && w === 1440) notes.push("weather card " + (await p.locator("#wx").isVisible() ? "showing" : "hidden"));
+  if (path === "/signin" && w === 1440) notes.push("weather bar " + (await p.locator("#wx").isVisible() ? "showing" : "hidden"));
   (okv && !bad.length ? notes : errs).push(`${path} @${w}px: ${okv ? "ok" : "CHECK FAILED"}${bad.length ? " | " + bad.join(" | ") : ""}`);
   await ctx.close();
 }

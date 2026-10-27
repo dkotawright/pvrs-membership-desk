@@ -1,5 +1,5 @@
 // Potsdam, NY weather for the sign-in page: Open-Meteo (no key needed) + National Weather Service alerts.
-// Purely informational; if either service is down, the card just stays hidden.
+// Purely informational; if either service is down, the bar just stays hidden.
 import { esc } from "./shared.js";
 
 const LAT = 44.6698, LON = -74.9813, CACHE = "pvrsWx", TTL = 15 * 60e3;
@@ -29,8 +29,6 @@ function icon(code, day = true){
     : `<path d="M7 14h10a3.8 3.8 0 0 0 .6-7.5A5.2 5.2 0 0 0 7.6 5.6 4.3 4.3 0 0 0 7 14z" ${S}/><path d="M12.5 15.5l-2 3.2h3l-2 3.3" ${S}/>`;
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${g}</svg>`;
 }
-const hm = iso => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
-const dayName = iso => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" });
 
 async function getJSON(url, headers){ const r = await fetch(url, { headers }); if (!r.ok) throw new Error(r.status); return r.json(); }
 async function load(){
@@ -49,14 +47,19 @@ export async function startWeather(el){
   try {
     const { fc, alerts } = await load(), c = fc.current, d = fc.daily;
     const day = c.is_day !== 0;
-    el.innerHTML = `${alerts.map(a => `<div class="wx-alert" role="note"><b>${esc(a.event)}</b>${a.ends ? ` until ${esc(new Date(a.ends).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }))}` : ""}<span>National Weather Service</span></div>`).join("")}
-      <div class="wx-now"><span class="wx-ic">${icon(c.weather_code, day)}</span>
-        <div><div class="wx-temp">${Math.round(c.temperature_2m)}°</div><div class="wx-cond">${esc(WORDS[c.weather_code] || "")}</div></div>
-        <dl class="wx-facts"><div><dt>Feels like</dt><dd>${Math.round(c.apparent_temperature)}°</dd></div><div><dt>Wind</dt><dd>${Math.round(c.wind_speed_10m)} mph</dd></div>
-          <div><dt>High / low</dt><dd>${Math.round(d.temperature_2m_max[0])}° / ${Math.round(d.temperature_2m_min[0])}°</dd></div></dl></div>
-      <div class="wx-days">${d.time.slice(1, 4).map((t, i) => `<div class="wx-day"><span>${esc(dayName(t))}</span>${icon(d.weather_code[i + 1])}<b>${Math.round(d.temperature_2m_max[i + 1])}°</b><small>${Math.round(d.temperature_2m_min[i + 1])}°${d.precipitation_probability_max[i + 1] >= 30 ? ` · ${d.precipitation_probability_max[i + 1]}%` : ""}</small></div>`).join("")}</div>
-      <div class="wx-sun"><span>Sunrise ${esc(hm(d.sunrise[0]))}</span><span>Sunset ${esc(hm(d.sunset[0]))}</span></div>
-      <p class="wx-src">Potsdam, NY · Open-Meteo${alerts.length ? " · NWS" : ""}</p>`;
+    const alert = alerts[0];
+    // Slim glass banner — now/primary + facts row that wraps cleanly on phones
+    el.innerHTML = `<div class="wx-now">
+        <span class="wx-ic">${icon(c.weather_code, day)}</span>
+        <span class="wx-temp">${Math.round(c.temperature_2m)}°</span>
+        <span class="wx-cond">${esc(WORDS[c.weather_code] || "")}</span>
+      </div>
+      <div class="wx-meta">
+        <span>H ${Math.round(d.temperature_2m_max[0])}° · L ${Math.round(d.temperature_2m_min[0])}°</span>
+        <span>Wind ${Math.round(c.wind_speed_10m)} mph</span>
+        <span class="wx-place">Potsdam</span>
+      </div>
+      ${alert ? `<div class="wx-alert" role="note">${esc(alert.event)}</div>` : ""}`;
     el.hidden = false;
   } catch { el.hidden = true; }
 }
