@@ -6,7 +6,7 @@ for (const [path, w, check] of [
   ["/", 1440, async p => /volunteer EMS/.test(await p.locator("#home h1").textContent()) && await p.locator(".homecard.featured").isVisible()],
   ["/apply", 1440, async p => (await p.locator("#applyForm").count()) === 1 && /About you/.test(await p.locator("#applyRoot h1").textContent())],
   ["/signin", 1440, async p => (await p.locator("#googleBtn").count()) === 1 && /Good (morning|afternoon|evening)/.test(await p.locator("#greet").textContent())],
-  ["/signin", 390, async p => (await p.locator("#signApply").isVisible()) && (await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 1],
+  ["/signin", 390, async p => (await p.locator(".joincta").isVisible()) && (await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 1],
   ["/ref/notARealLinkCode12345", 1440, async p => /doesn't work/.test(await p.locator("#refRoot").textContent())],
   ["/apply", 390, async p => (await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 1],
 ]) {

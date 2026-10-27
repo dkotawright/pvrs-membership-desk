@@ -48,11 +48,12 @@ export async function startWeather(el){
     const { fc, alerts } = await load(), c = fc.current, d = fc.daily;
     const day = c.is_day !== 0;
     const alert = alerts[0];
-    // Slim glass banner (sign-in redesign)
-    el.innerHTML = `<span class="wx-ic">${icon(c.weather_code, day)}</span>
-      <span class="wx-temp">${Math.round(c.temperature_2m)}°</span>
-      <span class="wx-cond">${esc(WORDS[c.weather_code] || "")}</span>
-      <span class="wx-sep" aria-hidden="true"></span>
+    // Slim glass banner — now/primary + facts row that wraps cleanly on phones
+    el.innerHTML = `<div class="wx-now">
+        <span class="wx-ic">${icon(c.weather_code, day)}</span>
+        <span class="wx-temp">${Math.round(c.temperature_2m)}°</span>
+        <span class="wx-cond">${esc(WORDS[c.weather_code] || "")}</span>
+      </div>
       <div class="wx-meta">
         <span>H ${Math.round(d.temperature_2m_max[0])}° · L ${Math.round(d.temperature_2m_min[0])}°</span>
         <span>Wind ${Math.round(c.wind_speed_10m)} mph</span>
