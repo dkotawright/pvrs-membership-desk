@@ -21,11 +21,11 @@ const show = id => {
   document.title = id === "apply" ? "Apply · PVRS Membership" : id === "home" ? "PVRS Membership" : id === "vault" ? "Confidential paperwork · PVRS" : id === "reference" ? "Reference · Potsdam Volunteer Rescue Squad" : "PVRS Membership Desk";
 };
 
-// Sign-in welcome panel: time-of-day greeting, today's date, Potsdam weather.
+// Sign-in: time-of-day greeting, today's date, slim Potsdam weather bar.
 function paintWelcome(){
   const h = new Date().getHours();
   $("#greet").textContent = h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
-  $("#todayLine").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) + " · Potsdam, New York";
+  $("#todayLine").textContent = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) + " · Potsdam";
   startWeather($("#wx"));
 }
 
