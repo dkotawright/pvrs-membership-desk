@@ -156,6 +156,9 @@ function tabHTML(tab){
     ${group("Notifications",[F.date("notify.applicant","Applicant notified"),F.init("notify.applicantInit"),F.date("notify.orientation","Orientation chair notified")])}
     ${group("Duty crew",[`<div class="row"><span class="lbl">Applicant phone<small id="phoneEcho">—</small></span><button class="copy" type="button" data-copy="phone">Copy</button></div>`,F.date("notify.chief","Chief notified"),F.init("notify.chiefInit")])}
     ${group("Email account",[`<div class="row"><span class="lbl">Applicant email<small id="emailEcho">—</small></span><button class="copy" type="button" data-copy="email">Copy</button></div>`,F.date("notify.tech","Technology chair notified"),F.init("notify.techInit")])}
+    ${group("New-member checklist",[F.note("After the board approves them: the date each item was done. Edit the list in Settings.", "onbnote"),...onbItems().map(([k,l]) => F.date(`onb.items.${k}`, esc(l)))],"",`<small id="onbCount" style="font-weight:500;color:var(--fg3)"></small>`)}
+    ${group("Expiration dates",[F.note("You'll get a To do 30 days before any of these expire."),`<div class="row"><span class="lbl">Driver's license<small>Entered on the Checks tab</small></span><b id="dlExpEcho">—</b></div>`,
+      F.date("onb.cprExpires","CPR / BLS card expires"),F.date("onb.emtExpires","EMS certification expires")])}
   </div>
   <section class="group" style="margin-top:18px"><h3><span>Full checklist</span></h3><div class="ios" id="miles"></div></section>`;
   if (tab === "msgs") return `<div class="msgpane">
@@ -289,8 +292,29 @@ function restoreFocus(fk){
 /* ---------- to do (overview) ---------- */
 // For each applicant in process: what needs doing next, most actionable first. "Waiting" states aren't listed.
 const okEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || "").trim());
+// New-member checklist (Onboard tab). The owner edits the list in Settings; each item's key comes from its label.
+const DEFAULT_ONB = ["ID badge issued", "Uniform and gear issued", "Building access set up", "Paging / dispatch app set up", "Orientation completed",
+  "CPR / BLS", "EVOC (drivers)", "ICS-100", "ICS-700", "HIPAA training", "Bloodborne pathogens training"];
+const onbKey = l => String(l).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40) || "item";
+const onbItems = () => (Array.isArray(S.settings.onbItems) ? S.settings.onbItems : DEFAULT_ONB).map(l => [onbKey(l), l]);
+// Expiration dates to watch (To do 30 days ahead and once expired), for anyone in process or approved.
+const EXPIRES = [["dl.expires", "Driver's license", "checks"], ["onb.cprExpires", "CPR / BLS card", "onb"], ["onb.emtExpires", "EMS certification", "onb"]];
 function todoItems(){
   const out = [];
+  for (const a of S.apps.values()) {
+    if (isDeclined(a) || ["withdrawn"].includes(a.status)) continue;
+    const id = a._id, add = (pri, text, sub, tab) => out.push({ id, a, pri, text, sub, tab, age: 0 });
+    for (const [k, label, tab] of EXPIRES) {
+      const d = get(a, k); if (!d) continue;
+      const days = Math.round((new Date(d + "T12:00") - Date.now()) / 864e5);
+      if (days <= 30) add(1, days < 0 ? `${label} expired` : `${label} expires ${days === 0 ? "today" : days === 1 ? "tomorrow" : "in " + days + " days"}`, fmtDate(d), tab);
+    }
+    const bd = get(a, "board.date");
+    if (get(a, "board.result") === "approved" && (!bd || daysSince(bd) <= 365)) {
+      const its = onbItems(), left = its.filter(([k]) => !get(a, `onb.items.${k}`));
+      if (its.length && left.length) add(3, "Finish the new-member checklist", `${its.length - left.length} of ${its.length} done · next: ${left[0][1]}`, "onb");
+    }
+  }
   for (const a of S.apps.values()) {
     const p = progress(a); if (!IN_PROCESS.includes(p.stage)) continue;
     const id = a._id, g = k => get(a, k), rs = refStatus(a), fn = first(a.name) || "them";
@@ -518,6 +542,8 @@ function syncDetail(){
   const pr = $("#dProg");
   if (pr) pr.innerHTML = `<div class="steps" style="--stage-c:${stageVar(p.stage)}">${MILESTONES.map((m,i) => `<button type="button" class="${p.done[i]?"done":""} ${i===p.cur?"cur":""}" data-step="${i}" title="${i+1}. ${esc(m[0])}${p.done[i]?" ✓":""}" aria-label="Step ${i+1}: ${esc(m[0])}${p.done[i]?", done":""}"></button>`).join("")}</div>
     <div class="t"><strong>${p.n}/${MILESTONES.length}</strong> · ${p.next?`Next: <strong>${esc(p.next)}</strong>`:"Checklist complete"}</div>`;
+  const oc = $("#onbCount"); if (oc) { const its = onbItems(), n = its.filter(([k]) => get(a, `onb.items.${k}`)).length; oc.textContent = its.length ? `${n} of ${its.length} done` : ""; }
+  const dx = $("#dlExpEcho"); if (dx) dx.textContent = get(a, "dl.expires") ? fmtDate(get(a, "dl.expires")) : "Not entered";
   const m = $("#miles");
   if (m) m.innerHTML = MILESTONES.map((x,i) => `<div class="mile ${p.done[i]?"done":""} ${i===p.cur?"cur":""}"><span class="dot">${p.done[i]?checkSVG:""}</span>${esc(x[0])}</div>`).join("");
   const tn = $("#typeNote"); if (tn) tn.textContent = TYPE_INFO[a.type] || "Pick a membership type to see its requirements.";
@@ -1162,6 +1188,7 @@ function openSettings(){
       <label class="row stack"><span class="lbl">Default interview location</span><input type="text" id="sLoc" placeholder="PVRS building" value="${esc(s.defaultLocation||"")}"></label></div></div>
     <div class="group"><h3><span>Saved replies</span><button class="btn small" type="button" id="qrAdd">Add reply</button></h3><div class="ios" id="qrList">${savedReplies().map(replyRowHTML).join("")}</div>
       <p class="help" style="margin:4px 4px 0">Buttons above the reply box on the Messages tab. <b>{first}</b> becomes the applicant's first name.</p></div>
+    <div class="group"><h3><span>New-member checklist</span></h3><div class="ios"><label class="row stack"><span class="lbl">One item per line<small>Shown on the Onboard tab after board approval. Renaming an item starts it fresh.</small></span><textarea id="sOnb" rows="8">${esc(onbItems().map(x => x[1]).join("\n"))}</textarea></label></div></div>
     <div class="group"><h3><span>Security</span></h3><div class="ios">
       <label class="row"><span class="lbl">Sign out after inactivity<small>Minutes with no mouse or keyboard use, for everyone on the team (5–240)</small></span><input type="number" id="sIdle" min="5" max="240" placeholder="30" value="${esc(s.idleMinutes||"")}"></label></div></div>
     <div class="group"><h3><span>Online application</span></h3><div class="ios">
@@ -1199,6 +1226,7 @@ function openSettings(){
     if (id === "sSave") {
       const idle = parseInt($("#sIdle").value, 10);
       const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now(),
+        onbItems: [...new Set($("#sOnb").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
         replies: [...document.querySelectorAll("#qrList .qredit")].map(r => ({ title: r.querySelector(".qrTitle").value.trim(), text: r.querySelector(".qrText").value.trim() })).filter(r => r.title && r.text).slice(0, 20) };
       try { await setDoc(doc(db, "settings", "main"), next, { merge: true }); closeModal(); toast("Settings saved"); } catch { toast("Couldn't save settings."); }
     }

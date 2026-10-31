@@ -398,6 +398,30 @@ try {
     if (!r || r.length !== 5 || r[0].title !== "Documents received" || r[4].title !== "Welcome back") fail("saved replies settings: " + JSON.stringify(r)); else ok("Settings adds and removes saved replies");
     await ctx.close();
   }
+  // ---- New-member checklist and expiration reminders
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await pickApplicant(page, "Marcus Bell");
+    await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    const soon = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10);
+    await page.locator('[data-k="onb.cprExpires"]').fill(soon); await page.locator('[data-k="onb.cprExpires"]').blur(); await wait(page, 400);
+    if ((await priv(page, "a2"))?.onb?.cprExpires !== soon) fail("CPR expiry not saved privately"); else ok("expiration dates save to the private record");
+    const items = await page.locator('[data-k^="onb.items."]').count();
+    if (items !== 11 || !/0 of 11 done/.test(await page.locator("#onbCount").textContent())) fail("checklist rows: " + items); else ok("Onboard tab shows the new-member checklist");
+    await pickApplicant(page, "Georgia Thurmond");
+    await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
+    await page.locator('[data-k="board.result"] [data-v="approved"]').click(); await wait(page, 300);
+    await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    await page.locator('[data-k="onb.items.id_badge_issued"]').fill(new Date().toISOString().slice(0, 10)); await page.locator('[data-k="onb.items.id_badge_issued"]').blur(); await wait(page, 400);
+    if (!/1 of 11 done/.test(await page.locator("#onbCount").textContent())) fail("checklist count: " + await page.locator("#onbCount").textContent()); else ok("checking off an item updates the count");
+    await page.keyboard.press("Escape"); await wait(page, 200); await page.keyboard.press("Escape"); await wait(page, 500);
+    await page.evaluate(() => document.querySelector("#overviewBtn")?.click()); await wait(page, 500);
+    await page.evaluate(() => document.querySelector('[data-cmd="todoall"]')?.click()); await wait(page, 300);
+    const td = await page.locator(".todo .todoitem").evaluateAll(r => r.map(x => x.textContent.replace(/\s+/g, " ").trim()));
+    if (!td.some(t => /CPR \/ BLS card expires in 10 days.*Marcus Bell/.test(t))) fail("no expiry to do: " + JSON.stringify(td)); else ok("To do warns 30 days before a card expires");
+    if (!td.some(t => /Finish the new-member checklist.*Georgia Thurmond.*1 of 11 done · next: Uniform and gear issued/.test(t))) fail("no checklist to do: " + JSON.stringify(td)); else ok("To do tracks the new-member checklist after approval");
+    await ctx.close();
+  }
   // ---- Applicant portal: how to prepare for the interview
   {
     const { ctx, page } = await open(browser, { w: 430, h: 844, user: { email: "marcus.bell@example.com", displayName: "Marcus" } });
