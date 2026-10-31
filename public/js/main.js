@@ -1,7 +1,8 @@
 import { auth, db, onAuthStateChanged, setDoc, deleteDoc, onSnapshot, signOut, GoogleAuthProvider, signInWithPopup, sendSignInLinkToEmail,
   createUserWithEmailAndPassword, sendEmailVerification, updateProfile,
-  isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, sendPasswordResetEmail, doc, getDoc, getDocs, collection, query, where, limit } from "./fb.js";
-import { $, lower, toast } from "./shared.js";
+  isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, sendPasswordResetEmail, doc, getDoc, getDocs, collection, query, where, limit,
+  getMultiFactorResolver, TotpMultiFactorGenerator } from "./fb.js";
+import { $, esc, lower, toast, openModal, closeModal } from "./shared.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
 import { startDesk } from "./desk.js";
 import { startPortal } from "./portal.js";
@@ -100,6 +101,7 @@ $("#pwForm").addEventListener("submit", async e => {
   try { await signInWithEmailAndPassword(auth, email, pw); pref.set("pvrsStaffEmail", email); $("#pwPass").value = ""; }
   catch (err) {
     const c = err && err.code;
+    if (c === "auth/multi-factor-auth-required") { pref.set("pvrsStaffEmail", email); $("#pwPass").value = ""; return askCode(err); }
     toast(c === "auth/too-many-requests" ? "Too many tries. Wait a few minutes, or use Forgot password."
       : c === "auth/network-request-failed" ? "No connection. Check your internet and try again."
       : "Email or password is incorrect. New here? Choose Create account.");
@@ -206,9 +208,33 @@ function showNoAccess(user, email, req){
   }
   show("noaccess");
 }
+// Two-step sign-in: staff who turned it on (key button → Two-step sign-in) type the 6-digit code from their authenticator app.
+function askCode(err){
+  let resolver; try { resolver = getMultiFactorResolver(auth, err); } catch (e) { console.error(e); return toast("Sign-in didn't finish. Try again."); }
+  const hint = resolver.hints.find(h => h.factorId === TotpMultiFactorGenerator.FACTOR_ID);
+  if (!hint) return toast("This account needs a second step this page can't do. Contact the membership coordinator.");
+  const M = openModal(`<form id="mfaForm" style="display:contents" novalidate><h3>Enter your code</h3>
+    <p class="help">Open ${esc(hint.displayName || "your authenticator app")} and type the 6-digit code for PVRS Membership.</p>
+    <div class="field"><label for="mfaCode">Code</label><input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></div>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="submit">Sign in</button></div></form>`);
+  $("#mfaCode").focus();
+  M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); };
+  $("#mfaForm").onsubmit = async e => {
+    e.preventDefault();
+    const code = $("#mfaCode").value.replace(/\D/g, "");
+    if (code.length !== 6) { $("#mfaCode").focus(); return toast("Type the 6 digits from your app."); }
+    const btn = e.target.querySelector("button[type=submit]"); btn.disabled = true;
+    try { await resolver.resolveSignIn(TotpMultiFactorGenerator.assertionForSignIn(hint.uid, code)); closeModal(); }
+    catch (er) { const c = er && er.code; toast(c === "auth/invalid-verification-code" ? "That code didn't match. Wait for a new one and try again."
+      : c === "auth/code-expired" || c === "auth/multi-factor-auth-required" ? "That took too long. Sign in again." : "Sign-in didn't finish. Try again.");
+      $("#mfaCode").select(); }
+    finally { btn.disabled = false; }
+  };
+}
 $("#googleBtn").addEventListener("click", async () => {
   try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-  catch (e) { if (e && e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") toast("Google sign-in didn't finish. Try again."); }
+  catch (e) { if (e && e.code === "auth/multi-factor-auth-required") return askCode(e);
+    if (e && e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") toast("Google sign-in didn't finish. Try again."); }
 });
 document.addEventListener("click", async e => { if (e.target.closest("[data-signout]")) { await signOut(auth); location.replace("/signin"); } });
 

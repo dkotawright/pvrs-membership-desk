@@ -1,7 +1,7 @@
 // Staff Desk: roster, applicant file, board, onboarding, interview times, settings.
 import { auth, db, storage, doc, collection, collectionGroup, getDoc, setDoc, runTransaction, updateDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch, query, where,
   sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut, uploadBytes,
-  GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup } from "./fb.js";
+  GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup, multiFactor, TotpMultiFactorGenerator } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
   progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD } from "./shared.js";
@@ -2188,10 +2188,11 @@ function openPassword(){
       <label for="pwAgain">Type it again</label><input id="pwAgain" type="password" autocomplete="new-password" required>
       <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="pwShow" style="width:auto"> Show password</label></div>
     <p class="help">At least 10 characters. Don't reuse a password from another site.</p>
+    <div class="ios" style="margin-top:6px"><div class="row"><span class="lbl">Two-step sign-in<small>${twoStepOn(user) ? "On: a code from your authenticator app at each sign-in" : "Off: add a code from an authenticator app"}</small></span><button class="btn small" type="button" id="twoStepBtn">${twoStepOn(user) ? "Manage" : "Set up"}</button></div></div>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="submit">Save password</button></div></form>`);
   $("#pwNew").focus();
   $("#pwShow").addEventListener("change", e => { $("#pwNew").type = $("#pwAgain").type = e.target.checked ? "text" : "password"; });
-  M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); };
+  M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); if (e.target.closest("#twoStepBtn")) openTwoStep(); };
   const save = async pw => {
     if (user.providerData.some(p => p.providerId === "password")) await updatePassword(user, pw);
     else await linkWithCredential(user, EmailAuthProvider.credential(user.email, pw));
@@ -2219,6 +2220,74 @@ function openPassword(){
         : c === "auth/popup-closed-by-user" ? "Google confirmation was closed. Try again."
         : "Couldn't save the password. Try again.");
     } finally { btn.disabled = false; }
+  };
+}
+
+/* ---------- two-step sign-in (authenticator app codes, Firebase TOTP) ---------- */
+// Needs the project upgraded to Identity Platform with TOTP switched on (docs/two-step-sign-in.md).
+const totpFactor = user => multiFactor(user).enrolledFactors.find(f => f.factorId === TotpMultiFactorGenerator.FACTOR_ID);
+const twoStepOn = user => { try { return !!totpFactor(user); } catch { return false; } };
+// Changing sign-in settings needs a recent sign-in; Google accounts can confirm in a popup, others sign out and back in.
+async function recentLogin(user, fn){
+  try { return await fn(); }
+  catch (err) {
+    if (err && err.code === "auth/requires-recent-login" && user.providerData.some(p => p.providerId === "google.com")) {
+      toast("For security, confirm it's you with Google first.");
+      await reauthenticateWithPopup(user, new GoogleAuthProvider()); return fn();
+    }
+    throw err;
+  }
+}
+const twoStepError = err => { const c = err && err.code; if (c !== "auth/invalid-verification-code") console.error(err);
+  toast(c === "auth/requires-recent-login" || c === "auth/multi-factor-auth-required" ? "For security, sign out, sign back in, and try again."
+    : c === "auth/invalid-verification-code" ? "That code didn't match. Wait for the next code and try again."
+    : c === "auth/operation-not-allowed" || c === "auth/admin-restricted-operation" || c === "auth/unsupported-first-factor" ? "Two-step sign-in isn't switched on for the PVRS project yet (see docs/two-step-sign-in.md)."
+    : c === "auth/unverified-email" ? "Confirm your email address first." : "Couldn't change two-step sign-in. Try again."); };
+function openTwoStep(){
+  const user = auth.currentUser; if (!user) return;
+  const f = (() => { try { return totpFactor(user); } catch { return null; } })();
+  if (f) {
+    const M = openModal(`<h3>Two-step sign-in is on</h3>
+      <p class="help">Each time you sign in, PVRS Membership asks for the 6-digit code from ${esc(f.displayName || "your authenticator app")}${f.enrollmentTime ? `, set up ${esc(new Date(f.enrollmentTime).toLocaleDateString())}` : ""}.</p>
+      <p class="help">Got a new phone? Turn it off, then set it up again on the new phone.</p>
+      <div class="acts"><button class="btn" type="button" data-x>Done</button><button class="btn danger" type="button" id="tsOff">Turn off</button></div>`);
+    M.onclick = async e => {
+      if (e.target.closest("[data-x]")) return closeModal();
+      const b = e.target.closest("#tsOff"); if (!b) return;
+      if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Confirm turn off"; return; }
+      b.disabled = true;
+      try { await recentLogin(user, () => multiFactor(user).unenroll(f)); closeModal(); toast("Two-step sign-in is off."); }
+      catch (err) { twoStepError(err); b.disabled = false; }
+    };
+    return;
+  }
+  const M = openModal(`<h3>Set up two-step sign-in</h3>
+    <p class="help">After your password or Google, you'll also type a 6-digit code from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, 1Password, or the iPhone Passwords app). Someone with your password still can't get in without your phone.</p>
+    <div id="tsBody"><div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="tsStart">Start</button></div></div>`);
+  let secret = null;
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    if (e.target.closest("[data-tscopy]")) return toast((await copyText(secret.secretKey)) ? "Setup key copied" : secret.secretKey);
+    const st = e.target.closest("#tsStart"); if (!st) return;
+    st.disabled = true;
+    try {
+      secret = await recentLogin(user, async () => TotpMultiFactorGenerator.generateSecret(await multiFactor(user).getSession()));
+      const url = secret.generateQrCodeUrl(user.email, "PVRS Membership"), key = secret.secretKey.replace(/(.{4})/g, "$1 ").trim();
+      $("#tsBody").innerHTML = `<form id="tsForm" style="display:contents" novalidate><div class="ios">
+        <div class="row stack"><span class="lbl">1. In your authenticator app, add an account with a setup key<small>Account: ${esc(user.email)} · Key type: time based</small></span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code class="tskey">${esc(key)}</code><button class="copy" type="button" data-tscopy>Copy</button><a class="btn small" href="${esc(url)}">Open in app</a></div>
+          <small class="help" style="margin:0">On this phone? Tap Open in app instead of typing the key.</small></div>
+        <label class="row stack"><span class="lbl">2. Type the 6-digit code it shows</span><input id="tsCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></label></div>
+        <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="submit">Turn on</button></div></form>`;
+      $("#tsCode").focus();
+      $("#tsForm").onsubmit = async ev => {
+        ev.preventDefault();
+        const code = $("#tsCode").value.replace(/\D/g, ""); if (code.length !== 6) return toast("Type the 6 digits from your app.");
+        const b = ev.target.querySelector("button[type=submit]"); b.disabled = true;
+        try { await multiFactor(user).enroll(TotpMultiFactorGenerator.assertionForEnrollment(secret, code), "Authenticator app"); closeModal(); toast("Two-step sign-in is on. Keep your phone handy when you sign in."); }
+        catch (err) { twoStepError(err); $("#tsCode").select(); b.disabled = false; }
+      };
+    } catch (err) { twoStepError(err); st.disabled = false; }
   };
 }
 

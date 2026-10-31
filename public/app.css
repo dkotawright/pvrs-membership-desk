@@ -1275,3 +1275,6 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .row.qreplies:empty{display:none}
 .qredit .qrTitle{flex:1;min-width:0}
 .qredit textarea{width:100%}
+
+/* Two-step sign-in setup key */
+.tskey{font:600 15px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;padding:6px 10px;border-radius:8px;background:var(--fill);color:var(--fg);word-break:break-all}

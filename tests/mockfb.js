@@ -8,7 +8,19 @@ const AUTH = { get currentUser(){ const u = user(); return u ? { ...u, emailVeri
 M.authCbs = M.authCbs || [];
 export const getAuth = () => AUTH;
 export const onAuthStateChanged = (_a, cb) => { M.authCbs.push(cb); setTimeout(() => cb(AUTH.currentUser), 30); return () => {}; };
-export const signInWithEmailAndPassword = async () => { throw Object.assign(new Error("bad"), { code: "auth/invalid-credential" }); };
+export const signInWithEmailAndPassword = async (_a, email) => {
+  if (M.mfaUser && email === M.mfaUser.email) { M.pendingMfa = M.mfaUser; throw Object.assign(new Error("mfa"), { code: "auth/multi-factor-auth-required" }); }
+  throw Object.assign(new Error("bad"), { code: "auth/invalid-credential" }); };
+// Two-step sign-in (authenticator app). A test sets M.mfaUser = {email, …} to make that password sign-in ask for a code; 123456 is right.
+export const getMultiFactorResolver = () => ({ hints: [{ uid: "totp1", factorId: "totp", displayName: "Authenticator app" }],
+  resolveSignIn: async a => { if (a.code !== "123456") throw Object.assign(new Error("code"), { code: "auth/invalid-verification-code" });
+    window.__MOCK_USER = { ...M.pendingMfa, provider: "password" }; M.authCbs.forEach(cb => cb(AUTH.currentUser)); return {}; } });
+export const TotpMultiFactorGenerator = { FACTOR_ID: "totp",
+  generateSecret: async () => ({ secretKey: "JBSWY3DPEHPK3PXP", generateQrCodeUrl: (acct, issuer) => `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(acct)}?secret=JBSWY3DPEHPK3PXP&issuer=${encodeURIComponent(issuer)}` }),
+  assertionForEnrollment: (_s, code) => ({ code }), assertionForSignIn: (_uid, code) => ({ code }) };
+export const multiFactor = () => ({ get enrolledFactors(){ return M.enrolled || []; }, getSession: async () => ({}),
+  enroll: async (a, name) => { if (a.code !== "123456") throw Object.assign(new Error("code"), { code: "auth/invalid-verification-code" }); M.enrolled = [{ uid: "totp1", factorId: "totp", displayName: name }]; },
+  unenroll: async () => { M.enrolled = []; } });
 export const sendPasswordResetEmail = async () => {};
 // Email + password accounts: new ones start unconfirmed; a test flips window.__MOCK_USER.emailVerified to "click the link".
 export const createUserWithEmailAndPassword = async (_a, email, pw) => {

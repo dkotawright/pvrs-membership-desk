@@ -441,6 +441,33 @@ try {
     if (!(await page.evaluate(() => window.__mock.docs.has("applicants/a1")))) fail("retention deleted an active file"); else ok("active files are untouched");
     await ctx.close();
   }
+  // ---- Two-step sign-in: set up from the key button; sign-in asks for the code
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await page.locator("#pwBtn").click(); await wait(page, 200);
+    if (!/Off/.test(await page.locator("#modal").textContent())) fail("two-step status not shown"); else ok("the key button shows two-step sign-in status");
+    await page.locator("#twoStepBtn").click(); await wait(page, 200);
+    await page.locator("#tsStart").click(); await wait(page, 300);
+    if (!/JBSW Y3DP EHPK 3PXP/.test(await page.locator(".tskey").textContent()) || !/^otpauth:\/\/totp\//.test(await page.locator('#tsBody a.btn').getAttribute("href"))) fail("setup key / app link missing"); else ok("setup shows a key to type and an Open in app link");
+    await page.locator("#tsCode").fill("000000"); await page.locator("#tsForm button[type=submit]").click(); await wait(page, 300);
+    if (await page.evaluate(() => (window.__mock.enrolled || []).length)) fail("wrong code turned it on"); else ok("a wrong code doesn't turn it on");
+    await page.locator("#tsCode").fill("123456"); await page.locator("#tsForm button[type=submit]").click(); await wait(page, 300);
+    if (await page.evaluate(() => (window.__mock.enrolled || []).length) !== 1 || !(await page.locator("#modal").isHidden())) fail("two-step not enrolled"); else ok("the right code turns two-step sign-in on");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { url: "/signin", user: null }); await wait(page, 400);
+    await page.evaluate(() => { window.__mock.mfaUser = { email: "dkota@pvrs.org", displayName: "Dkota Wright" }; });
+    await page.evaluate(() => { document.querySelector('[data-who="staff"]')?.click(); document.querySelector("#manualSignin").open = true; });
+    await page.locator("#pwEmail").fill("dkota@pvrs.org"); await page.locator("#pwPass").fill("long-enough-password");
+    await page.locator("#pwForm button[type=submit]").click(); await wait(page, 300);
+    if (!(await page.locator("#mfaCode").count())) fail("sign-in didn't ask for the code"); else ok("password sign-in asks for the code when two-step is on");
+    await page.locator("#mfaCode").fill("111111"); await page.locator("#mfaForm button[type=submit]").click(); await wait(page, 300);
+    if (await page.evaluate(() => !!window.__MOCK_USER)) fail("wrong code signed in"); else ok("a wrong code doesn't sign in");
+    await page.locator("#mfaCode").fill("123456"); await page.locator("#mfaForm button[type=submit]").click(); await wait(page, 1200);
+    if (!(await page.locator("#desk").isVisible().catch(() => false)) && !(await page.locator("#app").isVisible().catch(() => false))) fail("the right code didn't open the desk"); else ok("the right code opens the desk");
+    await ctx.close();
+  }
   // ---- Applicant portal: how to prepare for the interview
   {
     const { ctx, page } = await open(browser, { w: 430, h: 844, user: { email: "marcus.bell@example.com", displayName: "Marcus" } });
