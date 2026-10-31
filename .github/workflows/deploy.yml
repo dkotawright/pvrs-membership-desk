@@ -29,6 +29,8 @@ jobs:
         run: npm ci && npx playwright install --with-deps chromium
       - name: Browser tests
         run: node tests/browser.test.mjs
+      - name: Med Control privacy filter
+        run: npm ci --prefix functions && node tests/medcontrol-privacy.test.cjs
 
   # Security-rule tests in the emulators. Informational for now (2 known storage failures); make it gate deploy once green.
   rules:

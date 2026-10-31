@@ -122,6 +122,13 @@ export const isSupported = async () => !!M.pushOk;
 export const getToken = async () => { if (M.pushDenied) throw Object.assign(new Error("denied"), { code: "messaging/permission-blocked" }); return "tok-" + (M.pushN = (M.pushN || 0) + 1); };
 export const deleteToken = async () => true;
 export const onMessage = () => () => {};
+// Cloud Functions (Med Control): a test sets M.ai = (data) => result, or M.aiError = {code, message}; calls are logged in M.aiCalls.
+export const getFunctions = () => ({});
+export const httpsCallable = (_f, name) => async data => { (M.aiCalls = M.aiCalls || []).push({ name, data }); await tick();
+  if (M.aiError) throw Object.assign(new Error(M.aiError.message), { code: "functions/" + M.aiError.code });
+  const out = M.ai ? M.ai(data) : { text: "Mock answer." };
+  if (data.job === "brief" && out.brief) { write(`applicants/${data.id}/private/main`, { ai: { brief: out.brief } }, true); emit(); }   // the real function saves it server-side
+  return { data: out }; };
 
 if (!M.seeded) {
   M.seeded = true;

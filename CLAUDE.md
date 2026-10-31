@@ -90,6 +90,13 @@ Dkota asked for everything from the suggestion list except the monthly board rep
 - Tests: 153 browser checks; rules 49 pass / 2 known fails. In cloud containers run browser tests with `PW_CHROME=/opt/pw-browsers/chromium`.
 - Dkota said (Oct 31) the design "is good but throws me off" — wants fun but professional, plus more features and AI. Pending his pick of direction.
 
+## Oct 31 (later): Friendly Modern look + Med Control AI (same branch, NOT deployed)
+- **Look:** Dkota picked mockup "C · Friendly Modern" (design canvas https://claude.ai/artifact/8aocYnGxuELmb4sR2eQj8B). Implemented as the last layer of app.css (token overrides + navy greeting banner `.ovhead`, pastel `.stg` tiles, tinted `.av`). Plus Jakarta Sans from Google Fonts (index.html). Sign-in/home/apply (`.gate`) keep the dark EMS backdrop for now. Light + dark both done.
+- **Med Control** = the AI's name (Dkota's pick; EMS "medical control"). `functions/medcontrol.js` callable `ai-medControl` (export group `ai`; deploy `firebase deploy --only functions:ai`; secret ANTHROPIC_API_KEY). Jobs: chat (claude-haiku-5-5, effort low, roster in a cached system block + desk hints), brief (claude-sonnet-5-5, json_schema output, `fallbacks: "default"`; saved to private/main.ai.brief, owner only), reply (claude-haiku-5-5). Owner + admins only; 150 calls/person/day (`aiUsage/{email}_{day}`, no client rule = no client access). `safeApplicant()` is the privacy filter; `tests/medcontrol-privacy.test.cjs` guards it.
+- Desk: hidden unless `settings.ai === true` (Settings → Med Control). Sidebar `#aiBtn` → `openMedControl` (chat modal, answers linkify applicant names, Copy / Open in Mail for "Subject:" drafts); Board tab "Med Control brief" (`briefHTML`, `[data-aibrief]`); Messages chip `[data-aireply]` → `aiDraftReply` fills the box only. Functions SDK is lazy-imported (`FN_URL`).
+- Dkota's model choice: the mix (Haiku chat/replies, Sonnet briefs), ~$1–3/mo. Setup in docs/med-control.md (needs board OK, Anthropic account, key as secret).
+- Tests: 165 browser checks.
+
 ## Stability review (Oct 22)
 Full check: 118 browser checks, 49 rules tests, live public pages clean, live rules == local. Fixed: replacement references and reference answers are now claimed in a transaction (`claimOnce`) before the owner's desk applies them — an out-of-date open desk could otherwise redo a swap and wipe the new reference's link/answers. Every automatic owner-desk action now claims first (submissions, refUpdates, refResponses).
 

@@ -489,6 +489,46 @@ try {
     if (await page.evaluate(() => [...window.__mock.docs.keys()].some(k => k.startsWith("pushTokens/")))) fail("push token not removed"); else ok("turning them off removes this device");
     await ctx.close();
   }
+  // ---- Med Control (AI): hidden until switched on; chat, brief and reply drafts go through the function
+  {
+    const { ctx, page } = await open(browser, { seed: [["portal/a2/messages/m1", { text: "Can I join if I'm only here in the school year?", from: "applicant", by: "marcus.bell@example.com", name: "Marcus", at: Date.now() - 6e4 }]] }); await wait(page, 600);
+    if (await page.locator("#aiBtn").isVisible()) fail("Med Control shown while off"); else ok("Med Control stays hidden until it's switched on");
+    await page.evaluate(() => document.querySelector("#settingsBtn")?.click()); await wait(page, 300);
+    await page.locator('#sAi [data-v="on"]').click(); await page.locator("#sSave").click(); await wait(page, 500);
+    if (!(await page.evaluate(() => window.__mock.docs.get("settings/main").ai === true)) || !(await page.locator("#aiBtn").isVisible())) fail("Med Control switch"); else ok("Settings switches Med Control on");
+    await page.evaluate(() => { window.__mock.ai = d => d.job === "chat" ? { text: "Marcus Bell is waiting on 2 references.\n\nSubject: Quick reminder\nHi there" } : { text: "x" }; });
+    await page.locator("#aiBtn").click(); await wait(page, 200);
+    await page.locator("#mcIn").fill("Who is waiting on references?"); await page.keyboard.press("Enter"); await wait(page, 400);
+    const call = await page.evaluate(() => window.__mock.aiCalls.at(-1));
+    if (call.name !== "ai-medControl" || call.data.job !== "chat" || call.data.messages.at(-1).text !== "Who is waiting on references?" || !call.data.hints.a2?.stage) fail("chat call: " + JSON.stringify(call).slice(0, 200)); else ok("chat sends the question with the desk's hints");
+    if (JSON.stringify(call.data).match(/555-0188|marcus\.bell@example\.com/)) fail("chat call carried contact details"); else ok("chat sends no contact details from the browser");
+    if (!/Marcus Bell is waiting/.test(await page.locator("#mcThread").textContent()) || !(await page.locator('[data-mcopen="a2"]').count()) || !(await page.locator("[data-mcmail]").count())) fail("chat answer actions"); else ok("answers link to the file and can open a drafted email");
+    await page.locator('[data-mcopen="a2"]').click(); await wait(page, 400);
+    if (!/Marcus Bell/.test(await page.locator("#dName").textContent())) fail("Open file from chat"); else ok("Open file jumps to the applicant");
+    // reply draft
+    await page.evaluate(() => { window.__mock.ai = d => d.job === "reply" ? { text: "Yes, Marcus! Associate membership is made for students." } : { text: "x" }; });
+    await page.locator('.tabdock [data-tab="msgs"]').click(); await wait(page, 400);
+    await page.locator("[data-aireply]").click(); await wait(page, 400);
+    if (await page.locator("#replyText").inputValue() !== "Yes, Marcus! Associate membership is made for students.") fail("reply draft: " + await page.locator("#replyText").inputValue()); else ok("Draft with Med Control fills the reply box (nothing sent)");
+    if (await page.evaluate(() => [...window.__mock.docs.keys()].filter(k => k.startsWith("portal/a2/messages/")).length) !== 1) fail("the draft was sent"); else ok("the draft isn't sent until you press Send");
+    // brief
+    await page.evaluate(() => { window.__mock.ai = d => d.job === "brief" ? { brief: { summary: "Marcus is a student applying as an Associate.", strengths: ["Available weekends"], followUps: ["One reference out"], questions: ["What draws you to EMS?"], references: [{ name: "Coach Dan Price", tone: "strong", note: "Very reliable." }], at: Date.now(), by: "dkota@pvrs.org" } } : { text: "x" }; });
+    await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
+    await page.locator("[data-aibrief]").click(); await wait(page, 600);
+    const bt = await page.locator("#aiBrief").textContent();
+    if (!/Marcus is a student/.test(bt) || !/Follow up on/.test(bt) || !/Coach Dan Price/.test(bt) || !/Strong/.test(bt)) fail("brief: " + bt.slice(0, 160)); else ok("Make brief shows the summary, follow-ups and reference digest");
+    if ((await page.locator("[data-aibrief]").textContent()) !== "Redo brief") fail("brief button label"); else ok("the button then offers Redo brief");
+    await page.evaluate(() => { window.__mock.aiError = { code: "not-found", message: "x" }; });
+    await page.locator("[data-aibrief]").click(); await wait(page, 400);
+    if (!/isn't set up yet/.test(await page.locator(".toast").last().textContent().catch(() => ""))) fail("not-set-up message"); else ok("a missing function says Med Control isn't set up yet");
+    await page.screenshot({ path: path.join(OUT, "19-med-brief.png") });
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { user: { email: "alex@pvrs.org", displayName: "Alex" }, seed: [["settings/main", { ai: true }]] }); await wait(page, 600);
+    if (await page.locator("#aiBtn").isVisible()) fail("members see Med Control"); else ok("members never see Med Control");
+    await ctx.close();
+  }
   // ---- Applicant portal: how to prepare for the interview
   {
     const { ctx, page } = await open(browser, { w: 430, h: 844, user: { email: "marcus.bell@example.com", displayName: "Marcus" } });

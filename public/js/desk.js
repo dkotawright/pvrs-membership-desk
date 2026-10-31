@@ -138,7 +138,7 @@ function tabHTML(tab){
       F.yn("iv.nextStepsReviewed","Next steps reviewed with applicant")])}
     ${admin?group("Committee decision",[F.yn("appr.committee","Committee approval",true)]):""}
   </div>`;
-  if (tab === "board") return `<div class="cols">
+  if (tab === "board") return `${admin && aiOn() ? `<section class="group aibrief"><h3><span>Med Control brief</span>${S.canEdit ? `<button class="btn small" type="button" data-aibrief>Make brief</button>` : ""}</h3><div class="ios" id="aiBrief"></div></section>` : ""}<div class="cols">
     ${group("Membership committee",[`<div class="note warn" id="boardRefNote" hidden></div>`,F.yn("appr.committee","Committee approval",true),F.date("appr.chairNotified","Membership chair notified")])}
     ${group("Board vote",[F.date("board.date","Board meeting date"),F.text("board.motion","Motion by","Name"),F.text("board.second","Seconded by","Name"),
       `<div class="row"><span class="lbl">Vote</span><div class="tally">
@@ -572,6 +572,7 @@ function syncDetail(){
   const pr = $("#dProg");
   if (pr) pr.innerHTML = `<div class="steps" style="--stage-c:${stageVar(p.stage)}">${MILESTONES.map((m,i) => `<button type="button" class="${p.done[i]?"done":""} ${i===p.cur?"cur":""}" data-step="${i}" title="${i+1}. ${esc(m[0])}${p.done[i]?" ✓":""}" aria-label="Step ${i+1}: ${esc(m[0])}${p.done[i]?", done":""}"></button>`).join("")}</div>
     <div class="t"><strong>${p.n}/${MILESTONES.length}</strong> · ${p.next?`Next: <strong>${esc(p.next)}</strong>`:"Checklist complete"}</div>`;
+  const ab = $("#aiBrief"); if (ab) { ab.innerHTML = briefHTML(get(a, "ai.brief")); const bb = document.querySelector("[data-aibrief]"); if (bb && !bb.disabled) bb.textContent = get(a, "ai.brief") ? "Redo brief" : "Make brief"; }
   const oc = $("#onbCount"); if (oc) { const its = onbItems(), n = its.filter(([k]) => get(a, `onb.items.${k}`)).length; oc.textContent = its.length ? `${n} of ${its.length} done` : ""; }
   const dx = $("#dlExpEcho"); if (dx) dx.textContent = get(a, "dl.expires") ? fmtDate(get(a, "dl.expires")) : "Not entered";
   const m = $("#miles");
@@ -967,7 +968,7 @@ const DEFAULT_REPLIES = [
   { title: "When's the board?", text: "Hi {first}, your application goes to the next board meeting once your references, interview and the other checks are complete. You'll hear from us within about a week of that meeting." },
 ];
 const savedReplies = () => Array.isArray(S.settings.replies) ? S.settings.replies : DEFAULT_REPLIES;
-const quickRepliesHTML = () => savedReplies().map((r, i) => `<button class="chip" type="button" data-qr="${i}">${esc(r.title)}</button>`).join("");
+const quickRepliesHTML = () => (aiOn() ? `<button class="chip aichip" type="button" data-aireply>Draft with Med Control</button>` : "") + savedReplies().map((r, i) => `<button class="chip" type="button" data-qr="${i}">${esc(r.title)}</button>`).join("");
 function useQuickReply(i){
   const r = savedReplies()[i], a = S.apps.get(S.sel), ta = $("#replyText"); if (!r || !a || !ta) return;
   const text = r.text.replace(/\{first\}/g, first(a.name));
@@ -1218,6 +1219,9 @@ function openSettings(){
       <label class="row stack"><span class="lbl">Default interview location</span><input type="text" id="sLoc" placeholder="PVRS building" value="${esc(s.defaultLocation||"")}"></label></div></div>
     <div class="group"><h3><span>Saved replies</span><button class="btn small" type="button" id="qrAdd">Add reply</button></h3><div class="ios" id="qrList">${savedReplies().map(replyRowHTML).join("")}</div>
       <p class="help" style="margin:4px 4px 0">Buttons above the reply box on the Messages tab. <b>{first}</b> becomes the applicant's first name.</p></div>
+    <div class="group"><h3><span>Med Control (AI assistant)</span></h3><div class="ios">
+      ${F.seg("_ai","Med Control",[["on","On","good"],["off","Off"]]).replace('data-k="_ai"', 'id="sAi"')}
+      <div class="row"><span class="lbl"><small>Chat, applicant briefs and reply drafts for you and admins, powered by Claude. Only turn on after the board has OK'd it and the API key is set (docs/med-control.md). It never sees license numbers, birth dates, addresses, phone numbers, conviction details or uploaded files, and it only drafts: nothing is sent without you.</small></span></div></div></div>
     <div class="group"><h3><span>New-member checklist</span></h3><div class="ios"><label class="row stack"><span class="lbl">One item per line<small>Shown on the Onboard tab after board approval. Renaming an item starts it fresh.</small></span><textarea id="sOnb" rows="8">${esc(onbItems().map(x => x[1]).join("\n"))}</textarea></label></div></div>
     <div class="group"><h3><span>Data retention</span></h3><div class="ios">
       <label class="row"><span class="lbl">Keep declined and withdrawn files for<small>Years with no changes before they're flagged for you to review and delete. Blank = off. Match the board's policy.</small></span><input type="number" id="sRet" min="1" max="20" placeholder="Off" value="${esc(s.retentionYears||"")}"></label>
@@ -1235,11 +1239,13 @@ function openSettings(){
       <div class="row"><span class="lbl">Import records<small>The migration file from the old Claude version</small></span><label class="btn small" for="sImport">Choose file</label><input type="file" id="sImport" accept="application/json,.json" hidden></div></div></div>
     <div class="acts"><button class="btn" type="button" id="sCancel">Cancel</button><button class="btn primary" type="button" id="sSave">Save</button></div>`, true);
   $("#sImport").addEventListener("change", e => importFile(e.target.files && e.target.files[0]));
+  $("#sAi").querySelectorAll("button").forEach(b => { const on = b.dataset.v === (s.ai ? "on" : "off"); b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
   M.onclick = async e => {
     const id = e.target.id;
     if (id === "sCancel") closeModal();
     if (id === "sPreview") openPreview(S.sel);
     if (id === "sRetReview") return openRetention();
+    const sa = e.target.closest("#sAi button"); if (sa) { $("#sAi").querySelectorAll("button").forEach(b => { b.classList.toggle("on", b === sa); b.setAttribute("aria-pressed", b === sa); }); return; }
     if (id === "qrAdd") { $("#qrList").insertAdjacentHTML("beforeend", replyRowHTML()); $("#qrList .qredit:last-child .qrTitle").focus(); return; }
     const qrm = e.target.closest("[data-qrrm]"); if (qrm) { qrm.closest(".qredit").remove(); return; }
     if (id === "sCopyApply") { const u = location.origin + "/apply"; toast((await copyText(u)) ? "Copied " + u : u); }
@@ -1260,6 +1266,7 @@ function openSettings(){
     if (id === "sSave") {
       const idle = parseInt($("#sIdle").value, 10);
       const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now(),
+        ai: $("#sAi .on")?.dataset.v === "on",
         retentionYears: parseInt($("#sRet").value, 10) > 0 ? Math.min(20, parseInt($("#sRet").value, 10)) : null,
         onbItems: [...new Set($("#sOnb").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
         replies: [...document.querySelectorAll("#qrList .qredit")].map(r => ({ title: r.querySelector(".qrTitle").value.trim(), text: r.querySelector(".qrText").value.trim() })).filter(r => r.title && r.text).slice(0, 20) };
@@ -1415,6 +1422,7 @@ function openPalette(){
     { label: "Interview times", show: S.canEdit, words: "interview times slots schedule calendar", run: go(openSlots) },
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(openInbox) },
     { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
+    { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
     { label: "Notifications", show: S.admin, words: "notifications alerts push bell phone", run: go(openNotifications) },
     { label: "Two-step sign-in", show: true, words: "two step 2fa mfa authenticator security code", run: go(openTwoStep) },
     { label: "Sign-in password", show: true, words: "password key sign in", run: go(openPassword) },
@@ -1536,7 +1544,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["newBtn", "New applicant"], ["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
@@ -1677,6 +1685,8 @@ function bindEvents(){
     const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); return; }
     const om = t.closest("[data-openmsg]"); if (om) { select(om.dataset.openmsg); switchTab("msgs"); return; }
     const qr = t.closest("[data-qr]"); if (qr) return useQuickReply(+qr.dataset.qr);
+    const air = t.closest("[data-aireply]"); if (air) return aiDraftReply(air);
+    const aib = t.closest("[data-aibrief]"); if (aib) return aiMakeBrief(aib);
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
     if (!S.canEdit && t.closest(OWNER_ONLY)) return ownerOnlyToast();
@@ -1750,6 +1760,7 @@ function bindEvents(){
   setInterval(() => { if (S.sel && !document.hidden) syncDetail(); }, 60000);
   $("#modal").addEventListener("mousedown", e => { if (e.target.id === "modal") closeModal(); });
   $("#settingsBtn").addEventListener("click", gateSettings);
+  $("#aiBtn").addEventListener("click", openMedControl);
   $("#slotsBtn").addEventListener("click", openSlots);
   $("#newBtn").addEventListener("click", openNew);
   $("#boardBtn").addEventListener("click", () => openBoardMtg());
@@ -2294,6 +2305,108 @@ function openTwoStep(){
   };
 }
 
+/* ---------- Med Control: the AI assistant (functions/medcontrol.js does the work and the privacy filtering) ---------- */
+// Off until the owner switches it on in Settings (after the board's OK and the API key are in place).
+const aiOn = () => !!(S.admin && S.settings.ai === true);
+function paintAi(){ const b = $("#aiBtn"); if (b) b.hidden = !aiOn(); }
+const FN_URL = "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+let aiCall = null;
+async function medControl(data){
+  if (!aiCall) { const m = await import(FN_URL); aiCall = m.httpsCallable(m.getFunctions(app), "ai-medControl", { timeout: 120000 }); }
+  try { return (await aiCall(data)).data; }
+  catch (e) {
+    const c = String(e && e.code || "").replace("functions/", "");
+    const msg = ["not-found", "internal", "unavailable", "failed-precondition", "resource-exhausted", "permission-denied", "invalid-argument"].includes(c) && e.message && c !== "not-found" && c !== "internal" ? e.message
+      : c === "not-found" ? "Med Control isn't set up yet (docs/med-control.md)." : "Med Control couldn't answer. Try again.";
+    if (!["invalid-argument", "not-found", "resource-exhausted", "permission-denied", "failed-precondition"].includes(c)) console.error(e);
+    throw new Error(msg);
+  }
+}
+// What the desk already knows (stage label, next step, to do, booked interview) goes along as short hints.
+function aiHints(){
+  const todo = {}; for (const x of todoItems()) (todo[x.id] = todo[x.id] || []).push(x.text);
+  const out = {};
+  for (const a of S.apps.values()) { const p = progress(a);
+    out[a._id] = { stage: STAGES[view(a).stage]?.label || "", next: p.next || "", todo: (todo[a._id] || []).join("; ").slice(0, 300), booked: a._booked ? slotLong(a._booked.start) : "" }; }
+  return out;
+}
+const aiText = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+function aiPeople(t){ return [...S.apps.values()].filter(a => a.name && t.includes(a.name)).slice(0, 4); }
+S.aiChat = [];
+function openMedControl(){
+  if (!aiOn()) return;
+  const SUGGEST = ["Who's waiting on references more than 2 weeks?", "What's on the board agenda?", "Who needs a portal invite?", "Which cards expire this month?"];
+  const paint = () => {
+    const T = $("#mcThread"); if (!T) return;
+    T.innerHTML = S.aiChat.length ? S.aiChat.map((m, i) => m.role === "user" ? `<div class="mc-me">${esc(m.text)}</div>`
+      : `<div class="mc-ai"><span class="mc-badge" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M6.6 1.5h2.8v4l3.5-2 1.4 2.4L10.8 8l3.5 2.1-1.4 2.4-3.5-2v4H6.6v-4l-3.5 2-1.4-2.4L5.2 8 1.7 5.9l1.4-2.4 3.5 2z"/></svg></span>
+        <div class="mc-body">${m.pending ? `<span class="spin" aria-label="Thinking"></span>` : m.error ? `<span class="mc-err">${esc(m.text)}</span>` : `<div class="mc-text">${aiText(m.text)}</div>
+          <div class="mc-acts">${aiPeople(m.text).map(a => `<button class="btn small" type="button" data-mcopen="${esc(a._id)}">Open ${esc(a.name)}</button>`).join("")}
+            <button class="btn small" type="button" data-mccopy="${i}">Copy</button>${/^Subject:/im.test(m.text) ? `<button class="btn small" type="button" data-mcmail="${i}">Open in Mail</button>` : ""}</div>`}</div></div>`).join("")
+      : `<div class="mc-empty"><b>Ask about applicants, deadlines or the board, or ask for a draft.</b><small>Med Control reads the desk's records (never license numbers, birth dates, addresses, phone numbers, conviction details or files). It finds and drafts; you decide and send.</small></div>`;
+    T.scrollTop = T.scrollHeight;
+  };
+  const M = openModal(`<h3>Med Control</h3>
+    <div class="mc-thread" id="mcThread" aria-live="polite"></div>
+    <div class="mc-chips">${SUGGEST.map(q => `<button class="chip" type="button" data-mcq="${esc(q)}">${esc(q)}</button>`).join("")}</div>
+    <form id="mcForm" class="mc-form"><label class="sr" for="mcIn">Ask Med Control</label><textarea id="mcIn" rows="2" maxlength="2000" placeholder="Ask anything about your applicants… (Enter to send)"></textarea>
+      <button class="btn primary" type="submit">Ask</button></form>
+    <div class="acts"><button class="btn" type="button" data-mcclear>New chat</button><button class="btn" type="button" data-x>Close</button></div>`, true);
+  M.querySelector(".sheet").classList.add("mcsheet");
+  paint(); $("#mcIn").focus();
+  const ask = async q => {
+    q = String(q || "").trim(); if (!q || S.aiChat.some(m => m.pending)) return;
+    S.aiChat.push({ role: "user", text: q }); const ans = { role: "assistant", pending: true, text: "" }; S.aiChat.push(ans); paint();
+    try { const r = await medControl({ job: "chat", messages: S.aiChat.filter(m => !m.pending && !m.error).map(m => ({ role: m.role, text: m.text })), hints: aiHints() }); ans.text = r.text || "No answer."; }
+    catch (e) { ans.error = true; ans.text = e.message; }
+    ans.pending = false; paint();
+  };
+  $("#mcForm").onsubmit = e => { e.preventDefault(); const v = $("#mcIn").value; $("#mcIn").value = ""; ask(v); };
+  $("#mcIn").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#mcForm").requestSubmit(); } });
+  M.onclick = async e => {
+    const t = e.target;
+    if (t.closest("[data-x]")) return closeModal();
+    if (t.closest("[data-mcclear]")) { S.aiChat = []; paint(); return $("#mcIn").focus(); }
+    const q = t.closest("[data-mcq]"); if (q) return ask(q.dataset.mcq);
+    const o = t.closest("[data-mcopen]"); if (o) { closeModal(); return select(o.dataset.mcopen); }
+    const c = t.closest("[data-mccopy]"); if (c) { const ok = await copyText(S.aiChat[+c.dataset.mccopy].text); return toast(ok ? "Copied" : "Select the text and copy it"); }
+    const ml = t.closest("[data-mcmail]"); if (ml) { const txt = S.aiChat[+ml.dataset.mcmail].text, sm = /^Subject:\s*(.*)$/im.exec(txt);
+      const body = txt.slice(sm.index + sm[0].length).replace(/^\s+/, ""); const a = document.createElement("a");
+      a.href = `mailto:?subject=${encodeURIComponent(sm[1].trim())}&body=${encodeURIComponent(body)}`; a.click(); }
+  };
+}
+async function aiDraftReply(btn){
+  if (!S.canEdit) return ownerOnlyToast();
+  const a = S.apps.get(S.sel), ta = $("#replyText"); if (!a || !ta) return;
+  if (!threadOf(S.sel).some(m => m.from === "applicant")) return toast(`${first(a.name)} hasn't sent a message to answer yet.`);
+  const label = btn.textContent; btn.disabled = true; btn.textContent = "Drafting…";
+  try {
+    const h = aiHints()[a._id];
+    const r = await medControl({ job: "reply", id: a._id, hint: h, typeInfo: TYPE_INFO[a.type] || "" });
+    ta.value = r.text || ""; ta.focus(); toast("Draft ready. Check it, then send.");
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+async function aiMakeBrief(btn){
+  if (!S.canEdit) return ownerOnlyToast();
+  const id = S.sel; if (!id) return;
+  btn.disabled = true; btn.textContent = "Writing brief…";
+  try { await medControl({ job: "brief", id }); toast("Brief ready"); }
+  catch (e) { toast(e.message); }
+  finally { btn.disabled = false; const a = S.apps.get(id); btn.textContent = a && get(a, "ai.brief") ? "Redo brief" : "Make brief"; }
+}
+const TONE = { strong: ["Strong", "good"], positive: ["Positive", "good"], mixed: ["Mixed", "warn"], concern: ["Concern", "bad"], waiting: ["Waiting", ""] };
+function briefHTML(b){
+  if (!b) return `<div class="row"><span class="lbl"><small>${S.canEdit ? "Make brief writes a one-page summary from the application, interview answers and reference answers: strengths, things to follow up on, interview questions and a reference digest." : "No brief yet. The owner can make one."}</small></span></div>`;
+  const list = (title, xs, cls) => xs && xs.length ? `<div class="aib-sec"><h4 class="${cls}">${title}</h4><ul>${xs.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "";
+  return `<div class="aibody"><div class="aib-tag">AI draft · check before using · ${esc(new Date(b.at).toLocaleDateString())}</div>
+    <p class="aib-sum">${esc(b.summary || "")}</p>
+    <div class="aib-cols">${list("Strengths", b.strengths, "good")}${list("Follow up on", b.followUps, "warn")}</div>
+    ${list("Interview follow-up questions", b.questions, "")}
+    ${b.references && b.references.length ? `<div class="aib-sec"><h4>References</h4>${b.references.map(r => { const [l, c] = TONE[r.tone] || [r.tone, ""];
+      return `<div class="aib-ref"><b>${esc(r.name)}</b><span class="badge ${c === "good" ? "ok" : c === "bad" ? "bad" : "wait"}">${esc(l)}</span><small>${esc(r.note)}</small></div>`; }).join("")}</div>` : ""}</div>`;
+}
+
 /* ---------- push notifications on this device (functions/push.js sends them) ---------- */
 // The messaging SDK loads only here, so the public pages never pay for it. Each device that turns them on gets
 // pushTokens/{token} = {email, device, at}; the owner's devices get everything, admins' devices get interview bookings.
@@ -2443,7 +2556,7 @@ export function startDesk({ email, role, owner, name }){
         if (!S.sel) renderOverview();
       }, e => console.error(e));
     }
-    onSnapshot(doc(db, "settings", "main"), s => { S.settings = s.exists() ? s.data() : {}; }, () => {});
+    onSnapshot(doc(db, "settings", "main"), s => { S.settings = s.exists() ? s.data() : {}; paintAi(); }, () => {});
     onSnapshot(collection(db, "staff"), snap => { S.staff = new Map(snap.docs.map(d => [d.id, d.data()])); if (S._teamPaint && !$("#modal").hidden) S._teamPaint(); if (S.sel) syncDetail(); }, () => {});
   }
 }
