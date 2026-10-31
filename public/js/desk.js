@@ -161,7 +161,7 @@ function tabHTML(tab){
   if (tab === "msgs") return `<div class="msgpane">
     <div class="ios"><div class="thread staffview" id="dThread"></div></div>
     <p class="help" id="msgNote" style="margin:8px 4px 0"></p>
-    ${S.canEdit ? `<div class="ios composer-box"><label class="row stack"><span class="lbl">Reply</span><textarea id="replyText" rows="3" maxlength="2000" placeholder="Write a reply… (⌘↩ to send)"></textarea></label>
+    ${S.canEdit ? `<div class="ios composer-box"><div class="row qreplies" id="qReplies">${quickRepliesHTML()}</div><label class="row stack"><span class="lbl">Reply</span><textarea id="replyText" rows="3" maxlength="2000" placeholder="Write a reply… (⌘↩ to send)"></textarea></label>
       <div class="row"><label class="lbl" style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="replyMail" checked style="width:auto"> Also open an email in Mail to let them know</label>
         <button class="btn primary" type="button" data-reply>Send reply</button></div></div>` : `<div class="viewonly"><b>View only.</b> Only the owner replies to applicants.</div>`}
   </div>`;
@@ -902,6 +902,24 @@ function renderMessages(){
     markedRead.add(m.key); updateDoc(doc(db, "portal", S.sel, "messages", m.id), { readAt: Date.now() }).catch(() => markedRead.delete(m.key));
   }
 }
+// Saved replies: one tap drops the text into the reply box ({first} becomes the applicant's first name). Edited in Settings.
+const DEFAULT_REPLIES = [
+  { title: "Got it", text: "Thanks, {first}! We got it and we'll be in touch soon." },
+  { title: "Documents received", text: "Thanks, {first}. We received your documents and they're under review." },
+  { title: "Interview times open", text: "Hi {first}, interview times are open in your portal now. Pick whichever one works best for you." },
+  { title: "References", text: "Hi {first}, we're still waiting to hear from some of your references. A quick reminder from you can help move things along." },
+  { title: "When's the board?", text: "Hi {first}, your application goes to the next board meeting once your references, interview and the other checks are complete. You'll hear from us within about a week of that meeting." },
+];
+const savedReplies = () => Array.isArray(S.settings.replies) ? S.settings.replies : DEFAULT_REPLIES;
+const quickRepliesHTML = () => savedReplies().map((r, i) => `<button class="chip" type="button" data-qr="${i}">${esc(r.title)}</button>`).join("");
+function useQuickReply(i){
+  const r = savedReplies()[i], a = S.apps.get(S.sel), ta = $("#replyText"); if (!r || !a || !ta) return;
+  const text = r.text.replace(/\{first\}/g, first(a.name));
+  ta.value = ta.value.trim() ? ta.value.trimEnd() + "\n\n" + text : text;
+  ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+const replyRowHTML = (r = { title: "", text: "" }) => `<div class="row stack qredit"><div style="display:flex;gap:8px;align-items:center"><input type="text" class="qrTitle" maxlength="40" placeholder="Button label" value="${esc(r.title)}"><button class="copy" type="button" data-qrrm>Remove</button></div>
+  <textarea class="qrText" rows="2" maxlength="2000" placeholder="Reply text. {first} becomes their first name.">${esc(r.text)}</textarea></div>`;
 async function sendReply(){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(S.sel), ta = $("#replyText"); if (!a || !ta) return;
@@ -1142,6 +1160,8 @@ function openSettings(){
       <label class="row stack"><span class="lbl">Email signature<small>Printed at the end of every email</small></span><textarea id="sSig" rows="4" placeholder="Name, credentials">${esc(s.signature||"")}</textarea></label>
       <label class="row stack"><span class="lbl">Documents and questions go to</span><input type="text" id="sDocs" placeholder="${esc(CONTACT_EMAIL)}" value="${esc(s.docsEmail||"")}"></label>
       <label class="row stack"><span class="lbl">Default interview location</span><input type="text" id="sLoc" placeholder="PVRS building" value="${esc(s.defaultLocation||"")}"></label></div></div>
+    <div class="group"><h3><span>Saved replies</span><button class="btn small" type="button" id="qrAdd">Add reply</button></h3><div class="ios" id="qrList">${savedReplies().map(replyRowHTML).join("")}</div>
+      <p class="help" style="margin:4px 4px 0">Buttons above the reply box on the Messages tab. <b>{first}</b> becomes the applicant's first name.</p></div>
     <div class="group"><h3><span>Security</span></h3><div class="ios">
       <label class="row"><span class="lbl">Sign out after inactivity<small>Minutes with no mouse or keyboard use, for everyone on the team (5–240)</small></span><input type="number" id="sIdle" min="5" max="240" placeholder="30" value="${esc(s.idleMinutes||"")}"></label></div></div>
     <div class="group"><h3><span>Online application</span></h3><div class="ios">
@@ -1159,6 +1179,8 @@ function openSettings(){
     const id = e.target.id;
     if (id === "sCancel") closeModal();
     if (id === "sPreview") openPreview(S.sel);
+    if (id === "qrAdd") { $("#qrList").insertAdjacentHTML("beforeend", replyRowHTML()); $("#qrList .qredit:last-child .qrTitle").focus(); return; }
+    const qrm = e.target.closest("[data-qrrm]"); if (qrm) { qrm.closest(".qredit").remove(); return; }
     if (id === "sCopyApply") { const u = location.origin + "/apply"; toast((await copyText(u)) ? "Copied " + u : u); }
     if (id === "sFull") exportFull();
     if (id === "sSummary") exportSummary();
@@ -1176,7 +1198,8 @@ function openSettings(){
       try { await deleteDoc(doc(db, "staff", rm.dataset.rmstaff)); toast("Removed"); } catch { toast("Couldn't remove."); } }
     if (id === "sSave") {
       const idle = parseInt($("#sIdle").value, 10);
-      const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now() };
+      const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now(),
+        replies: [...document.querySelectorAll("#qrList .qredit")].map(r => ({ title: r.querySelector(".qrTitle").value.trim(), text: r.querySelector(".qrText").value.trim() })).filter(r => r.title && r.text).slice(0, 20) };
       try { await setDoc(doc(db, "settings", "main"), next, { merge: true }); closeModal(); toast("Settings saved"); } catch { toast("Couldn't save settings."); }
     }
   };
@@ -1586,6 +1609,7 @@ function bindEvents(){
       return; }
     const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); return; }
     const om = t.closest("[data-openmsg]"); if (om) { select(om.dataset.openmsg); switchTab("msgs"); return; }
+    const qr = t.closest("[data-qr]"); if (qr) return useQuickReply(+qr.dataset.qr);
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
     if (!S.canEdit && t.closest(OWNER_ONLY)) return ownerOnlyToast();

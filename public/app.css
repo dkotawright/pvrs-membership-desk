@@ -1269,3 +1269,9 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .ivprep .info p{margin:8px 0 4px}
 .ivprep .info ul{margin:4px 0 6px;padding-left:20px}
 .ivprep .info li{margin:3px 0}
+
+/* Messages: saved replies (chips above the reply box; edited in Settings) */
+.row.qreplies{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-start}
+.row.qreplies:empty{display:none}
+.qredit .qrTitle{flex:1;min-width:0}
+.qredit textarea{width:100%}

@@ -381,6 +381,23 @@ try {
     if (n !== 1) fail("resending the link posted another welcome: " + n); else ok("resending the link doesn't repeat the welcome");
     await ctx.close();
   }
+  // ---- Saved replies: chips fill the reply box; Settings edits them
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await pickApplicant(page, "Marcus Bell");
+    await page.locator('.tabdock [data-tab="msgs"]').click(); await wait(page, 300);
+    await page.locator('#qReplies [data-qr]', { hasText: "Documents received" }).click(); await wait(page, 100);
+    if (await page.locator("#replyText").inputValue() !== "Thanks, Marcus. We received your documents and they're under review.") fail("saved reply text: " + await page.locator("#replyText").inputValue()); else ok("a saved reply fills the box with their first name");
+    await page.evaluate(() => document.querySelector("#settingsBtn")?.click()); await wait(page, 300);
+    await page.locator("#qrAdd").click();
+    await page.locator("#qrList .qredit:last-child .qrTitle").fill("Welcome back");
+    await page.locator("#qrList .qredit:last-child .qrText").fill("Good to hear from you, {first}.");
+    await page.locator("#qrList .qredit").first().locator("[data-qrrm]").click();
+    await page.locator("#sSave").click(); await wait(page, 400);
+    const r = await page.evaluate(() => window.__mock.docs.get("settings/main").replies);
+    if (!r || r.length !== 5 || r[0].title !== "Documents received" || r[4].title !== "Welcome back") fail("saved replies settings: " + JSON.stringify(r)); else ok("Settings adds and removes saved replies");
+    await ctx.close();
+  }
   // ---- Applicant portal: how to prepare for the interview
   {
     const { ctx, page } = await open(browser, { w: 430, h: 844, user: { email: "marcus.bell@example.com", displayName: "Marcus" } });
