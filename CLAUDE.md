@@ -71,6 +71,10 @@ Overview = header (greeting + Board meeting / Search ⌘K buttons) → one stage
 
 Desktop applicant list (Oct 22): tucks into a thin "Applicants" strip on the left ALWAYS (not only with a file open) unless pinned (`.app:not(.pinned)` rules; pin button at the top of the list, saved per browser). Hover slides it out; choosing a filter adds `.peek` (peekList) until the pointer leaves, a click elsewhere, or 6 s.
 
+## Welcome (Oct 31)
+The first portal invite is now a one-step **Welcome** (`inviteToPortal`): portal access + sign-in link, a welcome message posted in `portal/{id}/messages` (`welcomeText`), `private/main.portal.welcomed` = date, and the welcome email (TEMPLATES.portal) opened for that applicant. To do shows "Welcome {first}" at the top as soon as an application with an email lands (any step up to scheduling), replacing the old late "Send the portal invite" item. Later clicks just resend the link (no second message). `openEmail(kind, extra, id)` now takes the applicant id (the To do button used to open the email for whichever file was selected). Not yet deployed: needs `firebase deploy --only hosting`.
+Also fixed Oct 31: sign-in weather showed sunrise/sunset shifted for browsers outside Eastern time (Open-Meteo already returns Potsdam local time).
+
 ## Stability review (Oct 22)
 Full check: 118 browser checks, 49 rules tests, live public pages clean, live rules == local. Fixed: replacement references and reference answers are now claimed in a transaction (`claimOnce`) before the owner's desk applies them — an out-of-date open desk could otherwise redo a swap and wipe the new reference's link/answers. Every automatic owner-desk action now claims first (submissions, refUpdates, refResponses).
 

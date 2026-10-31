@@ -58,7 +58,7 @@ function tabHTML(tab){
       <button class="btn small" type="button" data-act="viewform">View</button><button class="btn small" type="button" data-act="printform">Print</button></div></div></section>` : ""}
     ${group("Incomplete application",[F.date("app.notified","Date notified"),F.date("app.returned","Date app returned"),F.date("app.reReceived","Date re-received")],"incomplete")}
     ${admin ? group("Applicant portal",[
-      `<div class="row"><span class="lbl">Portal access<small id="portalStatus">—</small></span><button class="btn small primary" type="button" data-act="invite" id="inviteBtn">Send invite</button></div>`,
+      `<div class="row"><span class="lbl">Portal access<small id="portalStatus">—</small></span><button class="btn small primary" type="button" data-act="invite" id="inviteBtn">Welcome</button></div>`,
       F.yn("portal.bookingOpen","Let them book an interview",false,"Shows your open interview times in their portal"),
       `<div class="row"><span class="lbl">Applicant view<small>What they see when they sign in</small></span><button class="btn small" type="button" data-act="preview">Preview</button></div>`]) : ""}
     ${admin ? `<section class="group"><h3><span>Documents</span><span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" type="button" data-act="records">Upload records</button><button class="btn small" type="button" data-act="docs">Request documents</button></span></h3><div class="ios" id="docList"></div><div class="ios recs" id="recList"></div></section>` : ""}
@@ -299,6 +299,8 @@ function todoItems(){
     const unsent = rs.list.filter(r => !r.received && !g(`refs.r${r.i}.form`) && !g(`refs.r${r.i}.contacted`) && okEmail(g(`refs.r${r.i}.email`)));
     if (!rs.done && unsent.length) add(1, `Send ${unsent.length === 1 ? "a reference form" : unsent.length + " reference forms"}`, unsent.map(r => r.name).join(", "), "checks", "refsall", "Email forms");
     const step = MILESTONES.findIndex(m => !m[1](a));
+    const welcome = !g("portal.invited") && okEmail(a.email) && step <= 5;
+    if (welcome) add(0, `Welcome ${fn}`, "Portal invite, welcome message and email in one step", "app", "invite", "Welcome");
     switch (step) {
       case 0: add(2, "Enter the date the application came in", "", "app"); break;
       case 1: add(2, g("app.complete") === "no" ? "Follow up on the incomplete application" : "Review the application", g("app.notified") ? "Notified " + fmtDate(g("app.notified")) : "", "app"); break;
@@ -306,7 +308,7 @@ function todoItems(){
       case 3: add(2, "Verify the driver's license", "", "checks"); break;
       case 4: if (!rs.list.length) add(2, "Add references", "None entered yet", "checks"); break;
       case 5:
-        if (!g("portal.invited") && okEmail(a.email)) add(2, "Send the portal invite", `So ${fn} can book an interview`, "app", "invite", "Send invite");
+        if (welcome) break;
         else if (g("portal.invited") && g("portal.bookingOpen") !== "yes") add(2, "Open interview booking", `${fn} can then pick a time`, "app", "booking", "Open booking");
         else if (!okEmail(a.email)) add(2, "Schedule the interview", "No email on file, so book it for them", "iv");
         break;
@@ -519,7 +521,7 @@ function syncDetail(){
   if (pe) pe.textContent = a.phone || "Not entered on Application tab";
   if (ee) ee.textContent = a.email || "Not entered on Application tab";
   const ps = $("#portalStatus");
-  if (ps) { const inv = get(a,"portal.invited"); ps.textContent = !a.email ? "Add their email first" : inv ? `Invited ${fmtDate(inv)} · ${a.email}` : "Not invited yet"; $("#inviteBtn").textContent = inv ? "Resend link" : "Send invite"; $("#inviteBtn").disabled = !a.email; }
+  if (ps) { const inv = get(a,"portal.invited"); ps.textContent = !a.email ? "Add their email first" : inv ? `Invited ${fmtDate(inv)} · ${a.email}` : "Not invited yet"; $("#inviteBtn").textContent = inv ? "Resend link" : "Welcome"; $("#inviteBtn").disabled = !a.email; }
   const be = $("#bookedEcho");
   if (be) {
     be.textContent = a._booked ? `${slotLong(a._booked.start)}${a._booked.location ? " · " + a._booked.location : ""}` : "Not booked";
@@ -1023,26 +1025,41 @@ function watchFiles(id){
   }, () => {});
 }
 
-/* ---------- portal invite ---------- */
+/* ---------- portal invite = welcome ---------- */
+// The first invite is the applicant's welcome, all in one step: portal access + sign-in link, a welcome message
+// waiting in their portal's Messages, and the welcome email ready to send. Later clicks just resend the link.
+const welcomeText = a => `Hi ${first(a.name)}, welcome, and thank you for applying to the Potsdam Volunteer Rescue Squad!
+
+This page is your applicant portal. Here's what happens next:
+• We check your driving record and verify your driver's license.
+• We contact your references (we need ${REFS_NEEDED}). You'll see here when each one comes back.
+• You book an interview with the Membership Committee here once times open.
+• Your application then goes to the board.
+
+You can follow every step on this page. If you have a question at any point, send us a message right here.`;
 async function inviteToPortal(id, showEmail = true){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id); if (!a) return;
   const email = lower(a.email);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Add a valid email on the Application tab first.");
+  const welcome = !get(a,"portal.welcomed");
   if (!get(a,"portal.invited")) edit(id, "portal.invited", today());
+  if (welcome) edit(id, "portal.welcomed", today());
   flushAll();
   try {
     await syncPortal(id, true);
     await sendSignInLinkToEmail(auth, email, linkSettings());
-    toast(`Sign-in link sent to ${email}`);
-    if (showEmail) openEmail("portal");
+    if (welcome) await addDoc(collection(db, "portal", id, "messages"), { text: welcomeText(a), from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() })
+      .catch(e => console.error(e));
+    toast(welcome ? `Welcomed ${first(a.name)}: sign-in link sent and a welcome message is in their portal` : `Sign-in link sent to ${email}`);
+    if (showEmail) openEmail("portal", undefined, id);
   } catch (e) { console.error(e); toast("Couldn't send the invite. Check the email address and try again."); }
 }
 
 /* ---------- emails ---------- */
 const TEMPLATES = {
-  portal: a => ({ subject: "Your PVRS applicant portal",
-    body: `Hi ${first(a.name)},\n\nThank you for applying to the Potsdam Volunteer Rescue Squad. You can follow your application, upload documents and book your interview in your applicant portal:\n\n${location.origin}\n\nSign in with this email address (${lower(a.email)}). We just sent you a separate sign-in link, and you can request a new one from that page any time. No password needed.\n\nQuestions? Email ${S.settings.docsEmail || CONTACT_EMAIL}.\n\nThank you,\n${sig()}` }),
+  portal: a => ({ subject: "Welcome to PVRS: your applicant portal",
+    body: `Hi ${first(a.name)},\n\nWelcome, and thank you for applying to the Potsdam Volunteer Rescue Squad! We've received your application. You can follow it, upload documents, message us and book your interview in your applicant portal:\n\n${location.origin}\n\nSign in with this email address (${lower(a.email)}). We just sent you a separate sign-in link, and you can request a new one from that page any time. No password needed.\n\nQuestions? Email ${S.settings.docsEmail || CONTACT_EMAIL}.\n\nThank you,\n${sig()}` }),
   docs: (a, list = []) => ({ subject: "PVRS application: documents needed",
     body: `Hi ${first(a.name)},\n\nTo keep your application moving, please upload the following in your applicant portal:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\n${location.origin}\n\nIf the upload gives you trouble, email them to ${S.settings.docsEmail || CONTACT_EMAIL} instead.\n\nThank you,\n${sig()}` }),
   refs: (a, list = []) => ({ subject: "PVRS application: references still needed",
@@ -1050,8 +1067,8 @@ const TEMPLATES = {
   interview: a => ({ subject: "PVRS interview: pick a time",
     body: `Hi ${first(a.name)},\n\nThe next step in your application is an interview with the Membership Committee. Interview times are now open in your applicant portal. Sign in and pick the one that works best for you:\n\n${location.origin}\n\nIf none of the times work, reply to this email and we'll find another.\n\nThank you,\n${sig()}` }),
 };
-function openEmail(kind, extra){
-  const a = S.apps.get(S.sel); if (!a) return;
+function openEmail(kind, extra, id = S.sel){
+  const a = S.apps.get(id); if (!a) return;
   const t = TEMPLATES[kind](a, extra);
   const titles = { portal: "Welcome email", docs: "Documents email", refs: "References email", interview: "Interview email" };
   const M = openModal(`<h3>${titles[kind]}</h3><p class="help">Optional personal note to go with the portal. Copy it or open it in Mail.</p>
@@ -1326,7 +1343,7 @@ function openPalette(){
       out.push({ label: `Interview mode`, sub: fn, icon: "▶", run: go(() => { select(id); enterIvMode(); }) });
       if (S.admin) out.push({ label: "Open Checks", sub: fn, icon: "✓", run: openFile(id, "checks") });
       if (S.canEdit && refList(top).length) out.push({ label: "Email reference forms", sub: fn, icon: "✉", run: go(() => openRefsAll(id)) });
-      if (S.canEdit && !get(top, "portal.invited") && okEmail(top.email)) out.push({ label: "Send portal invite", sub: fn, icon: "✉", run: go(() => inviteToPortal(id)) });
+      if (S.canEdit && !get(top, "portal.invited") && okEmail(top.email)) out.push({ label: `Welcome ${first(top.name)}`, sub: "Portal invite, welcome message and email", icon: "✉", run: go(() => inviteToPortal(id)) });
       if (S.canEdit && okEmail(top.email)) out.push({ label: `Email ${first(top.name)}`, sub: top.email, icon: "✉", run: go(() => { select(id); openEmailPicker(); }) });
     }
     commands.filter(c => !q || has(`${c.label.toLowerCase()} ${c.words}`, q))
@@ -1616,7 +1633,7 @@ function bindEvents(){
     const segBtn = t.closest(".seg button");
     if (segBtn && segBtn.parentElement.dataset.k) { const k = segBtn.parentElement.dataset.k; const cur = get(S.apps.get(S.sel), k);
       const v = cur === segBtn.dataset.v && k !== "status" ? "" : segBtn.dataset.v; edit(S.sel, k, v);
-      if (k === "portal.bookingOpen" && v === "yes") { const a = S.apps.get(S.sel); if (a.email && !get(a,"portal.invited")) toast("Send them a portal invite so they can book."); else if (a.email) setTimeout(() => openEmail("interview"), 300); }
+      if (k === "portal.bookingOpen" && v === "yes") { const a = S.apps.get(S.sel); if (a.email && !get(a,"portal.invited")) toast("Welcome them first (the Welcome button above) so they can sign in and book."); else if (a.email) setTimeout(() => openEmail("interview"), 300); }
       return; }
     if (t.closest("#backBtn")) { deselect(); return; }
     const cp = t.closest("[data-copy]");

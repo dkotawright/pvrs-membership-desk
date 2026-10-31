@@ -36,7 +36,7 @@ const snap = (page, name) => page.screenshot({ path: path.join(OUT, name + ".png
 const priv = (page, id) => page.evaluate(i => window.__mock.docs.get(`applicants/${i}/private/main`), id);
 const pickApplicant = async (page, name) => { await page.evaluate(n => [...document.querySelectorAll(".arow")].find(r => r.textContent.includes(n))?.click(), name); await wait(page, 400); };
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});   // PW_CHROME: use a preinstalled Chromium
 try {
   // ---- the reference opens their private link
   {
@@ -352,6 +352,31 @@ try {
     if (!/Marcus Bell/.test(await page.locator("#dName").textContent()) || !(await page.locator('.tabdock [data-tab="checks"][aria-selected="true"]').count())) fail("to do row didn't open Marcus on Checks"); else ok("tapping a to-do opens the file on the right tab");
     await ctx.close();
   }
+  // ---- Welcome: a new online application gets portal access, a welcome message and the welcome email in one step
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await pickApplicant(page, "Marcus Bell");   // a different file open, so the email must follow the row clicked, not the selection
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    const row = page.locator(".todo .todoitem", { hasText: "Welcome Test" });
+    if (!(await row.count()) || !/Test Online/.test(await row.textContent())) fail("no Welcome to-do for the new online application"); else ok("new online applications show Welcome at the top of To do");
+    await row.locator("[data-todoact]").click(); await wait(page, 800);
+    const st = await page.evaluate(() => { const d = window.__mock.docs, id = [...d.keys()].find(k => /^applicants\/[^/]+$/.test(k) && d.get(k).name === "Test Online").split("/")[1];
+      const pm = d.get(`applicants/${id}/private/main`) || {}, msgs = [...d.entries()].filter(([k]) => k.startsWith(`portal/${id}/messages/`)).map(([, v]) => v);
+      return { portal: d.get(`portal/${id}`)?.email, invited: pm.portal?.invited, welcomed: pm.portal?.welcomed, msgs }; });
+    if (st.portal !== "test.online@example.com" || !st.invited || !st.welcomed) fail("welcome didn't open the portal: " + JSON.stringify(st)); else ok("Welcome opens their portal and records the date");
+    if (st.msgs.length !== 1 || st.msgs[0].from !== "staff" || !/^Hi Test, welcome/.test(st.msgs[0].text) || st.msgs[0].text.length > 2000) fail("welcome message: " + JSON.stringify(st.msgs)); else ok("a welcome message is waiting in their portal");
+    const m = await page.locator("#modal").textContent();
+    if (!/Welcome email/.test(m) || !/test\.online@example\.com/.test(m) || /marcus/i.test(m)) fail("welcome email window: " + m.slice(0, 200)); else ok("the welcome email opens for the applicant clicked");
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    const resend = await page.evaluate(() => [...document.querySelectorAll(".todo .todoitem")].some(r => /Welcome Test/.test(r.textContent)));
+    if (resend) fail("Welcome still on the To do list"); else ok("Welcome leaves the To do list once done");
+    await pickApplicant(page, "Test Online");
+    if ((await page.locator("#inviteBtn").textContent()) !== "Resend link") fail("invite button after welcome: " + await page.locator("#inviteBtn").textContent());
+    await page.locator("#inviteBtn").click(); await wait(page, 600);
+    const n = await page.evaluate(() => [...window.__mock.docs.keys()].filter(k => /^portal\/[^/]+\/messages\//.test(k) && window.__mock.docs.get(k).text.startsWith("Hi Test, welcome")).length);
+    if (n !== 1) fail("resending the link posted another welcome: " + n); else ok("resending the link doesn't repeat the welcome");
+    await ctx.close();
+  }
   // ---- Interview mode
   for (const [w, h, who] of [[1440, 900, OWNER], [390, 844, { email: "alex@pvrs.org", displayName: "Alex" }]]) {
     const { ctx, page } = await open(browser, { w, h, user: who });
@@ -413,20 +438,20 @@ try {
   // ---- ⌘K: find anyone, run commands
   {
     const { ctx, page } = await open(browser);
-    await page.keyboard.press("Meta+k"); await wait(page, 300);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 300);
     if (await page.locator("#palQ").count() !== 1) fail("⌘K didn't open the palette"); else ok("⌘K opens search and commands");
     await page.locator("#palQ").fill("georg"); await wait(page, 150);
     const items = await page.locator(".palitem").evaluateAll(b => b.map(x => x.textContent.replace(/\s+/g, " ").trim()));
     if (!/^GT Georgia Thurmond/.test(items[0]) || !items.some(t => /Interview mode/.test(t)) || !items.some(t => /Email reference forms/.test(t))) fail("palette items: " + JSON.stringify(items)); else ok("typing a name finds them, with quick actions");
     await page.keyboard.press("Enter"); await wait(page, 500);
     if (!/Georgia Thurmond/.test(await page.locator("#dName").textContent())) fail("Enter didn't open Georgia"); else ok("Enter opens the applicant");
-    await page.keyboard.press("Meta+k"); await wait(page, 300);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 300);
     await page.locator("#palQ").fill("georgia"); await page.keyboard.press("ArrowDown"); await wait(page, 100);
     const sel = await page.locator(".palitem.on").textContent();
     await page.keyboard.press("Enter"); await wait(page, 500);
     if (!/Interview mode/.test(sel) || !(await page.locator("#app").evaluate(a => a.classList.contains("ivmode")))) fail("arrow + Enter didn't start interview mode: " + sel); else ok("arrow keys + Enter run an action (interview mode)");
     await page.keyboard.press("Escape"); await wait(page, 200); await page.keyboard.press("Escape"); await wait(page, 300);
-    await page.keyboard.press("Meta+k"); await wait(page, 300);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 300);
     await page.locator("#palQ").fill("board"); await page.keyboard.press("Enter"); await wait(page, 500);
     if (await page.locator("#boardMtg").isHidden()) fail("'board' command didn't open the meeting"); else ok("commands work (board → Board meeting)");
     await ctx.close();

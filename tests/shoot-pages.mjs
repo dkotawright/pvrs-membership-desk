@@ -6,7 +6,7 @@ const PUB = new URL("../public/", import.meta.url).pathname, OUT = new URL("./sh
 const MOCK = fs.readFileSync(new URL("./mockfb.js", import.meta.url), "utf8");
 const TYPES = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".png": "image/png", ".webmanifest": "application/manifest+json" };
 const pre = process.argv[2] || "page", errs = [];
-const b = await chromium.launch();
+const b = await chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
 for (const [url, w, h, dark, who] of [["/signin", 1440, 900, false, "staff"], ["/signin", 1440, 900, false, "applicant"], ["/signin", 390, 844, false, "staff"], ["/", 1440, 900, false, ""]]) {
   const ctx = await b.newContext({ viewport: { width: w, height: h }, colorScheme: dark ? "dark" : "light" });
   await ctx.addInitScript(x => { window.__MOCK_USER = null; try { if (x) localStorage.setItem("pvrsWho", x); } catch {} }, who);

@@ -29,7 +29,9 @@ function icon(code, day = true){
     : `<path d="M7 14h10a3.8 3.8 0 0 0 .6-7.5A5.2 5.2 0 0 0 7.6 5.6 4.3 4.3 0 0 0 7 14z" ${S}/><path d="M12.5 15.5l-2 3.2h3l-2 3.3" ${S}/>`;
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${g}</svg>`;
 }
-const hm = iso => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
+// Open-Meteo already gives Potsdam local time ("2026-10-31T07:18", no offset); read the clock straight off it so a
+// browser in another time zone doesn't shift it again.
+const hm = iso => { const [, h, m] = /T(\d\d):(\d\d)/.exec(iso) || []; if (!h) return ""; const n = +h % 12 || 12; return `${n}:${m} ${+h < 12 ? "AM" : "PM"}`; };
 const dayName = iso => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" });
 
 async function getJSON(url, headers){ const r = await fetch(url, { headers }); if (!r.ok) throw new Error(r.status); return r.json(); }
