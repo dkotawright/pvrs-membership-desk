@@ -381,6 +381,13 @@ try {
     if (n !== 1) fail("resending the link posted another welcome: " + n); else ok("resending the link doesn't repeat the welcome");
     await ctx.close();
   }
+  // ---- Applicant portal: how to prepare for the interview
+  {
+    const { ctx, page } = await open(browser, { w: 430, h: 844, user: { email: "marcus.bell@example.com", displayName: "Marcus" } });
+    const t = await page.locator("#ivCard .ivprep").textContent().catch(() => "");
+    if (!/How to prepare/.test(t) || !/driver's license/.test(t)) fail("interview prep missing: " + t.slice(0, 80)); else ok("the portal explains how to prepare for the interview");
+    await ctx.close();
+  }
   // ---- Interview mode
   for (const [w, h, who] of [[1440, 900, OWNER], [390, 844, { email: "alex@pvrs.org", displayName: "Alex" }]]) {
     const { ctx, page } = await open(browser, { w, h, user: who });

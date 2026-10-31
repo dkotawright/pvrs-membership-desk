@@ -60,7 +60,7 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
       <div class="composer"><textarea id="msgText" rows="2" maxlength="2000" placeholder="Type your question…" aria-label="Your message" ${dis}></textarea>
         <button class="btn primary" type="button" data-send ${dis}>Send</button></div></section>
 
-    <section class="card glass" id="ivCard"><h2>Interview</h2>${ivBody}</section>
+    <section class="card glass" id="ivCard"><h2>Interview</h2>${ivBody}${ivDone ? "" : ivPrepHTML(iv)}</section>
 
     <section class="card glass" id="refCard"><h2>References</h2>${refsBody(pd.refs || [], { ups: refUps, form: refForm, draft: refDraft, sending: refSending, dis })}</section>
 
@@ -80,6 +80,19 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
       <li>Monthly training is offered and all members are encouraged to take part.</li></ul>
       <p style="margin:10px 0 0">Questions? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></div></section>
   </div>`;
+}
+// "How to prepare" under the interview card (until the interview is done). Topics follow the committee's question list.
+function ivPrepHTML(iv){
+  const len = iv && iv.duration ? `about ${iv.duration} minutes` : "usually under an hour";
+  return `<details class="ivprep"${iv ? " open" : ""}><summary>How to prepare for your interview</summary><div class="info">
+    <p><b>What it is:</b> a relaxed sit-down conversation with members of the Membership Committee, ${len}. It's a chance for us to get to know you and for you to ask about the squad. There's no test.</p>
+    <p><b>What to bring:</b></p><ul>
+      <li>Your driver's license. We verify it in person.</li>
+      <li>Any EMS, CPR or first aid cards you hold.</li>
+      <li>Your availability: which semesters, breaks and days of the week you're around.</li>
+      <li>Your own questions about the squad.</li></ul>
+    <p><b>What we'll talk about:</b> a bit about you and your interests, why you want to join PVRS, whether you're a student and here year round, any past fire, rescue or EMS experience, and your certifications.</p>
+    <p><b>Tips:</b> neat, comfortable clothes are fine. Please arrive 5–10 minutes early. If something comes up, cancel or change your time here (at least 24 hours ahead) or email <b>${esc(CONTACT_EMAIL)}</b>.</p></div></details>`;
 }
 // Only names and received/waiting come through; contact details stay with the squad.
 // When the squad asks for a different reference, that row gets a short form; what they send replaces it in the squad's file.

@@ -1262,3 +1262,10 @@ body:not(:has(.gate:not([hidden]))) .ecg-line{stroke:var(--red);opacity:.75;filt
 .hrow i{display:block;height:10px;width:var(--w);min-width:4px;background:var(--chart);border-radius:0 4px 4px 0}
 .hrow b{font-weight:650;color:var(--fg);text-align:right;font-variant-numeric:tabular-nums}
 .ovcol.ovside .hchart{padding:2px 12px 12px}
+
+/* Portal: interview prep (collapsible, under the interview card) */
+.ivprep{margin-top:12px;border-top:1px solid var(--sep);padding-top:10px}
+.ivprep summary{cursor:pointer;font-weight:650;color:var(--fg);padding:4px 0;list-style-position:inside}
+.ivprep .info p{margin:8px 0 4px}
+.ivprep .info ul{margin:4px 0 6px;padding-left:20px}
+.ivprep .info li{margin:3px 0}
