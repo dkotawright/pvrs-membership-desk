@@ -118,9 +118,15 @@ console.log("Reference items are claimed once, even with several desks open");
   }
 }
 
+// Storage rules look up portal/{id} in Firestore. firebase-tools sends that emulator-to-emulator call through
+// HTTPS_PROXY and ignores NO_PROXY, so behind a proxy (e.g. a cloud sandbox) the lookup fails and the upload test
+// below fails too. Run without a proxy (a Mac, GitHub Actions) or let localhost bypass it.
 console.log("Storage");
 const st = email => ctx(email).storage(), pdf = new Uint8Array([37, 80, 68, 70]), meta = { contentType: "application/pdf" };
 await t("an applicant uploads private paperwork to their folder", uploadBytes(ref(st("app@example.com"), "confidential/a1/1.pdf"), pdf, meta), true);
+await t("a stranger can't add files to someone else's folder", uploadBytes(ref(st("x@example.com"), "confidential/a1/2.pdf"), pdf, meta), false);
+await t("the owner can add paperwork", uploadBytes(ref(st("dkota@pvrs.org"), "confidential/a1/3.pdf"), pdf, meta), true);
+await t("the applicant can't read it back", getBytes(ref(st("app@example.com"), "confidential/a1/1.pdf")), false);
 await t("the owner can't open it", getBytes(ref(st("dkota@pvrs.org"), "confidential/a1/1.pdf")), false);
 await t("the paperwork account can", getBytes(ref(st("orientationpaperwork@pvrs.org"), "confidential/a1/1.pdf")), true);
 
