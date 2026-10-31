@@ -12,7 +12,7 @@ const errors = [], notes = [];
 const fail = m => errors.push("[check] " + m), ok = m => notes.push("ok: " + m);
 const OWNER = { email: "dkota@pvrs.org", displayName: "Dkota Wright" };
 
-async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark = false, seed = null } = {}){
+async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark = false, seed = null, files = {} } = {}){
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: dark ? "dark" : "light" });
   if (seed) await ctx.addInitScript(list => { window.__mock = { docs: new Map(list), listeners: new Set(), seq: 0 }; }, seed);   // extra docs on top of the usual test data
   await ctx.addInitScript(u => { window.__MOCK_USER = u; HTMLAnchorElement.prototype.click = function(){ (window.__clicked = window.__clicked || []).push(this.href); }; }, user);
@@ -20,6 +20,7 @@ async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark 
     const u = new URL(route.request().url());
     if (u.host === "www.gstatic.com") return route.fulfill({ body: MOCK, contentType: "text/javascript" });
     if (u.host === "localhost:5999") {
+      if (files[u.pathname]) return route.fulfill({ body: files[u.pathname](fs.readFileSync(path.join(PUB, u.pathname), "utf8")), contentType: TYPES[path.extname(u.pathname)] });   // patched copy of a site file
       let f = path.join(PUB, u.pathname === "/" ? "index.html" : u.pathname);
       if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(PUB, "index.html");   // SPA fallback, like Firebase Hosting
       return route.fulfill({ body: fs.readFileSync(f), contentType: TYPES[path.extname(f)] || "application/octet-stream" });
@@ -466,6 +467,26 @@ try {
     if (await page.evaluate(() => !!window.__MOCK_USER)) fail("wrong code signed in"); else ok("a wrong code doesn't sign in");
     await page.locator("#mfaCode").fill("123456"); await page.locator("#mfaForm button[type=submit]").click(); await wait(page, 1200);
     if (!(await page.locator("#desk").isVisible().catch(() => false)) && !(await page.locator("#app").isVisible().catch(() => false))) fail("the right code didn't open the desk"); else ok("the right code opens the desk");
+    await ctx.close();
+  }
+  // ---- Notifications: off until the Web Push key is set; then each device turns them on for itself
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await page.locator("#pwBtn").click(); await wait(page, 200); await page.locator("#notifBtn").click(); await wait(page, 400);
+    if (!/aren't set up for PVRS yet/.test(await page.locator("#modal").textContent())) fail("notifications without a key: " + await page.locator("#modal").textContent()); else ok("notifications explain they need setting up first");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { files: { "/js/config.js": t => t.replace('VAPID_KEY = ""', 'VAPID_KEY = "test-key"') } }); await wait(page, 600);
+    await ctx.grantPermissions(["notifications"]);
+    await page.evaluate(() => { window.__mock.pushOk = true; navigator.serviceWorker.register = async () => ({}); });
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await page.locator("#palQ").fill("notif"); await wait(page, 150); await page.keyboard.press("Enter"); await wait(page, 500);
+    await page.locator("#pushGo").click(); await wait(page, 500);
+    const t = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("pushTokens/")).map(([k, v]) => ({ k, ...v })));
+    if (t.length !== 1 || t[0].email !== "dkota@pvrs.org" || !t[0].device) fail("push token: " + JSON.stringify(t)); else ok("turning notifications on registers this device");
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await page.locator("#palQ").fill("notif"); await wait(page, 150); await page.keyboard.press("Enter"); await wait(page, 500);
+    await page.locator("#pushStop").click(); await wait(page, 500);
+    if (await page.evaluate(() => [...window.__mock.docs.keys()].some(k => k.startsWith("pushTokens/")))) fail("push token not removed"); else ok("turning them off removes this device");
     await ctx.close();
   }
   // ---- Applicant portal: how to prepare for the interview

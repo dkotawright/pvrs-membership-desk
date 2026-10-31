@@ -116,6 +116,12 @@ export const ref = (_s, path) => ({ path });
 export const uploadBytes = async () => ({});
 export const getDownloadURL = async () => "about:blank";
 export const deleteObject = async () => {};
+// Push notifications: the browser bits are faked; a test sets M.pushOk = true to pretend the browser supports them.
+export const getMessaging = () => ({});
+export const isSupported = async () => !!M.pushOk;
+export const getToken = async () => { if (M.pushDenied) throw Object.assign(new Error("denied"), { code: "messaging/permission-blocked" }); return "tok-" + (M.pushN = (M.pushN || 0) + 1); };
+export const deleteToken = async () => true;
+export const onMessage = () => () => {};
 
 if (!M.seeded) {
   M.seeded = true;

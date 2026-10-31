@@ -36,3 +36,6 @@ PVRS Membership Desk`,
   });
   logger.info("Paperwork notice sent", { fileId: event.params.fileId });
 });
+
+// Push notifications to staff devices (deploy with: firebase deploy --only functions:push)
+exports.push = require("./push");
