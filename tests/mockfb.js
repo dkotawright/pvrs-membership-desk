@@ -125,6 +125,6 @@ if (!M.seeded) {
   put("refLinks/linkUsedToken12345678", { appId: "a1", slot: 2, applicant: "Georgia Thurmond", first: "Georgia", refName: "Sam Ortiz", createdAt: now - 9 * day, expiresAt: now + 50 * day, by: "dkota@pvrs.org", submittedAt: now - day });
   put("submissions/sub1", { v: 1, status: "new", submittedAt: now - 6e4, hp: "", person: { first: "Test", last: "Online", email: "test.online@example.com", phone: "315-555-0100", dob: "2004-01-01", birthplace: "", permAddr: { street: "1 Main", city: "Potsdam", state: "NY", zip: "13676" }, localAddr: null, dlState: "NY", dlNumber: "T-1", type: "Regular" },
     education: {}, experience: { certs: [] }, employment: { jobs: [] }, background: { convicted: "no" }, references: [{ name: "R One", relationship: "Coach", email: "r1@example.com", phone: "1", address: "" }, { name: "R Two", relationship: "Boss", email: "r2@example.com", phone: "2", address: "" }, { name: "R Three", relationship: "Teacher", email: "r3@example.com", phone: "3", address: "" }],
-    signature: { confirmed: true, name: "Test Online" } });
+    signature: { confirmed: true, name: "Test Online" }, heard: { source: "Social media", detail: "Instagram" } });
   put("vault/v1", { appId: "a2", appName: "Marcus Bell", label: "Medical documentation", name: "physical.pdf", path: "confidential/a2/1.pdf", size: 1000, uploadedAt: now - 36e5, uploadedBy: "marcus.bell@example.com", from: "applicant" });
 }

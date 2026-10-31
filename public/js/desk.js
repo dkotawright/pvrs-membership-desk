@@ -4,7 +4,7 @@ import { auth, db, storage, doc, collection, collectionGroup, getDoc, setDoc, ru
   GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
-  progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential } from "./shared.js";
+  progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
@@ -21,6 +21,7 @@ const F = {
   seg:(k,l,opts,wide) => `<div class="row ${wide?"stack":""}"><span class="lbl">${l}</span><div class="seg ${wide?"wide":""}" data-k="${k}" role="group" aria-label="${esc(l)}">${segBtns(opts)}</div></div>`,
   area:(k,l,ph="") => `<label class="row stack"><span class="lbl">${l}</span><textarea id="${fid(k)}" data-k="${k}" rows="2" placeholder="${esc(ph)}"></textarea></label>`,
   note:(t,cls="") => `<div class="note ${cls}">${t}</div>`,
+  select:(k,l,opts) => `<label class="row"><span class="lbl">${l}</span><select id="${fid(k)}" data-k="${k}">${opts.map(([v,t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("")}</select></label>`,
 };
 const group = (title, rows, show, extra="") => `<section class="group"${show?` data-show="${show}"`:""}><h3><span>${title}</span>${extra}</h3><div class="ios">${rows.join("")}</div></section>`;
 
@@ -53,7 +54,8 @@ function tabHTML(tab){
   if (tab === "app") return `<div class="cols">
     ${group("Applicant",[F.text("name","Full name","First Last"),F.text("phone","Phone","(315) 555-0100","tel"),F.text("email","Email","name@example.com","email"),
       F.seg("type","Membership type",TYPES.map(t=>[t,t]),true),`<div class="note" id="typeNote"></div>`,F.seg("location","Location",[["Potsdam","Potsdam"],["other","Other"]]),`<div data-show="locOther">${F.text("locationOther","Where?","Town")}</div>`])}
-    ${group("Application",[F.date("app.received","Date received"),F.init("app.receivedInit"),F.yn("app.complete","Complete?",true)])}
+    ${group("Application",[F.date("app.received","Date received"),F.init("app.receivedInit"),F.yn("app.complete","Complete?",true),
+      F.select("app.heard","Heard about PVRS",[["","—"],...HEARD.map(h => [h,h])]),F.text("app.heardDetail","Details","Which member, event…")])}
     ${admin ? `<section class="group" id="formGroup" hidden><h3><span>Online application</span></h3><div class="ios"><div class="row"><span class="lbl">Submitted online<small id="formNote">—</small></span>
       <button class="btn small" type="button" data-act="viewform">View</button><button class="btn small" type="button" data-act="printform">Print</button></div></div></section>` : ""}
     ${group("Incomplete application",[F.date("app.notified","Date notified"),F.date("app.returned","Date app returned"),F.date("app.reReceived","Date re-received")],"incomplete")}
@@ -342,14 +344,15 @@ function todoCard(){
 function statsData(){
   const now = new Date(), yr = now.getFullYear(), months = [];
   for (let k = 11; k >= 0; k--) { const d = new Date(yr, now.getMonth() - k, 1); months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, d, n: 0 }); }
-  let apps = 0, joined = 0; const waits = [];
+  let apps = 0, joined = 0; const waits = [], heard = new Map();
   for (const a of S.apps.values()) {
     const rec = get(a, "app.received"), bd = get(a, "board.date"), ok = get(a, "board.result") === "approved";
     if (rec) { const m = months.find(x => rec.startsWith(x.key)); if (m) m.n++; if (rec.startsWith(String(yr))) apps++; }
+    const h = get(a, "app.heard"); if (h && rec && rec.startsWith(String(yr))) heard.set(h, (heard.get(h) || 0) + 1);
     if (ok && bd && bd.startsWith(String(yr))) joined++;
     if (ok && rec && bd && daysSince(bd) <= 365) waits.push(Math.max(0, Math.round((new Date(bd + "T12:00") - new Date(rec + "T12:00")) / 864e5)));
   }
-  return { months, apps, joined, avg: waits.length ? Math.round(waits.reduce((x, y) => x + y, 0) / waits.length) : null, yr };
+  return { heard: [...heard].sort((x, y) => y[1] - x[1]), months, apps, joined, avg: waits.length ? Math.round(waits.reduce((x, y) => x + y, 0) / waits.length) : null, yr };
 }
 function statsCard(){
   if (!S.admin) return "";
@@ -363,7 +366,8 @@ function statsCard(){
       <div class="mlabels" aria-hidden="true">${st.months.map(m => `<span>${esc(mname(m.d, "short").slice(0, 3))}</span>`).join("")}</div>
       <table class="sr-only"><caption>Applications per month, last 12 months</caption><thead><tr><th scope="col">Month</th><th scope="col">Applications</th></tr></thead>
         <tbody>${st.months.map(m => `<tr><th scope="row">${esc(mname(m.d, "long") + " " + m.d.getFullYear())}</th><td>${m.n}</td></tr>`).join("")}</tbody></table>
-      <div class="mtip" id="mtip" hidden></div></div></section>`;
+      <div class="mtip" id="mtip" hidden></div></div>
+    ${st.heard.length ? `<div class="hchart"><h4>How applicants heard about us</h4>${st.heard.map(([k, n]) => `<div class="hrow"><span>${esc(k)}</span><i style="--w:${Math.round(n / st.heard[0][1] * 100)}%"></i><b>${n}</b></div>`).join("")}</div>` : ""}</section>`;
 }
 function statsHover(e){
   const col = e.target.closest?.(".bcol"), tip = $("#mtip");
@@ -1868,7 +1872,7 @@ async function importSubmission(snap){
   const certs = (f.experience && f.experience.certs) || [], col = (f.education && f.education.college) || {};
   const id = doc(collection(db, "applicants")).id, now = Date.now(), name = `${p.first || ""} ${p.last || ""}`.trim();
   const shared = { name, phone: p.phone || "", email: lower(p.email), type: p.type || "", location: potsdam ? "Potsdam" : "other", ...(potsdam ? {} : { locationOther: local.city || "" }),
-    stage: "screen", app: { received: isoDay(f.submittedAt || now), source: "online" },
+    stage: "screen", app: { received: isoDay(f.submittedAt || now), source: "online", ...(f.heard?.source ? { heard: String(f.heard.source).slice(0, 60), heardDetail: String(f.heard.detail || "").slice(0, 200) } : {}) },
     iv: { college: col.name ? "yes" : "", collegeWhere: [col.name, col.grad ? "graduating " + col.grad : ""].filter(Boolean).join(", "),
       isEmt: certs.some(c => /^(EMT|AEMT|Paramedic)$/.test(c)) ? "yes" : "",
       otherOrg: f.experience?.otherAgencies === "yes" ? "yes" : f.experience?.otherAgencies === "no" ? "no" : "", otherOrgWhere: f.experience?.agenciesDetail || "",

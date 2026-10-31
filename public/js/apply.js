@@ -3,7 +3,7 @@
 // The driver's license number is collected for the squad's driving-record check; it lands only in the private
 // (admin-only) record, and the review page shows just the last 4 digits.
 import { db, collection, addDoc } from "./fb.js";
-import { $, esc, toast, TYPES, TYPE_INFO } from "./shared.js";
+import { $, esc, toast, TYPES, TYPE_INFO, HEARD } from "./shared.js";
 import { CONTACT_EMAIL } from "./config.js";
 
 const DRAFT_KEY = "pvrsApplyDraft";
@@ -39,6 +39,7 @@ const blank = () => ({
   background: { convicted: "", detail: "" },
   references: [blankRef(), blankRef(), blankRef()],
   signature: { confirmed: false, name: "" },
+  heard: { source: "", detail: "" },
 });
 
 const get = (o, p) => p.split(".").reduce((a, k) => (a == null ? undefined : a[k]), o);
@@ -97,7 +98,9 @@ function stepHTML(){
         ${input("person.dlNumber", "Driver's license ID number", { req: true, half: true, ac: "off", max: 30 })}</div>
       <p class="afnote">We use your license number only to run the driving record check. It's kept private to the membership officer and administrator, and we'll also see your physical license in person.</p>
       <fieldset class="afs"><legend>Membership type <i aria-hidden="true">*</i></legend><div class="types" role="radiogroup" aria-label="Membership type">
-        ${TYPES.map(t => `<button type="button" role="radio" class="typecard" aria-checked="${d.person.type === t}" data-type="${esc(t)}"><b>${esc(t)}</b><span>${esc(TYPE_INFO[t] || "")}</span></button>`).join("")}</div></fieldset>`;
+        ${TYPES.map(t => `<button type="button" role="radio" class="typecard" aria-checked="${d.person.type === t}" data-type="${esc(t)}"><b>${esc(t)}</b><span>${esc(TYPE_INFO[t] || "")}</span></button>`).join("")}</div></fieldset>
+      <div class="afgrid">${select("heard.source", "How did you hear about PVRS? (optional)", [["", "Choose one"], ...HEARD.map(h => [h, h])], { half: true })}
+        ${input("heard.detail", "Anything to add? (optional)", { half: true, ph: "e.g. which member, which event", max: 200 })}</div>`;
     case "edu": {
       const ed = (k, t, open) => `<fieldset class="afs"><legend>${t}</legend><div class="afgrid">
         ${input(`education.${k}.name`, k === "hs" ? "High school" : k === "college" ? "College / university" : "School or program", { half: k !== "hs" })}
@@ -154,7 +157,7 @@ function reviewHTML(){
   const refs = d.references.filter(refUsed);
   return `<p class="afnote" style="margin-top:0">Check everything below, then sign at the bottom.</p><div class="review">
     ${sec("About you", 0, line("Name", `${p.first} ${p.last}`) + line("Email", p.email) + line("Cell phone", p.phone) + line("Date of birth", p.dob) + line("Place of birth", p.birthplace)
-      + line("Permanent address", a(p.permAddr)) + line("School / local address", p.sameLocal ? "Same as permanent" : a(p.localAddr)) + line("Driver's license", [p.dlState, p.dlNumber ? "ending " + String(p.dlNumber).slice(-4) : ""].filter(filled).join(" · ")) + line("Membership type", p.type))}
+      + line("Permanent address", a(p.permAddr)) + line("School / local address", p.sameLocal ? "Same as permanent" : a(p.localAddr)) + line("Driver's license", [p.dlState, p.dlNumber ? "ending " + String(p.dlNumber).slice(-4) : ""].filter(filled).join(" · ")) + line("Membership type", p.type) + line("Heard about PVRS", [d.heard?.source, d.heard?.detail].filter(filled).join(" · ")))}
     ${sec("Education", 1, line("High school", [d.education.hs.name, d.education.hs.location, d.education.hs.grad].filter(filled).join(" · "))
       + line("College", [d.education.college.name, d.education.college.study, d.education.college.grad].filter(filled).join(" · "))
       + line("Other", [d.education.other.name, d.education.other.study].filter(filled).join(" · ")))}
@@ -255,6 +258,7 @@ async function submit(btn){
   d.references = d.references.filter(refUsed);
   d.employment.jobs = d.employment.jobs.filter(j => filled(j.place) || filled(j.duties));
   delete d.person.sameLocal;
+  if (!filled(d.heard?.source)) delete d.heard; else d.heard = { source: d.heard.source, detail: d.heard.detail || "" };
   btn.disabled = true; btn.textContent = "Sending…";
   try {
     await addDoc(collection(db, "submissions"), { v: 1, status: "new", submittedAt: Date.now(), hp: "", ...d, signature: { confirmed: true, name: d.signature.name } });

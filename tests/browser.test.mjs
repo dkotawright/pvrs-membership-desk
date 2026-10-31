@@ -224,6 +224,10 @@ try {
     if (await count() !== 1) fail("online application not imported once: " + await count()); else ok("online application imported into the desk");
     const st = await page.evaluate(() => window.__mock.docs.get("submissions/sub1"));
     if (st.status !== "imported" || !st.applicantId) fail("submission not marked imported"); else ok("submission marked imported");
+    const hd = await page.evaluate(id => window.__mock.docs.get("applicants/" + id).app, st.applicantId);
+    if (hd.heard !== "Social media" || hd.heardDetail !== "Instagram") fail("how they heard not imported: " + JSON.stringify(hd)); else ok("how they heard about PVRS is imported");
+    const hc = await page.locator(".hchart").textContent().catch(() => "");
+    if (!/How applicants heard about us/.test(hc) || !/Social media\s*1/.test(hc)) fail("heard chart: " + hc); else ok("Year at a glance shows how applicants heard about us");
     // two more desks wake up with an out-of-date copy that still says "new" and try to import it at the same moment
     await page.evaluate(async () => {
       const fb = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");

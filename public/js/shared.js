@@ -74,6 +74,8 @@ export function icsFile(events){
 
 /* ---------- PVRS process ---------- */
 export const TYPES = ["Regular","Associate","Auxiliary","Non-Operational","Driver Only","Non-Resident"];
+// "How did you hear about PVRS?" (online application, optional; Application tab; Year at a glance chart)
+export const HEARD = ["Squad website","Social media","Friend or family","A PVRS member","College event","Saw the squad in the community","Flyer or poster","Other"];
 export const TYPE_INFO = {
   "Regular":"24 hours · enroll in EMT class within 12 months · full-time resident · full voting rights",
   "Associate":"24 hours · enroll in EMS class within 12 months · 50% resident · 15 spots · votes on non-constitutional matters",
