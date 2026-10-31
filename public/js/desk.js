@@ -299,8 +299,38 @@ const onbKey = l => String(l).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(
 const onbItems = () => (Array.isArray(S.settings.onbItems) ? S.settings.onbItems : DEFAULT_ONB).map(l => [onbKey(l), l]);
 // Expiration dates to watch (To do 30 days ahead and once expired), for anyone in process or approved.
 const EXPIRES = [["dl.expires", "Driver's license", "checks"], ["onb.cprExpires", "CPR / BLS card", "onb"], ["onb.emtExpires", "EMS certification", "onb"]];
+// Data retention: declined/withdrawn files untouched for longer than settings.retentionYears get flagged for the owner
+// to review and delete. Nothing is deleted automatically.
+const retentionYears = () => { const y = parseInt(S.settings.retentionYears, 10); return y > 0 ? y : 0; };
+const lastTouched = a => Math.max(a.updatedAt || 0, a.secUpdatedAt || 0, a.createdAt || 0);
+const pastRetention = () => { const y = retentionYears(); if (!y) return [];
+  return [...S.apps.values()].filter(a => (isDeclined(a) || a.status === "withdrawn") && lastTouched(a) && Date.now() - lastTouched(a) > y * 365.25 * 864e5)
+    .sort((x, y2) => lastTouched(x) - lastTouched(y2)); };
+function openRetention(){
+  if (!S.canEdit) return ownerOnlyToast();
+  const list = pastRetention(), y = retentionYears();
+  const when = a => new Date(lastTouched(a)).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  const M = openModal(`<h3>Old files to review</h3>
+    <p class="help">${y ? `Declined and withdrawn files with no changes in more than ${y} year${y === 1 ? "" : "s"} (Settings → Data retention). Tick the ones to delete. Deleting removes everything the desk holds for them and can't be undone.` : "Data retention is off. Set it in Settings."}</p>
+    <div class="ios">${list.length ? list.map(a => `<label class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>${isDeclined(a) ? "Declined" : "Withdrawn"} · last changed ${esc(when(a))}</small></span><input type="checkbox" data-retid="${esc(a._id)}" checked style="width:auto"></label>`).join("")
+      : `<div class="row"><span class="lbl">Nothing past the retention period.</span></div>`}</div>
+    <p class="help">🔒 Secure documents stay with ${esc(PAPERWORK_EMAIL)}; ask them to delete those too.</p>
+    <div class="acts"><button class="btn" type="button" data-x>Close</button>${list.length ? `<button class="btn danger" type="button" id="retGo">Delete selected</button>` : ""}</div>`);
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    const go = e.target.closest("#retGo"); if (!go) return;
+    const ids = [...M.querySelectorAll("[data-retid]:checked")].map(x => x.dataset.retid);
+    if (!ids.length) return toast("Tick at least one file.");
+    if (go.dataset.confirm !== "1") { go.dataset.confirm = "1"; go.textContent = `Confirm: delete ${ids.length} permanently`; return; }
+    go.disabled = true;
+    for (const id of ids) await deleteApplicant(id, true);
+    closeModal(); toast(`Deleted ${ids.length} old file${ids.length === 1 ? "" : "s"}`);
+  };
+}
 function todoItems(){
   const out = [];
+  const old = pastRetention();
+  if (old.length) out.push({ id: old[0]._id, a: old[0], pri: 3, text: `Review ${old.length === 1 ? "an old file" : old.length + " old files"} past the ${retentionYears()}-year retention`, sub: old.map(a => a.name).slice(0, 3).join(", ") + (old.length > 3 ? "…" : ""), tab: "notes", act: "retention", btn: "Review", age: 0 });
   for (const a of S.apps.values()) {
     if (isDeclined(a) || ["withdrawn"].includes(a.status)) continue;
     const id = a._id, add = (pri, text, sub, tab) => out.push({ id, a, pri, text, sub, tab, age: 0 });
@@ -1189,6 +1219,9 @@ function openSettings(){
     <div class="group"><h3><span>Saved replies</span><button class="btn small" type="button" id="qrAdd">Add reply</button></h3><div class="ios" id="qrList">${savedReplies().map(replyRowHTML).join("")}</div>
       <p class="help" style="margin:4px 4px 0">Buttons above the reply box on the Messages tab. <b>{first}</b> becomes the applicant's first name.</p></div>
     <div class="group"><h3><span>New-member checklist</span></h3><div class="ios"><label class="row stack"><span class="lbl">One item per line<small>Shown on the Onboard tab after board approval. Renaming an item starts it fresh.</small></span><textarea id="sOnb" rows="8">${esc(onbItems().map(x => x[1]).join("\n"))}</textarea></label></div></div>
+    <div class="group"><h3><span>Data retention</span></h3><div class="ios">
+      <label class="row"><span class="lbl">Keep declined and withdrawn files for<small>Years with no changes before they're flagged for you to review and delete. Blank = off. Match the board's policy.</small></span><input type="number" id="sRet" min="1" max="20" placeholder="Off" value="${esc(s.retentionYears||"")}"></label>
+      <div class="row"><span class="lbl">Old files<small>${pastRetention().length} past the retention period</small></span><button class="btn small" type="button" id="sRetReview">Review</button></div></div></div>
     <div class="group"><h3><span>Security</span></h3><div class="ios">
       <label class="row"><span class="lbl">Sign out after inactivity<small>Minutes with no mouse or keyboard use, for everyone on the team (5–240)</small></span><input type="number" id="sIdle" min="5" max="240" placeholder="30" value="${esc(s.idleMinutes||"")}"></label></div></div>
     <div class="group"><h3><span>Online application</span></h3><div class="ios">
@@ -1206,6 +1239,7 @@ function openSettings(){
     const id = e.target.id;
     if (id === "sCancel") closeModal();
     if (id === "sPreview") openPreview(S.sel);
+    if (id === "sRetReview") return openRetention();
     if (id === "qrAdd") { $("#qrList").insertAdjacentHTML("beforeend", replyRowHTML()); $("#qrList .qredit:last-child .qrTitle").focus(); return; }
     const qrm = e.target.closest("[data-qrrm]"); if (qrm) { qrm.closest(".qredit").remove(); return; }
     if (id === "sCopyApply") { const u = location.origin + "/apply"; toast((await copyText(u)) ? "Copied " + u : u); }
@@ -1226,6 +1260,7 @@ function openSettings(){
     if (id === "sSave") {
       const idle = parseInt($("#sIdle").value, 10);
       const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now(),
+        retentionYears: parseInt($("#sRet").value, 10) > 0 ? Math.min(20, parseInt($("#sRet").value, 10)) : null,
         onbItems: [...new Set($("#sOnb").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
         replies: [...document.querySelectorAll("#qrList .qredit")].map(r => ({ title: r.querySelector(".qrTitle").value.trim(), text: r.querySelector(".qrText").value.trim() })).filter(r => r.title && r.text).slice(0, 20) };
       try { await setDoc(doc(db, "settings", "main"), next, { merge: true }); closeModal(); toast("Settings saved"); } catch { toast("Couldn't save settings."); }
@@ -1307,7 +1342,7 @@ function confirmDelete(id){
     if (e.target.closest("#delGo")) { e.target.closest("#delGo").disabled = true; await deleteApplicant(id); closeModal(); }
   };
 }
-async function deleteApplicant(id){
+async function deleteApplicant(id, quiet = false){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id);
   try {
@@ -1331,7 +1366,8 @@ async function deleteApplicant(id){
     if (subs) for (const sd of subs.docs) await deleteDoc(sd.ref).catch(() => {});
     await deleteDoc(doc(db, "applicants", id, "private", "main"));
     await deleteDoc(doc(db, "applicants", id));
-    S.sel = null; renderList(); renderDetail(); toast("Applicant deleted");
+    if (S.sel === id) S.sel = null;
+    renderList(); renderDetail(); if (!quiet) toast("Applicant deleted");
   } catch (e) { console.error(e); toast("Couldn't delete. Try again."); }
 }
 
@@ -1632,6 +1668,7 @@ function bindEvents(){
     const ta = t.closest("[data-todoact]");
     if (ta) { const id = ta.dataset.id, k = ta.dataset.todoact;
       if (k === "refsall") return openRefsAll(id);
+      if (k === "retention") return openRetention();
       if (k === "invite") return inviteToPortal(id);
       if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
       return; }

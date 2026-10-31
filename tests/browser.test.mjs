@@ -12,8 +12,9 @@ const errors = [], notes = [];
 const fail = m => errors.push("[check] " + m), ok = m => notes.push("ok: " + m);
 const OWNER = { email: "dkota@pvrs.org", displayName: "Dkota Wright" };
 
-async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark = false } = {}){
+async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark = false, seed = null } = {}){
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: dark ? "dark" : "light" });
+  if (seed) await ctx.addInitScript(list => { window.__mock = { docs: new Map(list), listeners: new Set(), seq: 0 }; }, seed);   // extra docs on top of the usual test data
   await ctx.addInitScript(u => { window.__MOCK_USER = u; HTMLAnchorElement.prototype.click = function(){ (window.__clicked = window.__clicked || []).push(this.href); }; }, user);
   await ctx.route("**/*", route => {
     const u = new URL(route.request().url());
@@ -420,6 +421,24 @@ try {
     const td = await page.locator(".todo .todoitem").evaluateAll(r => r.map(x => x.textContent.replace(/\s+/g, " ").trim()));
     if (!td.some(t => /CPR \/ BLS card expires in 10 days.*Marcus Bell/.test(t))) fail("no expiry to do: " + JSON.stringify(td)); else ok("To do warns 30 days before a card expires");
     if (!td.some(t => /Finish the new-member checklist.*Georgia Thurmond.*1 of 11 done · next: Uniform and gear issued/.test(t))) fail("no checklist to do: " + JSON.stringify(td)); else ok("To do tracks the new-member checklist after approval");
+    await ctx.close();
+  }
+  // ---- Data retention: old declined/withdrawn files are flagged for review, never deleted automatically
+  {
+    const old = Date.now() - 5 * 365 * 864e5;
+    const { ctx, page } = await open(browser, { seed: [["applicants/old1", { name: "Pat Oldfile", email: "pat@example.com", status: "withdrawn", app: { received: "2021-01-05" }, updatedAt: old, createdAt: old }],
+      ["applicants/old1/private/main", { status: "withdrawn", secUpdatedAt: old }]] }); await wait(page, 600);
+    if (await page.locator(".todo .todoitem", { hasText: "old file" }).count()) fail("retention flagged while it's off"); else ok("retention is off until a period is set");
+    await page.evaluate(() => document.querySelector("#settingsBtn")?.click()); await wait(page, 300);
+    await page.locator("#sRet").fill("3"); await page.locator("#sSave").click(); await wait(page, 500);
+    const row = page.locator(".todo .todoitem", { hasText: "old file" });
+    if (!/Review an old file past the 3-year retention.*Pat Oldfile/.test(await row.textContent().catch(() => ""))) fail("retention to do missing"); else ok("To do flags files past the retention period");
+    await row.locator("[data-todoact]").click(); await wait(page, 300);
+    await page.locator("#retGo").click(); await wait(page, 100);
+    if (!(await page.evaluate(() => window.__mock.docs.has("applicants/old1")))) fail("deleted without confirming"); else ok("deleting old files asks to confirm");
+    await page.locator("#retGo").click(); await wait(page, 800);
+    if (await page.evaluate(() => window.__mock.docs.has("applicants/old1") || window.__mock.docs.has("applicants/old1/private/main"))) fail("old file not deleted"); else ok("confirmed old files are deleted");
+    if (!(await page.evaluate(() => window.__mock.docs.has("applicants/a1")))) fail("retention deleted an active file"); else ok("active files are untouched");
     await ctx.close();
   }
   // ---- Applicant portal: how to prepare for the interview
