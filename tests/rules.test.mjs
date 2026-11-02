@@ -78,6 +78,8 @@ const sub = (x = {}, p = {}) => ({ v: 1, status: "new", submittedAt: now(), hp: 
 await t("an online application with 3 references and a license is accepted", addDoc(collection(anon, "submissions"), sub()), true);
 await t("an online application with 2 references is rejected", addDoc(collection(anon, "submissions"), sub({ references: [ref1, ref1] })), false);
 await t("an online application without a license number is rejected", addDoc(collection(anon, "submissions"), sub({}, { dlNumber: "" })), false);
+await t("an application saying how they heard about PVRS is accepted", addDoc(collection(anon, "submissions"), sub({ heard: { source: "Social media", detail: "Instagram" } })), true);
+await t("a how-they-heard answer with extra fields is rejected", addDoc(collection(anon, "submissions"), sub({ heard: { source: "Social media", evil: "x" } })), false);
 await t("the owner can't open confidential paperwork details", getDocs(collection(owner, "vault")), false);
 await t("the paperwork account can", getDocs(collection(paper, "vault")), true);
 await t("an applicant can send a replacement reference we asked for", addDoc(collection(applicant, "portal/a1/refUpdates"), { slot: 2, name: "New", relationship: "Coach", email: "n@example.com", phone: "", address: "", at: now(), by: "app@example.com" }), true);

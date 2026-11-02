@@ -57,7 +57,7 @@ service cloud.firestore {
     function validSubmission() {
       let d = request.resource.data;
       let p = d.person;
-      return d.keys().hasOnly(['v', 'status', 'submittedAt', 'hp', 'person', 'education', 'experience', 'employment', 'background', 'references', 'signature'])
+      return d.keys().hasOnly(['v', 'status', 'submittedAt', 'hp', 'person', 'education', 'experience', 'employment', 'background', 'references', 'signature', 'heard'])
         && d.v == 1 && d.status == 'new' && d.hp == ''
         && d.submittedAt is int && d.submittedAt > nowMs() - 600000 && d.submittedAt < nowMs() + 600000
         && p is map && p.keys().hasOnly(['first', 'last', 'email', 'phone', 'dob', 'birthplace', 'permAddr', 'localAddr', 'dlState', 'dlNumber', 'type'])
@@ -71,7 +71,9 @@ service cloud.firestore {
         && d.education is map && d.experience is map && d.employment is map && d.background is map
         && d.references is list && d.references.size() >= 3 && d.references.size() <= 4
         && d.signature is map && d.signature.keys().hasOnly(['confirmed', 'name'])
-        && d.signature.confirmed == true && d.signature.name is string && d.signature.name.size() >= 3 && d.signature.name.size() <= 200;
+        && d.signature.confirmed == true && d.signature.name is string && d.signature.name.size() >= 3 && d.signature.name.size() <= 200
+        && (!('heard' in d) || (d.heard is map && d.heard.keys().hasOnly(['source', 'detail'])
+            && d.heard.source is string && d.heard.source.size() <= 60 && d.heard.get('detail', '') is string && d.heard.get('detail', '').size() <= 200));
     }
     match /submissions/{submissionId} {
       allow create: if validSubmission();
@@ -292,6 +294,17 @@ service cloud.firestore {
     }
 
     // Email signature, contact address (admins only)
+    // Push notifications: one doc per device that turned them on (id = the device's messaging token). Admins register
+    // their own devices; functions/push.js reads them with the Admin SDK. Each person sees and removes only their own.
+    match /pushTokens/{token} {
+      allow read, delete: if isOwner() || (verified() && resource.data.email == myEmail());
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['email', 'device', 'at'])
+        && request.resource.data.email == myEmail()
+        && request.resource.data.device is string && request.resource.data.device.size() <= 100
+        && request.resource.data.at is int;
+    }
+
     match /settings/{doc} {
       allow read: if isAdmin();
       allow write: if isOwner();

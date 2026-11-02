@@ -71,6 +71,32 @@ Overview = header (greeting + Board meeting / Search ⌘K buttons) → one stage
 
 Desktop applicant list (Oct 22): tucks into a thin "Applicants" strip on the left ALWAYS (not only with a file open) unless pinned (`.app:not(.pinned)` rules; pin button at the top of the list, saved per browser). Hover slides it out; choosing a filter adds `.peek` (peekList) until the pointer leaves, a click elsewhere, or 6 s.
 
+## Welcome (Oct 31)
+The first portal invite is now a one-step **Welcome** (`inviteToPortal`): portal access + sign-in link, a welcome message posted in `portal/{id}/messages` (`welcomeText`), `private/main.portal.welcomed` = date, and the welcome email (TEMPLATES.portal) opened for that applicant. To do shows "Welcome {first}" at the top as soon as an application with an email lands (any step up to scheduling), replacing the old late "Send the portal invite" item. Later clicks just resend the link (no second message). `openEmail(kind, extra, id)` now takes the applicant id (the To do button used to open the email for whichever file was selected). Not yet deployed: needs `firebase deploy --only hosting`.
+Also fixed Oct 31: sign-in weather showed sunrise/sunset shifted for browsers outside Eastern time (Open-Meteo already returns Potsdam local time).
+
+## Oct 31 batch (branch claude/pensive-carson-bu3ox4, NOT deployed yet)
+Dkota asked for everything from the suggestion list except the monthly board report. Each is its own commit:
+- **How did you hear about PVRS?** optional on /apply step 1 (`HEARD` in shared.js) → submission `heard{source,detail}` (rules updated) → `app.heard/heardDetail` (Application tab select) → bar chart in Year at a glance (`.hchart`).
+- **Interview prep** in the portal under the Interview card (`ivPrepHTML`, portal.js), hidden once the interview is done.
+- **Saved replies**: chips above the Messages reply box (`{first}` substituted); `settings.replies` edited in Settings (defaults `DEFAULT_REPLIES`).
+- **New-member checklist** (Onboard tab, `onb.items.<key>` private; list = `settings.onbItems`, defaults `DEFAULT_ONB`) + **expiration dates** (`dl.expires`, `onb.cprExpires`, `onb.emtExpires`); To do warns 30 days out and tracks the checklist for a year after approval. `onb` added to SECURE.
+- **Data retention**: `settings.retentionYears`; To do + review window (`openRetention`) for declined/withdrawn files untouched that long; owner ticks and confirms; nothing automatic.
+- **Two-step sign-in** (TOTP): key button / ⌘K → `openTwoStep`; sign-in `askCode` in main.js for password + Google. No QR library (vendoring was declined): setup key + otpauth "Open in app" link. Project must be upgraded to Identity Platform and TOTP enabled first (docs/two-step-sign-in.md).
+- **Push notifications**: `public/firebase-messaging-sw.js` (compat SDK, config duplicated), desk lazy-loads firebase-messaging only in `openNotifications`; `pushTokens/{token}` {email, device, at} (rules); `functions/push.js` (exported as group `push`; deploy `firebase deploy --only functions:push`). Owner gets all events, admins get bookings. Needs `VAPID_KEY` in config.js (docs/notifications.md).
+- **Auto-deploy**: `.github/workflows/deploy.yml` (browser + privacy tests gate deploy of hosting + firestore:rules + storage + functions:push + functions:ai; rules tests informational). Needs repo secret FIREBASE_SERVICE_ACCOUNT and Secret Manager ANTHROPIC_API_KEY, all set up in the browser (docs/auto-deploy.md). Nov 1: Dkota works only through cloud sessions; there is NO local copy on his computer (POTVOL-PC4), so deploys go through GitHub Actions, not Terminal.
+- **Restore drill**: docs/restore-drill.md (Cloud Shell, restore into temp db `restore-drill`, check, delete).
+- Known: 2 storage rules tests (confidential upload) fail in the emulator, pre-existing on abb445f too; suggested as a separate task.
+- Tests: 153 browser checks; rules 49 pass / 2 known fails. In cloud containers run browser tests with `PW_CHROME=/opt/pw-browsers/chromium`.
+- Dkota said (Oct 31) the design "is good but throws me off" — wants fun but professional, plus more features and AI. Pending his pick of direction.
+
+## Oct 31 (later): Friendly Modern look + Med Control AI (same branch, NOT deployed)
+- **Look:** Dkota picked mockup "C · Friendly Modern" (design canvas https://claude.ai/artifact/8aocYnGxuELmb4sR2eQj8B). Implemented as the last layer of app.css (token overrides + navy greeting banner `.ovhead`, pastel `.stg` tiles, tinted `.av`). Plus Jakarta Sans from Google Fonts (index.html). Sign-in/home/apply (`.gate`) keep the dark EMS backdrop for now. Light + dark both done.
+- **Med Control** = the AI's name (Dkota's pick; EMS "medical control"). `functions/medcontrol.js` callable `ai-medControl` (export group `ai`; deploy `firebase deploy --only functions:ai`; secret ANTHROPIC_API_KEY). Jobs: chat (claude-haiku-5-5, effort low, roster in a cached system block + desk hints), brief (claude-sonnet-5-5, json_schema output, `fallbacks: "default"`; saved to private/main.ai.brief, owner only), reply (claude-haiku-5-5). Owner + admins only; 150 calls/person/day (`aiUsage/{email}_{day}`, no client rule = no client access). `safeApplicant()` is the privacy filter; `tests/medcontrol-privacy.test.cjs` guards it.
+- Desk: hidden unless `settings.ai === true` (Settings → Med Control). Sidebar `#aiBtn` → `openMedControl` (chat modal, answers linkify applicant names, Copy / Open in Mail for "Subject:" drafts); Board tab "Med Control brief" (`briefHTML`, `[data-aibrief]`); Messages chip `[data-aireply]` → `aiDraftReply` fills the box only. Functions SDK is lazy-imported (`FN_URL`).
+- Dkota's model choice: the mix (Haiku chat/replies, Sonnet briefs), ~$1–3/mo. Setup in docs/med-control.md (needs board OK, Anthropic account, key as secret).
+- Tests: 165 browser checks.
+
 ## Stability review (Oct 22)
 Full check: 118 browser checks, 49 rules tests, live public pages clean, live rules == local. Fixed: replacement references and reference answers are now claimed in a transaction (`claimOnce`) before the owner's desk applies them — an out-of-date open desk could otherwise redo a swap and wipe the new reference's link/answers. Every automatic owner-desk action now claims first (submissions, refUpdates, refResponses).
 

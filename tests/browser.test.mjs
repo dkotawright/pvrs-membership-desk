@@ -12,13 +12,15 @@ const errors = [], notes = [];
 const fail = m => errors.push("[check] " + m), ok = m => notes.push("ok: " + m);
 const OWNER = { email: "dkota@pvrs.org", displayName: "Dkota Wright" };
 
-async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark = false } = {}){
+async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark = false, seed = null, files = {} } = {}){
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: dark ? "dark" : "light" });
+  if (seed) await ctx.addInitScript(list => { window.__mock = { docs: new Map(list), listeners: new Set(), seq: 0 }; }, seed);   // extra docs on top of the usual test data
   await ctx.addInitScript(u => { window.__MOCK_USER = u; HTMLAnchorElement.prototype.click = function(){ (window.__clicked = window.__clicked || []).push(this.href); }; }, user);
   await ctx.route("**/*", route => {
     const u = new URL(route.request().url());
     if (u.host === "www.gstatic.com") return route.fulfill({ body: MOCK, contentType: "text/javascript" });
     if (u.host === "localhost:5999") {
+      if (files[u.pathname]) return route.fulfill({ body: files[u.pathname](fs.readFileSync(path.join(PUB, u.pathname), "utf8")), contentType: TYPES[path.extname(u.pathname)] });   // patched copy of a site file
       let f = path.join(PUB, u.pathname === "/" ? "index.html" : u.pathname);
       if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(PUB, "index.html");   // SPA fallback, like Firebase Hosting
       return route.fulfill({ body: fs.readFileSync(f), contentType: TYPES[path.extname(f)] || "application/octet-stream" });
@@ -36,7 +38,7 @@ const snap = (page, name) => page.screenshot({ path: path.join(OUT, name + ".png
 const priv = (page, id) => page.evaluate(i => window.__mock.docs.get(`applicants/${i}/private/main`), id);
 const pickApplicant = async (page, name) => { await page.evaluate(n => [...document.querySelectorAll(".arow")].find(r => r.textContent.includes(n))?.click(), name); await wait(page, 400); };
 
-const browser = await chromium.launch();
+const browser = await chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});   // PW_CHROME: use a preinstalled Chromium
 try {
   // ---- the reference opens their private link
   {
@@ -224,6 +226,10 @@ try {
     if (await count() !== 1) fail("online application not imported once: " + await count()); else ok("online application imported into the desk");
     const st = await page.evaluate(() => window.__mock.docs.get("submissions/sub1"));
     if (st.status !== "imported" || !st.applicantId) fail("submission not marked imported"); else ok("submission marked imported");
+    const hd = await page.evaluate(id => window.__mock.docs.get("applicants/" + id).app, st.applicantId);
+    if (hd.heard !== "Social media" || hd.heardDetail !== "Instagram") fail("how they heard not imported: " + JSON.stringify(hd)); else ok("how they heard about PVRS is imported");
+    const hc = await page.locator(".hchart").textContent().catch(() => "");
+    if (!/How applicants heard about us/.test(hc) || !/Social media\s*1/.test(hc)) fail("heard chart: " + hc); else ok("Year at a glance shows how applicants heard about us");
     // two more desks wake up with an out-of-date copy that still says "new" and try to import it at the same moment
     await page.evaluate(async () => {
       const fb = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
@@ -352,6 +358,184 @@ try {
     if (!/Marcus Bell/.test(await page.locator("#dName").textContent()) || !(await page.locator('.tabdock [data-tab="checks"][aria-selected="true"]').count())) fail("to do row didn't open Marcus on Checks"); else ok("tapping a to-do opens the file on the right tab");
     await ctx.close();
   }
+  // ---- Welcome: a new online application gets portal access, a welcome message and the welcome email in one step
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await pickApplicant(page, "Marcus Bell");   // a different file open, so the email must follow the row clicked, not the selection
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    const row = page.locator(".todo .todoitem", { hasText: "Welcome Test" });
+    if (!(await row.count()) || !/Test Online/.test(await row.textContent())) fail("no Welcome to-do for the new online application"); else ok("new online applications show Welcome at the top of To do");
+    await row.locator("[data-todoact]").click(); await wait(page, 800);
+    const st = await page.evaluate(() => { const d = window.__mock.docs, id = [...d.keys()].find(k => /^applicants\/[^/]+$/.test(k) && d.get(k).name === "Test Online").split("/")[1];
+      const pm = d.get(`applicants/${id}/private/main`) || {}, msgs = [...d.entries()].filter(([k]) => k.startsWith(`portal/${id}/messages/`)).map(([, v]) => v);
+      return { portal: d.get(`portal/${id}`)?.email, invited: pm.portal?.invited, welcomed: pm.portal?.welcomed, msgs }; });
+    if (st.portal !== "test.online@example.com" || !st.invited || !st.welcomed) fail("welcome didn't open the portal: " + JSON.stringify(st)); else ok("Welcome opens their portal and records the date");
+    if (st.msgs.length !== 1 || st.msgs[0].from !== "staff" || !/^Hi Test, welcome/.test(st.msgs[0].text) || st.msgs[0].text.length > 2000) fail("welcome message: " + JSON.stringify(st.msgs)); else ok("a welcome message is waiting in their portal");
+    const m = await page.locator("#modal").textContent();
+    if (!/Welcome email/.test(m) || !/test\.online@example\.com/.test(m) || /marcus/i.test(m)) fail("welcome email window: " + m.slice(0, 200)); else ok("the welcome email opens for the applicant clicked");
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    const resend = await page.evaluate(() => [...document.querySelectorAll(".todo .todoitem")].some(r => /Welcome Test/.test(r.textContent)));
+    if (resend) fail("Welcome still on the To do list"); else ok("Welcome leaves the To do list once done");
+    await pickApplicant(page, "Test Online");
+    if ((await page.locator("#inviteBtn").textContent()) !== "Resend link") fail("invite button after welcome: " + await page.locator("#inviteBtn").textContent());
+    await page.locator("#inviteBtn").click(); await wait(page, 600);
+    const n = await page.evaluate(() => [...window.__mock.docs.keys()].filter(k => /^portal\/[^/]+\/messages\//.test(k) && window.__mock.docs.get(k).text.startsWith("Hi Test, welcome")).length);
+    if (n !== 1) fail("resending the link posted another welcome: " + n); else ok("resending the link doesn't repeat the welcome");
+    await ctx.close();
+  }
+  // ---- Saved replies: chips fill the reply box; Settings edits them
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await pickApplicant(page, "Marcus Bell");
+    await page.locator('.tabdock [data-tab="msgs"]').click(); await wait(page, 300);
+    await page.locator('#qReplies [data-qr]', { hasText: "Documents received" }).click(); await wait(page, 100);
+    if (await page.locator("#replyText").inputValue() !== "Thanks, Marcus. We received your documents and they're under review.") fail("saved reply text: " + await page.locator("#replyText").inputValue()); else ok("a saved reply fills the box with their first name");
+    await page.evaluate(() => document.querySelector("#settingsBtn")?.click()); await wait(page, 300);
+    await page.locator("#qrAdd").click();
+    await page.locator("#qrList .qredit:last-child .qrTitle").fill("Welcome back");
+    await page.locator("#qrList .qredit:last-child .qrText").fill("Good to hear from you, {first}.");
+    await page.locator("#qrList .qredit").first().locator("[data-qrrm]").click();
+    await page.locator("#sSave").click(); await wait(page, 400);
+    const r = await page.evaluate(() => window.__mock.docs.get("settings/main").replies);
+    if (!r || r.length !== 5 || r[0].title !== "Documents received" || r[4].title !== "Welcome back") fail("saved replies settings: " + JSON.stringify(r)); else ok("Settings adds and removes saved replies");
+    await ctx.close();
+  }
+  // ---- New-member checklist and expiration reminders
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await pickApplicant(page, "Marcus Bell");
+    await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    const soon = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10);
+    await page.locator('[data-k="onb.cprExpires"]').fill(soon); await page.locator('[data-k="onb.cprExpires"]').blur(); await wait(page, 400);
+    if ((await priv(page, "a2"))?.onb?.cprExpires !== soon) fail("CPR expiry not saved privately"); else ok("expiration dates save to the private record");
+    const items = await page.locator('[data-k^="onb.items."]').count();
+    if (items !== 11 || !/0 of 11 done/.test(await page.locator("#onbCount").textContent())) fail("checklist rows: " + items); else ok("Onboard tab shows the new-member checklist");
+    await pickApplicant(page, "Georgia Thurmond");
+    await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
+    await page.locator('[data-k="board.result"] [data-v="approved"]').click(); await wait(page, 300);
+    await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    await page.locator('[data-k="onb.items.id_badge_issued"]').fill(new Date().toISOString().slice(0, 10)); await page.locator('[data-k="onb.items.id_badge_issued"]').blur(); await wait(page, 400);
+    if (!/1 of 11 done/.test(await page.locator("#onbCount").textContent())) fail("checklist count: " + await page.locator("#onbCount").textContent()); else ok("checking off an item updates the count");
+    await page.keyboard.press("Escape"); await wait(page, 200); await page.keyboard.press("Escape"); await wait(page, 500);
+    await page.evaluate(() => document.querySelector("#overviewBtn")?.click()); await wait(page, 500);
+    await page.evaluate(() => document.querySelector('[data-cmd="todoall"]')?.click()); await wait(page, 300);
+    const td = await page.locator(".todo .todoitem").evaluateAll(r => r.map(x => x.textContent.replace(/\s+/g, " ").trim()));
+    if (!td.some(t => /CPR \/ BLS card expires in 10 days.*Marcus Bell/.test(t))) fail("no expiry to do: " + JSON.stringify(td)); else ok("To do warns 30 days before a card expires");
+    if (!td.some(t => /Finish the new-member checklist.*Georgia Thurmond.*1 of 11 done · next: Uniform and gear issued/.test(t))) fail("no checklist to do: " + JSON.stringify(td)); else ok("To do tracks the new-member checklist after approval");
+    await ctx.close();
+  }
+  // ---- Data retention: old declined/withdrawn files are flagged for review, never deleted automatically
+  {
+    const old = Date.now() - 5 * 365 * 864e5;
+    const { ctx, page } = await open(browser, { seed: [["applicants/old1", { name: "Pat Oldfile", email: "pat@example.com", status: "withdrawn", app: { received: "2021-01-05" }, updatedAt: old, createdAt: old }],
+      ["applicants/old1/private/main", { status: "withdrawn", secUpdatedAt: old }]] }); await wait(page, 600);
+    if (await page.locator(".todo .todoitem", { hasText: "old file" }).count()) fail("retention flagged while it's off"); else ok("retention is off until a period is set");
+    await page.evaluate(() => document.querySelector("#settingsBtn")?.click()); await wait(page, 300);
+    await page.locator("#sRet").fill("3"); await page.locator("#sSave").click(); await wait(page, 500);
+    const row = page.locator(".todo .todoitem", { hasText: "old file" });
+    if (!/Review an old file past the 3-year retention.*Pat Oldfile/.test(await row.textContent().catch(() => ""))) fail("retention to do missing"); else ok("To do flags files past the retention period");
+    await row.locator("[data-todoact]").click(); await wait(page, 300);
+    await page.locator("#retGo").click(); await wait(page, 100);
+    if (!(await page.evaluate(() => window.__mock.docs.has("applicants/old1")))) fail("deleted without confirming"); else ok("deleting old files asks to confirm");
+    await page.locator("#retGo").click(); await wait(page, 800);
+    if (await page.evaluate(() => window.__mock.docs.has("applicants/old1") || window.__mock.docs.has("applicants/old1/private/main"))) fail("old file not deleted"); else ok("confirmed old files are deleted");
+    if (!(await page.evaluate(() => window.__mock.docs.has("applicants/a1")))) fail("retention deleted an active file"); else ok("active files are untouched");
+    await ctx.close();
+  }
+  // ---- Two-step sign-in: set up from the key button; sign-in asks for the code
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await page.locator("#pwBtn").click(); await wait(page, 200);
+    if (!/Off/.test(await page.locator("#modal").textContent())) fail("two-step status not shown"); else ok("the key button shows two-step sign-in status");
+    await page.locator("#twoStepBtn").click(); await wait(page, 200);
+    await page.locator("#tsStart").click(); await wait(page, 300);
+    if (!/JBSW Y3DP EHPK 3PXP/.test(await page.locator(".tskey").textContent()) || !/^otpauth:\/\/totp\//.test(await page.locator('#tsBody a.btn').getAttribute("href"))) fail("setup key / app link missing"); else ok("setup shows a key to type and an Open in app link");
+    await page.locator("#tsCode").fill("000000"); await page.locator("#tsForm button[type=submit]").click(); await wait(page, 300);
+    if (await page.evaluate(() => (window.__mock.enrolled || []).length)) fail("wrong code turned it on"); else ok("a wrong code doesn't turn it on");
+    await page.locator("#tsCode").fill("123456"); await page.locator("#tsForm button[type=submit]").click(); await wait(page, 300);
+    if (await page.evaluate(() => (window.__mock.enrolled || []).length) !== 1 || !(await page.locator("#modal").isHidden())) fail("two-step not enrolled"); else ok("the right code turns two-step sign-in on");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { url: "/signin", user: null }); await wait(page, 400);
+    await page.evaluate(() => { window.__mock.mfaUser = { email: "dkota@pvrs.org", displayName: "Dkota Wright" }; });
+    await page.evaluate(() => { document.querySelector('[data-who="staff"]')?.click(); document.querySelector("#manualSignin").open = true; });
+    await page.locator("#pwEmail").fill("dkota@pvrs.org"); await page.locator("#pwPass").fill("long-enough-password");
+    await page.locator("#pwForm button[type=submit]").click(); await wait(page, 300);
+    if (!(await page.locator("#mfaCode").count())) fail("sign-in didn't ask for the code"); else ok("password sign-in asks for the code when two-step is on");
+    await page.locator("#mfaCode").fill("111111"); await page.locator("#mfaForm button[type=submit]").click(); await wait(page, 300);
+    if (await page.evaluate(() => !!window.__MOCK_USER)) fail("wrong code signed in"); else ok("a wrong code doesn't sign in");
+    await page.locator("#mfaCode").fill("123456"); await page.locator("#mfaForm button[type=submit]").click(); await wait(page, 1200);
+    if (!(await page.locator("#desk").isVisible().catch(() => false)) && !(await page.locator("#app").isVisible().catch(() => false))) fail("the right code didn't open the desk"); else ok("the right code opens the desk");
+    await ctx.close();
+  }
+  // ---- Notifications: off until the Web Push key is set; then each device turns them on for itself
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await page.locator("#pwBtn").click(); await wait(page, 200); await page.locator("#notifBtn").click(); await wait(page, 400);
+    if (!/aren't set up for PVRS yet/.test(await page.locator("#modal").textContent())) fail("notifications without a key: " + await page.locator("#modal").textContent()); else ok("notifications explain they need setting up first");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { files: { "/js/config.js": t => t.replace('VAPID_KEY = ""', 'VAPID_KEY = "test-key"') } }); await wait(page, 600);
+    await ctx.grantPermissions(["notifications"]);
+    await page.evaluate(() => { window.__mock.pushOk = true; navigator.serviceWorker.register = async () => ({}); });
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await page.locator("#palQ").fill("notif"); await wait(page, 150); await page.keyboard.press("Enter"); await wait(page, 500);
+    await page.locator("#pushGo").click(); await wait(page, 500);
+    const t = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("pushTokens/")).map(([k, v]) => ({ k, ...v })));
+    if (t.length !== 1 || t[0].email !== "dkota@pvrs.org" || !t[0].device) fail("push token: " + JSON.stringify(t)); else ok("turning notifications on registers this device");
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await page.locator("#palQ").fill("notif"); await wait(page, 150); await page.keyboard.press("Enter"); await wait(page, 500);
+    await page.locator("#pushStop").click(); await wait(page, 500);
+    if (await page.evaluate(() => [...window.__mock.docs.keys()].some(k => k.startsWith("pushTokens/")))) fail("push token not removed"); else ok("turning them off removes this device");
+    await ctx.close();
+  }
+  // ---- Med Control (AI): hidden until switched on; chat, brief and reply drafts go through the function
+  {
+    const { ctx, page } = await open(browser, { seed: [["portal/a2/messages/m1", { text: "Can I join if I'm only here in the school year?", from: "applicant", by: "marcus.bell@example.com", name: "Marcus", at: Date.now() - 6e4 }]] }); await wait(page, 600);
+    if (await page.locator("#aiBtn").isVisible()) fail("Med Control shown while off"); else ok("Med Control stays hidden until it's switched on");
+    await page.evaluate(() => document.querySelector("#settingsBtn")?.click()); await wait(page, 300);
+    await page.locator('#sAi [data-v="on"]').click(); await page.locator("#sSave").click(); await wait(page, 500);
+    if (!(await page.evaluate(() => window.__mock.docs.get("settings/main").ai === true)) || !(await page.locator("#aiBtn").isVisible())) fail("Med Control switch"); else ok("Settings switches Med Control on");
+    await page.evaluate(() => { window.__mock.ai = d => d.job === "chat" ? { text: "Marcus Bell is waiting on 2 references.\n\nSubject: Quick reminder\nHi there" } : { text: "x" }; });
+    await page.locator("#aiBtn").click(); await wait(page, 200);
+    await page.locator("#mcIn").fill("Who is waiting on references?"); await page.keyboard.press("Enter"); await wait(page, 400);
+    const call = await page.evaluate(() => window.__mock.aiCalls.at(-1));
+    if (call.name !== "ai-medControl" || call.data.job !== "chat" || call.data.messages.at(-1).text !== "Who is waiting on references?" || !call.data.hints.a2?.stage) fail("chat call: " + JSON.stringify(call).slice(0, 200)); else ok("chat sends the question with the desk's hints");
+    if (JSON.stringify(call.data).match(/555-0188|marcus\.bell@example\.com/)) fail("chat call carried contact details"); else ok("chat sends no contact details from the browser");
+    if (!/Marcus Bell is waiting/.test(await page.locator("#mcThread").textContent()) || !(await page.locator('[data-mcopen="a2"]').count()) || !(await page.locator("[data-mcmail]").count())) fail("chat answer actions"); else ok("answers link to the file and can open a drafted email");
+    await page.locator('[data-mcopen="a2"]').click(); await wait(page, 400);
+    if (!/Marcus Bell/.test(await page.locator("#dName").textContent())) fail("Open file from chat"); else ok("Open file jumps to the applicant");
+    // reply draft
+    await page.evaluate(() => { window.__mock.ai = d => d.job === "reply" ? { text: "Yes, Marcus! Associate membership is made for students." } : { text: "x" }; });
+    await page.locator('.tabdock [data-tab="msgs"]').click(); await wait(page, 400);
+    await page.locator("[data-aireply]").click(); await wait(page, 400);
+    if (await page.locator("#replyText").inputValue() !== "Yes, Marcus! Associate membership is made for students.") fail("reply draft: " + await page.locator("#replyText").inputValue()); else ok("Draft with Med Control fills the reply box (nothing sent)");
+    if (await page.evaluate(() => [...window.__mock.docs.keys()].filter(k => k.startsWith("portal/a2/messages/")).length) !== 1) fail("the draft was sent"); else ok("the draft isn't sent until you press Send");
+    // brief
+    await page.evaluate(() => { window.__mock.ai = d => d.job === "brief" ? { brief: { summary: "Marcus is a student applying as an Associate.", strengths: ["Available weekends"], followUps: ["One reference out"], questions: ["What draws you to EMS?"], references: [{ name: "Coach Dan Price", tone: "strong", note: "Very reliable." }], at: Date.now(), by: "dkota@pvrs.org" } } : { text: "x" }; });
+    await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
+    await page.locator("[data-aibrief]").click(); await wait(page, 600);
+    const bt = await page.locator("#aiBrief").textContent();
+    if (!/Marcus is a student/.test(bt) || !/Follow up on/.test(bt) || !/Coach Dan Price/.test(bt) || !/Strong/.test(bt)) fail("brief: " + bt.slice(0, 160)); else ok("Make brief shows the summary, follow-ups and reference digest");
+    if ((await page.locator("[data-aibrief]").textContent()) !== "Redo brief") fail("brief button label"); else ok("the button then offers Redo brief");
+    await page.evaluate(() => { window.__mock.aiError = { code: "not-found", message: "x" }; });
+    await page.locator("[data-aibrief]").click(); await wait(page, 400);
+    if (!/isn't set up yet/.test(await page.locator(".toast").last().textContent().catch(() => ""))) fail("not-set-up message"); else ok("a missing function says Med Control isn't set up yet");
+    await page.screenshot({ path: path.join(OUT, "19-med-brief.png") });
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { user: { email: "alex@pvrs.org", displayName: "Alex" }, seed: [["settings/main", { ai: true }]] }); await wait(page, 600);
+    if (await page.locator("#aiBtn").isVisible()) fail("members see Med Control"); else ok("members never see Med Control");
+    await ctx.close();
+  }
+  // ---- Applicant portal: how to prepare for the interview
+  {
+    const { ctx, page } = await open(browser, { w: 430, h: 844, user: { email: "marcus.bell@example.com", displayName: "Marcus" } });
+    const t = await page.locator("#ivCard .ivprep").textContent().catch(() => "");
+    if (!/How to prepare/.test(t) || !/driver's license/.test(t)) fail("interview prep missing: " + t.slice(0, 80)); else ok("the portal explains how to prepare for the interview");
+    await ctx.close();
+  }
   // ---- Interview mode
   for (const [w, h, who] of [[1440, 900, OWNER], [390, 844, { email: "alex@pvrs.org", displayName: "Alex" }]]) {
     const { ctx, page } = await open(browser, { w, h, user: who });
@@ -413,20 +597,20 @@ try {
   // ---- ⌘K: find anyone, run commands
   {
     const { ctx, page } = await open(browser);
-    await page.keyboard.press("Meta+k"); await wait(page, 300);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 300);
     if (await page.locator("#palQ").count() !== 1) fail("⌘K didn't open the palette"); else ok("⌘K opens search and commands");
     await page.locator("#palQ").fill("georg"); await wait(page, 150);
     const items = await page.locator(".palitem").evaluateAll(b => b.map(x => x.textContent.replace(/\s+/g, " ").trim()));
     if (!/^GT Georgia Thurmond/.test(items[0]) || !items.some(t => /Interview mode/.test(t)) || !items.some(t => /Email reference forms/.test(t))) fail("palette items: " + JSON.stringify(items)); else ok("typing a name finds them, with quick actions");
     await page.keyboard.press("Enter"); await wait(page, 500);
     if (!/Georgia Thurmond/.test(await page.locator("#dName").textContent())) fail("Enter didn't open Georgia"); else ok("Enter opens the applicant");
-    await page.keyboard.press("Meta+k"); await wait(page, 300);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 300);
     await page.locator("#palQ").fill("georgia"); await page.keyboard.press("ArrowDown"); await wait(page, 100);
     const sel = await page.locator(".palitem.on").textContent();
     await page.keyboard.press("Enter"); await wait(page, 500);
     if (!/Interview mode/.test(sel) || !(await page.locator("#app").evaluate(a => a.classList.contains("ivmode")))) fail("arrow + Enter didn't start interview mode: " + sel); else ok("arrow keys + Enter run an action (interview mode)");
     await page.keyboard.press("Escape"); await wait(page, 200); await page.keyboard.press("Escape"); await wait(page, 300);
-    await page.keyboard.press("Meta+k"); await wait(page, 300);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 300);
     await page.locator("#palQ").fill("board"); await page.keyboard.press("Enter"); await wait(page, 500);
     if (await page.locator("#boardMtg").isHidden()) fail("'board' command didn't open the meeting"); else ok("commands work (board → Board meeting)");
     await ctx.close();

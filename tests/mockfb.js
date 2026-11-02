@@ -8,7 +8,19 @@ const AUTH = { get currentUser(){ const u = user(); return u ? { ...u, emailVeri
 M.authCbs = M.authCbs || [];
 export const getAuth = () => AUTH;
 export const onAuthStateChanged = (_a, cb) => { M.authCbs.push(cb); setTimeout(() => cb(AUTH.currentUser), 30); return () => {}; };
-export const signInWithEmailAndPassword = async () => { throw Object.assign(new Error("bad"), { code: "auth/invalid-credential" }); };
+export const signInWithEmailAndPassword = async (_a, email) => {
+  if (M.mfaUser && email === M.mfaUser.email) { M.pendingMfa = M.mfaUser; throw Object.assign(new Error("mfa"), { code: "auth/multi-factor-auth-required" }); }
+  throw Object.assign(new Error("bad"), { code: "auth/invalid-credential" }); };
+// Two-step sign-in (authenticator app). A test sets M.mfaUser = {email, …} to make that password sign-in ask for a code; 123456 is right.
+export const getMultiFactorResolver = () => ({ hints: [{ uid: "totp1", factorId: "totp", displayName: "Authenticator app" }],
+  resolveSignIn: async a => { if (a.code !== "123456") throw Object.assign(new Error("code"), { code: "auth/invalid-verification-code" });
+    window.__MOCK_USER = { ...M.pendingMfa, provider: "password" }; M.authCbs.forEach(cb => cb(AUTH.currentUser)); return {}; } });
+export const TotpMultiFactorGenerator = { FACTOR_ID: "totp",
+  generateSecret: async () => ({ secretKey: "JBSWY3DPEHPK3PXP", generateQrCodeUrl: (acct, issuer) => `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(acct)}?secret=JBSWY3DPEHPK3PXP&issuer=${encodeURIComponent(issuer)}` }),
+  assertionForEnrollment: (_s, code) => ({ code }), assertionForSignIn: (_uid, code) => ({ code }) };
+export const multiFactor = () => ({ get enrolledFactors(){ return M.enrolled || []; }, getSession: async () => ({}),
+  enroll: async (a, name) => { if (a.code !== "123456") throw Object.assign(new Error("code"), { code: "auth/invalid-verification-code" }); M.enrolled = [{ uid: "totp1", factorId: "totp", displayName: name }]; },
+  unenroll: async () => { M.enrolled = []; } });
 export const sendPasswordResetEmail = async () => {};
 // Email + password accounts: new ones start unconfirmed; a test flips window.__MOCK_USER.emailVerified to "click the link".
 export const createUserWithEmailAndPassword = async (_a, email, pw) => {
@@ -104,6 +116,19 @@ export const ref = (_s, path) => ({ path });
 export const uploadBytes = async () => ({});
 export const getDownloadURL = async () => "about:blank";
 export const deleteObject = async () => {};
+// Push notifications: the browser bits are faked; a test sets M.pushOk = true to pretend the browser supports them.
+export const getMessaging = () => ({});
+export const isSupported = async () => !!M.pushOk;
+export const getToken = async () => { if (M.pushDenied) throw Object.assign(new Error("denied"), { code: "messaging/permission-blocked" }); return "tok-" + (M.pushN = (M.pushN || 0) + 1); };
+export const deleteToken = async () => true;
+export const onMessage = () => () => {};
+// Cloud Functions (Med Control): a test sets M.ai = (data) => result, or M.aiError = {code, message}; calls are logged in M.aiCalls.
+export const getFunctions = () => ({});
+export const httpsCallable = (_f, name) => async data => { (M.aiCalls = M.aiCalls || []).push({ name, data }); await tick();
+  if (M.aiError) throw Object.assign(new Error(M.aiError.message), { code: "functions/" + M.aiError.code });
+  const out = M.ai ? M.ai(data) : { text: "Mock answer." };
+  if (data.job === "brief" && out.brief) { write(`applicants/${data.id}/private/main`, { ai: { brief: out.brief } }, true); emit(); }   // the real function saves it server-side
+  return { data: out }; };
 
 if (!M.seeded) {
   M.seeded = true;
@@ -125,6 +150,6 @@ if (!M.seeded) {
   put("refLinks/linkUsedToken12345678", { appId: "a1", slot: 2, applicant: "Georgia Thurmond", first: "Georgia", refName: "Sam Ortiz", createdAt: now - 9 * day, expiresAt: now + 50 * day, by: "dkota@pvrs.org", submittedAt: now - day });
   put("submissions/sub1", { v: 1, status: "new", submittedAt: now - 6e4, hp: "", person: { first: "Test", last: "Online", email: "test.online@example.com", phone: "315-555-0100", dob: "2004-01-01", birthplace: "", permAddr: { street: "1 Main", city: "Potsdam", state: "NY", zip: "13676" }, localAddr: null, dlState: "NY", dlNumber: "T-1", type: "Regular" },
     education: {}, experience: { certs: [] }, employment: { jobs: [] }, background: { convicted: "no" }, references: [{ name: "R One", relationship: "Coach", email: "r1@example.com", phone: "1", address: "" }, { name: "R Two", relationship: "Boss", email: "r2@example.com", phone: "2", address: "" }, { name: "R Three", relationship: "Teacher", email: "r3@example.com", phone: "3", address: "" }],
-    signature: { confirmed: true, name: "Test Online" } });
+    signature: { confirmed: true, name: "Test Online" }, heard: { source: "Social media", detail: "Instagram" } });
   put("vault/v1", { appId: "a2", appName: "Marcus Bell", label: "Medical documentation", name: "physical.pdf", path: "confidential/a2/1.pdf", size: 1000, uploadedAt: now - 36e5, uploadedBy: "marcus.bell@example.com", from: "applicant" });
 }

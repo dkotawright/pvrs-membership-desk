@@ -74,6 +74,8 @@ export function icsFile(events){
 
 /* ---------- PVRS process ---------- */
 export const TYPES = ["Regular","Associate","Auxiliary","Non-Operational","Driver Only","Non-Resident"];
+// "How did you hear about PVRS?" (online application, optional; Application tab; Year at a glance chart)
+export const HEARD = ["Squad website","Social media","Friend or family","A PVRS member","College event","Saw the squad in the community","Flyer or poster","Other"];
 export const TYPE_INFO = {
   "Regular":"24 hours · enroll in EMT class within 12 months · full-time resident · full voting rights",
   "Associate":"24 hours · enroll in EMS class within 12 months · 50% resident · 15 spots · votes on non-constitutional matters",
@@ -83,7 +85,7 @@ export const TYPE_INFO = {
   "Non-Resident":"24 hours · must already be an EMT · not required at meetings, must attend 50% of trainings · cannot vote or hold office"
 };
 // Fields under these roots live in applicants/{id}/private/main (admins only).
-export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","notes","status","docs","portal","pagesign"]);
+export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","notes","status","docs","portal","pagesign","onb"]);
 export const DOC_ITEMS = ["Copy of driver's license (front and back)","EMT certification card","CPR card","Medical documentation for orientation","Social Security card","Missing pages of the application","Reference contact information"];
 // Medical and Social Security paperwork is confidential: it goes to the paperwork account only (see PAPERWORK_EMAIL).
 export const isConfidential = label => /medical|immuni[sz]|vaccin|physical|tuberc|\bTB\b|hepatitis|titer|health|social security|\bSSN\b/i.test(label || "");

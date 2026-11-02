@@ -1,13 +1,13 @@
 // Staff Desk: roster, applicant file, board, onboarding, interview times, settings.
-import { auth, db, storage, doc, collection, collectionGroup, getDoc, setDoc, runTransaction, updateDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch, query, where,
+import { app, auth, db, storage, doc, collection, collectionGroup, getDoc, setDoc, runTransaction, updateDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch, query, where,
   sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut, uploadBytes,
-  GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup } from "./fb.js";
+  GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup, multiFactor, TotpMultiFactorGenerator } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
-  progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential } from "./shared.js";
+  progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
-import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
+import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL, VAPID_KEY } from "./config.js";
 
 /* ---------- form builders ---------- */
 const fid = k => "f-" + k.replace(/\./g, "-");
@@ -21,6 +21,7 @@ const F = {
   seg:(k,l,opts,wide) => `<div class="row ${wide?"stack":""}"><span class="lbl">${l}</span><div class="seg ${wide?"wide":""}" data-k="${k}" role="group" aria-label="${esc(l)}">${segBtns(opts)}</div></div>`,
   area:(k,l,ph="") => `<label class="row stack"><span class="lbl">${l}</span><textarea id="${fid(k)}" data-k="${k}" rows="2" placeholder="${esc(ph)}"></textarea></label>`,
   note:(t,cls="") => `<div class="note ${cls}">${t}</div>`,
+  select:(k,l,opts) => `<label class="row"><span class="lbl">${l}</span><select id="${fid(k)}" data-k="${k}">${opts.map(([v,t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join("")}</select></label>`,
 };
 const group = (title, rows, show, extra="") => `<section class="group"${show?` data-show="${show}"`:""}><h3><span>${title}</span>${extra}</h3><div class="ios">${rows.join("")}</div></section>`;
 
@@ -53,12 +54,13 @@ function tabHTML(tab){
   if (tab === "app") return `<div class="cols">
     ${group("Applicant",[F.text("name","Full name","First Last"),F.text("phone","Phone","(315) 555-0100","tel"),F.text("email","Email","name@example.com","email"),
       F.seg("type","Membership type",TYPES.map(t=>[t,t]),true),`<div class="note" id="typeNote"></div>`,F.seg("location","Location",[["Potsdam","Potsdam"],["other","Other"]]),`<div data-show="locOther">${F.text("locationOther","Where?","Town")}</div>`])}
-    ${group("Application",[F.date("app.received","Date received"),F.init("app.receivedInit"),F.yn("app.complete","Complete?",true)])}
+    ${group("Application",[F.date("app.received","Date received"),F.init("app.receivedInit"),F.yn("app.complete","Complete?",true),
+      F.select("app.heard","Heard about PVRS",[["","—"],...HEARD.map(h => [h,h])]),F.text("app.heardDetail","Details","Which member, event…")])}
     ${admin ? `<section class="group" id="formGroup" hidden><h3><span>Online application</span></h3><div class="ios"><div class="row"><span class="lbl">Submitted online<small id="formNote">—</small></span>
       <button class="btn small" type="button" data-act="viewform">View</button><button class="btn small" type="button" data-act="printform">Print</button></div></div></section>` : ""}
     ${group("Incomplete application",[F.date("app.notified","Date notified"),F.date("app.returned","Date app returned"),F.date("app.reReceived","Date re-received")],"incomplete")}
     ${admin ? group("Applicant portal",[
-      `<div class="row"><span class="lbl">Portal access<small id="portalStatus">—</small></span><button class="btn small primary" type="button" data-act="invite" id="inviteBtn">Send invite</button></div>`,
+      `<div class="row"><span class="lbl">Portal access<small id="portalStatus">—</small></span><button class="btn small primary" type="button" data-act="invite" id="inviteBtn">Welcome</button></div>`,
       F.yn("portal.bookingOpen","Let them book an interview",false,"Shows your open interview times in their portal"),
       `<div class="row"><span class="lbl">Applicant view<small>What they see when they sign in</small></span><button class="btn small" type="button" data-act="preview">Preview</button></div>`]) : ""}
     ${admin ? `<section class="group"><h3><span>Documents</span><span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" type="button" data-act="records">Upload records</button><button class="btn small" type="button" data-act="docs">Request documents</button></span></h3><div class="ios" id="docList"></div><div class="ios recs" id="recList"></div></section>` : ""}
@@ -136,7 +138,7 @@ function tabHTML(tab){
       F.yn("iv.nextStepsReviewed","Next steps reviewed with applicant")])}
     ${admin?group("Committee decision",[F.yn("appr.committee","Committee approval",true)]):""}
   </div>`;
-  if (tab === "board") return `<div class="cols">
+  if (tab === "board") return `${admin && aiOn() ? `<section class="group aibrief"><h3><span>Med Control brief</span>${S.canEdit ? `<button class="btn small" type="button" data-aibrief>Make brief</button>` : ""}</h3><div class="ios" id="aiBrief"></div></section>` : ""}<div class="cols">
     ${group("Membership committee",[`<div class="note warn" id="boardRefNote" hidden></div>`,F.yn("appr.committee","Committee approval",true),F.date("appr.chairNotified","Membership chair notified")])}
     ${group("Board vote",[F.date("board.date","Board meeting date"),F.text("board.motion","Motion by","Name"),F.text("board.second","Seconded by","Name"),
       `<div class="row"><span class="lbl">Vote</span><div class="tally">
@@ -154,12 +156,15 @@ function tabHTML(tab){
     ${group("Notifications",[F.date("notify.applicant","Applicant notified"),F.init("notify.applicantInit"),F.date("notify.orientation","Orientation chair notified")])}
     ${group("Duty crew",[`<div class="row"><span class="lbl">Applicant phone<small id="phoneEcho">—</small></span><button class="copy" type="button" data-copy="phone">Copy</button></div>`,F.date("notify.chief","Chief notified"),F.init("notify.chiefInit")])}
     ${group("Email account",[`<div class="row"><span class="lbl">Applicant email<small id="emailEcho">—</small></span><button class="copy" type="button" data-copy="email">Copy</button></div>`,F.date("notify.tech","Technology chair notified"),F.init("notify.techInit")])}
+    ${group("New-member checklist",[F.note("After the board approves them: the date each item was done. Edit the list in Settings.", "onbnote"),...onbItems().map(([k,l]) => F.date(`onb.items.${k}`, esc(l)))],"",`<small id="onbCount" style="font-weight:500;color:var(--fg3)"></small>`)}
+    ${group("Expiration dates",[F.note("You'll get a To do 30 days before any of these expire."),`<div class="row"><span class="lbl">Driver's license<small>Entered on the Checks tab</small></span><b id="dlExpEcho">—</b></div>`,
+      F.date("onb.cprExpires","CPR / BLS card expires"),F.date("onb.emtExpires","EMS certification expires")])}
   </div>
   <section class="group" style="margin-top:18px"><h3><span>Full checklist</span></h3><div class="ios" id="miles"></div></section>`;
   if (tab === "msgs") return `<div class="msgpane">
     <div class="ios"><div class="thread staffview" id="dThread"></div></div>
     <p class="help" id="msgNote" style="margin:8px 4px 0"></p>
-    ${S.canEdit ? `<div class="ios composer-box"><label class="row stack"><span class="lbl">Reply</span><textarea id="replyText" rows="3" maxlength="2000" placeholder="Write a reply… (⌘↩ to send)"></textarea></label>
+    ${S.canEdit ? `<div class="ios composer-box"><div class="row qreplies" id="qReplies">${quickRepliesHTML()}</div><label class="row stack"><span class="lbl">Reply</span><textarea id="replyText" rows="3" maxlength="2000" placeholder="Write a reply… (⌘↩ to send)"></textarea></label>
       <div class="row"><label class="lbl" style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="replyMail" checked style="width:auto"> Also open an email in Mail to let them know</label>
         <button class="btn primary" type="button" data-reply>Send reply</button></div></div>` : `<div class="viewonly"><b>View only.</b> Only the owner replies to applicants.</div>`}
   </div>`;
@@ -287,8 +292,59 @@ function restoreFocus(fk){
 /* ---------- to do (overview) ---------- */
 // For each applicant in process: what needs doing next, most actionable first. "Waiting" states aren't listed.
 const okEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || "").trim());
+// New-member checklist (Onboard tab). The owner edits the list in Settings; each item's key comes from its label.
+const DEFAULT_ONB = ["ID badge issued", "Uniform and gear issued", "Building access set up", "Paging / dispatch app set up", "Orientation completed",
+  "CPR / BLS", "EVOC (drivers)", "ICS-100", "ICS-700", "HIPAA training", "Bloodborne pathogens training"];
+const onbKey = l => String(l).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40) || "item";
+const onbItems = () => (Array.isArray(S.settings.onbItems) ? S.settings.onbItems : DEFAULT_ONB).map(l => [onbKey(l), l]);
+// Expiration dates to watch (To do 30 days ahead and once expired), for anyone in process or approved.
+const EXPIRES = [["dl.expires", "Driver's license", "checks"], ["onb.cprExpires", "CPR / BLS card", "onb"], ["onb.emtExpires", "EMS certification", "onb"]];
+// Data retention: declined/withdrawn files untouched for longer than settings.retentionYears get flagged for the owner
+// to review and delete. Nothing is deleted automatically.
+const retentionYears = () => { const y = parseInt(S.settings.retentionYears, 10); return y > 0 ? y : 0; };
+const lastTouched = a => Math.max(a.updatedAt || 0, a.secUpdatedAt || 0, a.createdAt || 0);
+const pastRetention = () => { const y = retentionYears(); if (!y) return [];
+  return [...S.apps.values()].filter(a => (isDeclined(a) || a.status === "withdrawn") && lastTouched(a) && Date.now() - lastTouched(a) > y * 365.25 * 864e5)
+    .sort((x, y2) => lastTouched(x) - lastTouched(y2)); };
+function openRetention(){
+  if (!S.canEdit) return ownerOnlyToast();
+  const list = pastRetention(), y = retentionYears();
+  const when = a => new Date(lastTouched(a)).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  const M = openModal(`<h3>Old files to review</h3>
+    <p class="help">${y ? `Declined and withdrawn files with no changes in more than ${y} year${y === 1 ? "" : "s"} (Settings → Data retention). Tick the ones to delete. Deleting removes everything the desk holds for them and can't be undone.` : "Data retention is off. Set it in Settings."}</p>
+    <div class="ios">${list.length ? list.map(a => `<label class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>${isDeclined(a) ? "Declined" : "Withdrawn"} · last changed ${esc(when(a))}</small></span><input type="checkbox" data-retid="${esc(a._id)}" checked style="width:auto"></label>`).join("")
+      : `<div class="row"><span class="lbl">Nothing past the retention period.</span></div>`}</div>
+    <p class="help">🔒 Secure documents stay with ${esc(PAPERWORK_EMAIL)}; ask them to delete those too.</p>
+    <div class="acts"><button class="btn" type="button" data-x>Close</button>${list.length ? `<button class="btn danger" type="button" id="retGo">Delete selected</button>` : ""}</div>`);
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    const go = e.target.closest("#retGo"); if (!go) return;
+    const ids = [...M.querySelectorAll("[data-retid]:checked")].map(x => x.dataset.retid);
+    if (!ids.length) return toast("Tick at least one file.");
+    if (go.dataset.confirm !== "1") { go.dataset.confirm = "1"; go.textContent = `Confirm: delete ${ids.length} permanently`; return; }
+    go.disabled = true;
+    for (const id of ids) await deleteApplicant(id, true);
+    closeModal(); toast(`Deleted ${ids.length} old file${ids.length === 1 ? "" : "s"}`);
+  };
+}
 function todoItems(){
   const out = [];
+  const old = pastRetention();
+  if (old.length) out.push({ id: old[0]._id, a: old[0], pri: 3, text: `Review ${old.length === 1 ? "an old file" : old.length + " old files"} past the ${retentionYears()}-year retention`, sub: old.map(a => a.name).slice(0, 3).join(", ") + (old.length > 3 ? "…" : ""), tab: "notes", act: "retention", btn: "Review", age: 0 });
+  for (const a of S.apps.values()) {
+    if (isDeclined(a) || ["withdrawn"].includes(a.status)) continue;
+    const id = a._id, add = (pri, text, sub, tab) => out.push({ id, a, pri, text, sub, tab, age: 0 });
+    for (const [k, label, tab] of EXPIRES) {
+      const d = get(a, k); if (!d) continue;
+      const days = Math.round((new Date(d + "T12:00") - Date.now()) / 864e5);
+      if (days <= 30) add(1, days < 0 ? `${label} expired` : `${label} expires ${days === 0 ? "today" : days === 1 ? "tomorrow" : "in " + days + " days"}`, fmtDate(d), tab);
+    }
+    const bd = get(a, "board.date");
+    if (get(a, "board.result") === "approved" && (!bd || daysSince(bd) <= 365)) {
+      const its = onbItems(), left = its.filter(([k]) => !get(a, `onb.items.${k}`));
+      if (its.length && left.length) add(3, "Finish the new-member checklist", `${its.length - left.length} of ${its.length} done · next: ${left[0][1]}`, "onb");
+    }
+  }
   for (const a of S.apps.values()) {
     const p = progress(a); if (!IN_PROCESS.includes(p.stage)) continue;
     const id = a._id, g = k => get(a, k), rs = refStatus(a), fn = first(a.name) || "them";
@@ -299,6 +355,8 @@ function todoItems(){
     const unsent = rs.list.filter(r => !r.received && !g(`refs.r${r.i}.form`) && !g(`refs.r${r.i}.contacted`) && okEmail(g(`refs.r${r.i}.email`)));
     if (!rs.done && unsent.length) add(1, `Send ${unsent.length === 1 ? "a reference form" : unsent.length + " reference forms"}`, unsent.map(r => r.name).join(", "), "checks", "refsall", "Email forms");
     const step = MILESTONES.findIndex(m => !m[1](a));
+    const welcome = !g("portal.invited") && okEmail(a.email) && step <= 5;
+    if (welcome) add(0, `Welcome ${fn}`, "Portal invite, welcome message and email in one step", "app", "invite", "Welcome");
     switch (step) {
       case 0: add(2, "Enter the date the application came in", "", "app"); break;
       case 1: add(2, g("app.complete") === "no" ? "Follow up on the incomplete application" : "Review the application", g("app.notified") ? "Notified " + fmtDate(g("app.notified")) : "", "app"); break;
@@ -306,7 +364,7 @@ function todoItems(){
       case 3: add(2, "Verify the driver's license", "", "checks"); break;
       case 4: if (!rs.list.length) add(2, "Add references", "None entered yet", "checks"); break;
       case 5:
-        if (!g("portal.invited") && okEmail(a.email)) add(2, "Send the portal invite", `So ${fn} can book an interview`, "app", "invite", "Send invite");
+        if (welcome) break;
         else if (g("portal.invited") && g("portal.bookingOpen") !== "yes") add(2, "Open interview booking", `${fn} can then pick a time`, "app", "booking", "Open booking");
         else if (!okEmail(a.email)) add(2, "Schedule the interview", "No email on file, so book it for them", "iv");
         break;
@@ -340,14 +398,15 @@ function todoCard(){
 function statsData(){
   const now = new Date(), yr = now.getFullYear(), months = [];
   for (let k = 11; k >= 0; k--) { const d = new Date(yr, now.getMonth() - k, 1); months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, d, n: 0 }); }
-  let apps = 0, joined = 0; const waits = [];
+  let apps = 0, joined = 0; const waits = [], heard = new Map();
   for (const a of S.apps.values()) {
     const rec = get(a, "app.received"), bd = get(a, "board.date"), ok = get(a, "board.result") === "approved";
     if (rec) { const m = months.find(x => rec.startsWith(x.key)); if (m) m.n++; if (rec.startsWith(String(yr))) apps++; }
+    const h = get(a, "app.heard"); if (h && rec && rec.startsWith(String(yr))) heard.set(h, (heard.get(h) || 0) + 1);
     if (ok && bd && bd.startsWith(String(yr))) joined++;
     if (ok && rec && bd && daysSince(bd) <= 365) waits.push(Math.max(0, Math.round((new Date(bd + "T12:00") - new Date(rec + "T12:00")) / 864e5)));
   }
-  return { months, apps, joined, avg: waits.length ? Math.round(waits.reduce((x, y) => x + y, 0) / waits.length) : null, yr };
+  return { heard: [...heard].sort((x, y) => y[1] - x[1]), months, apps, joined, avg: waits.length ? Math.round(waits.reduce((x, y) => x + y, 0) / waits.length) : null, yr };
 }
 function statsCard(){
   if (!S.admin) return "";
@@ -361,7 +420,8 @@ function statsCard(){
       <div class="mlabels" aria-hidden="true">${st.months.map(m => `<span>${esc(mname(m.d, "short").slice(0, 3))}</span>`).join("")}</div>
       <table class="sr-only"><caption>Applications per month, last 12 months</caption><thead><tr><th scope="col">Month</th><th scope="col">Applications</th></tr></thead>
         <tbody>${st.months.map(m => `<tr><th scope="row">${esc(mname(m.d, "long") + " " + m.d.getFullYear())}</th><td>${m.n}</td></tr>`).join("")}</tbody></table>
-      <div class="mtip" id="mtip" hidden></div></div></section>`;
+      <div class="mtip" id="mtip" hidden></div></div>
+    ${st.heard.length ? `<div class="hchart"><h4>How applicants heard about us</h4>${st.heard.map(([k, n]) => `<div class="hrow"><span>${esc(k)}</span><i style="--w:${Math.round(n / st.heard[0][1] * 100)}%"></i><b>${n}</b></div>`).join("")}</div>` : ""}</section>`;
 }
 function statsHover(e){
   const col = e.target.closest?.(".bcol"), tip = $("#mtip");
@@ -512,6 +572,9 @@ function syncDetail(){
   const pr = $("#dProg");
   if (pr) pr.innerHTML = `<div class="steps" style="--stage-c:${stageVar(p.stage)}">${MILESTONES.map((m,i) => `<button type="button" class="${p.done[i]?"done":""} ${i===p.cur?"cur":""}" data-step="${i}" title="${i+1}. ${esc(m[0])}${p.done[i]?" ✓":""}" aria-label="Step ${i+1}: ${esc(m[0])}${p.done[i]?", done":""}"></button>`).join("")}</div>
     <div class="t"><strong>${p.n}/${MILESTONES.length}</strong> · ${p.next?`Next: <strong>${esc(p.next)}</strong>`:"Checklist complete"}</div>`;
+  const ab = $("#aiBrief"); if (ab) { ab.innerHTML = briefHTML(get(a, "ai.brief")); const bb = document.querySelector("[data-aibrief]"); if (bb && !bb.disabled) bb.textContent = get(a, "ai.brief") ? "Redo brief" : "Make brief"; }
+  const oc = $("#onbCount"); if (oc) { const its = onbItems(), n = its.filter(([k]) => get(a, `onb.items.${k}`)).length; oc.textContent = its.length ? `${n} of ${its.length} done` : ""; }
+  const dx = $("#dlExpEcho"); if (dx) dx.textContent = get(a, "dl.expires") ? fmtDate(get(a, "dl.expires")) : "Not entered";
   const m = $("#miles");
   if (m) m.innerHTML = MILESTONES.map((x,i) => `<div class="mile ${p.done[i]?"done":""} ${i===p.cur?"cur":""}"><span class="dot">${p.done[i]?checkSVG:""}</span>${esc(x[0])}</div>`).join("");
   const tn = $("#typeNote"); if (tn) tn.textContent = TYPE_INFO[a.type] || "Pick a membership type to see its requirements.";
@@ -519,7 +582,7 @@ function syncDetail(){
   if (pe) pe.textContent = a.phone || "Not entered on Application tab";
   if (ee) ee.textContent = a.email || "Not entered on Application tab";
   const ps = $("#portalStatus");
-  if (ps) { const inv = get(a,"portal.invited"); ps.textContent = !a.email ? "Add their email first" : inv ? `Invited ${fmtDate(inv)} · ${a.email}` : "Not invited yet"; $("#inviteBtn").textContent = inv ? "Resend link" : "Send invite"; $("#inviteBtn").disabled = !a.email; }
+  if (ps) { const inv = get(a,"portal.invited"); ps.textContent = !a.email ? "Add their email first" : inv ? `Invited ${fmtDate(inv)} · ${a.email}` : "Not invited yet"; $("#inviteBtn").textContent = inv ? "Resend link" : "Welcome"; $("#inviteBtn").disabled = !a.email; }
   const be = $("#bookedEcho");
   if (be) {
     be.textContent = a._booked ? `${slotLong(a._booked.start)}${a._booked.location ? " · " + a._booked.location : ""}` : "Not booked";
@@ -896,6 +959,24 @@ function renderMessages(){
     markedRead.add(m.key); updateDoc(doc(db, "portal", S.sel, "messages", m.id), { readAt: Date.now() }).catch(() => markedRead.delete(m.key));
   }
 }
+// Saved replies: one tap drops the text into the reply box ({first} becomes the applicant's first name). Edited in Settings.
+const DEFAULT_REPLIES = [
+  { title: "Got it", text: "Thanks, {first}! We got it and we'll be in touch soon." },
+  { title: "Documents received", text: "Thanks, {first}. We received your documents and they're under review." },
+  { title: "Interview times open", text: "Hi {first}, interview times are open in your portal now. Pick whichever one works best for you." },
+  { title: "References", text: "Hi {first}, we're still waiting to hear from some of your references. A quick reminder from you can help move things along." },
+  { title: "When's the board?", text: "Hi {first}, your application goes to the next board meeting once your references, interview and the other checks are complete. You'll hear from us within about a week of that meeting." },
+];
+const savedReplies = () => Array.isArray(S.settings.replies) ? S.settings.replies : DEFAULT_REPLIES;
+const quickRepliesHTML = () => (aiOn() ? `<button class="chip aichip" type="button" data-aireply>Draft with Med Control</button>` : "") + savedReplies().map((r, i) => `<button class="chip" type="button" data-qr="${i}">${esc(r.title)}</button>`).join("");
+function useQuickReply(i){
+  const r = savedReplies()[i], a = S.apps.get(S.sel), ta = $("#replyText"); if (!r || !a || !ta) return;
+  const text = r.text.replace(/\{first\}/g, first(a.name));
+  ta.value = ta.value.trim() ? ta.value.trimEnd() + "\n\n" + text : text;
+  ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+const replyRowHTML = (r = { title: "", text: "" }) => `<div class="row stack qredit"><div style="display:flex;gap:8px;align-items:center"><input type="text" class="qrTitle" maxlength="40" placeholder="Button label" value="${esc(r.title)}"><button class="copy" type="button" data-qrrm>Remove</button></div>
+  <textarea class="qrText" rows="2" maxlength="2000" placeholder="Reply text. {first} becomes their first name.">${esc(r.text)}</textarea></div>`;
 async function sendReply(){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(S.sel), ta = $("#replyText"); if (!a || !ta) return;
@@ -1023,26 +1104,41 @@ function watchFiles(id){
   }, () => {});
 }
 
-/* ---------- portal invite ---------- */
+/* ---------- portal invite = welcome ---------- */
+// The first invite is the applicant's welcome, all in one step: portal access + sign-in link, a welcome message
+// waiting in their portal's Messages, and the welcome email ready to send. Later clicks just resend the link.
+const welcomeText = a => `Hi ${first(a.name)}, welcome, and thank you for applying to the Potsdam Volunteer Rescue Squad!
+
+This page is your applicant portal. Here's what happens next:
+• We check your driving record and verify your driver's license.
+• We contact your references (we need ${REFS_NEEDED}). You'll see here when each one comes back.
+• You book an interview with the Membership Committee here once times open.
+• Your application then goes to the board.
+
+You can follow every step on this page. If you have a question at any point, send us a message right here.`;
 async function inviteToPortal(id, showEmail = true){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id); if (!a) return;
   const email = lower(a.email);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Add a valid email on the Application tab first.");
+  const welcome = !get(a,"portal.welcomed");
   if (!get(a,"portal.invited")) edit(id, "portal.invited", today());
+  if (welcome) edit(id, "portal.welcomed", today());
   flushAll();
   try {
     await syncPortal(id, true);
     await sendSignInLinkToEmail(auth, email, linkSettings());
-    toast(`Sign-in link sent to ${email}`);
-    if (showEmail) openEmail("portal");
+    if (welcome) await addDoc(collection(db, "portal", id, "messages"), { text: welcomeText(a), from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() })
+      .catch(e => console.error(e));
+    toast(welcome ? `Welcomed ${first(a.name)}: sign-in link sent and a welcome message is in their portal` : `Sign-in link sent to ${email}`);
+    if (showEmail) openEmail("portal", undefined, id);
   } catch (e) { console.error(e); toast("Couldn't send the invite. Check the email address and try again."); }
 }
 
 /* ---------- emails ---------- */
 const TEMPLATES = {
-  portal: a => ({ subject: "Your PVRS applicant portal",
-    body: `Hi ${first(a.name)},\n\nThank you for applying to the Potsdam Volunteer Rescue Squad. You can follow your application, upload documents and book your interview in your applicant portal:\n\n${location.origin}\n\nSign in with this email address (${lower(a.email)}). We just sent you a separate sign-in link, and you can request a new one from that page any time. No password needed.\n\nQuestions? Email ${S.settings.docsEmail || CONTACT_EMAIL}.\n\nThank you,\n${sig()}` }),
+  portal: a => ({ subject: "Welcome to PVRS: your applicant portal",
+    body: `Hi ${first(a.name)},\n\nWelcome, and thank you for applying to the Potsdam Volunteer Rescue Squad! We've received your application. You can follow it, upload documents, message us and book your interview in your applicant portal:\n\n${location.origin}\n\nSign in with this email address (${lower(a.email)}). We just sent you a separate sign-in link, and you can request a new one from that page any time. No password needed.\n\nQuestions? Email ${S.settings.docsEmail || CONTACT_EMAIL}.\n\nThank you,\n${sig()}` }),
   docs: (a, list = []) => ({ subject: "PVRS application: documents needed",
     body: `Hi ${first(a.name)},\n\nTo keep your application moving, please upload the following in your applicant portal:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\n${location.origin}\n\nIf the upload gives you trouble, email them to ${S.settings.docsEmail || CONTACT_EMAIL} instead.\n\nThank you,\n${sig()}` }),
   refs: (a, list = []) => ({ subject: "PVRS application: references still needed",
@@ -1050,8 +1146,8 @@ const TEMPLATES = {
   interview: a => ({ subject: "PVRS interview: pick a time",
     body: `Hi ${first(a.name)},\n\nThe next step in your application is an interview with the Membership Committee. Interview times are now open in your applicant portal. Sign in and pick the one that works best for you:\n\n${location.origin}\n\nIf none of the times work, reply to this email and we'll find another.\n\nThank you,\n${sig()}` }),
 };
-function openEmail(kind, extra){
-  const a = S.apps.get(S.sel); if (!a) return;
+function openEmail(kind, extra, id = S.sel){
+  const a = S.apps.get(id); if (!a) return;
   const t = TEMPLATES[kind](a, extra);
   const titles = { portal: "Welcome email", docs: "Documents email", refs: "References email", interview: "Interview email" };
   const M = openModal(`<h3>${titles[kind]}</h3><p class="help">Optional personal note to go with the portal. Copy it or open it in Mail.</p>
@@ -1121,6 +1217,15 @@ function openSettings(){
       <label class="row stack"><span class="lbl">Email signature<small>Printed at the end of every email</small></span><textarea id="sSig" rows="4" placeholder="Name, credentials">${esc(s.signature||"")}</textarea></label>
       <label class="row stack"><span class="lbl">Documents and questions go to</span><input type="text" id="sDocs" placeholder="${esc(CONTACT_EMAIL)}" value="${esc(s.docsEmail||"")}"></label>
       <label class="row stack"><span class="lbl">Default interview location</span><input type="text" id="sLoc" placeholder="PVRS building" value="${esc(s.defaultLocation||"")}"></label></div></div>
+    <div class="group"><h3><span>Saved replies</span><button class="btn small" type="button" id="qrAdd">Add reply</button></h3><div class="ios" id="qrList">${savedReplies().map(replyRowHTML).join("")}</div>
+      <p class="help" style="margin:4px 4px 0">Buttons above the reply box on the Messages tab. <b>{first}</b> becomes the applicant's first name.</p></div>
+    <div class="group"><h3><span>Med Control (AI assistant)</span></h3><div class="ios">
+      ${F.seg("_ai","Med Control",[["on","On","good"],["off","Off"]]).replace('data-k="_ai"', 'id="sAi"')}
+      <div class="row"><span class="lbl"><small>Chat, applicant briefs and reply drafts for you and admins, powered by Claude. Only turn on after the board has OK'd it and the API key is set (docs/med-control.md). It never sees license numbers, birth dates, addresses, phone numbers, conviction details or uploaded files, and it only drafts: nothing is sent without you.</small></span></div></div></div>
+    <div class="group"><h3><span>New-member checklist</span></h3><div class="ios"><label class="row stack"><span class="lbl">One item per line<small>Shown on the Onboard tab after board approval. Renaming an item starts it fresh.</small></span><textarea id="sOnb" rows="8">${esc(onbItems().map(x => x[1]).join("\n"))}</textarea></label></div></div>
+    <div class="group"><h3><span>Data retention</span></h3><div class="ios">
+      <label class="row"><span class="lbl">Keep declined and withdrawn files for<small>Years with no changes before they're flagged for you to review and delete. Blank = off. Match the board's policy.</small></span><input type="number" id="sRet" min="1" max="20" placeholder="Off" value="${esc(s.retentionYears||"")}"></label>
+      <div class="row"><span class="lbl">Old files<small>${pastRetention().length} past the retention period</small></span><button class="btn small" type="button" id="sRetReview">Review</button></div></div></div>
     <div class="group"><h3><span>Security</span></h3><div class="ios">
       <label class="row"><span class="lbl">Sign out after inactivity<small>Minutes with no mouse or keyboard use, for everyone on the team (5–240)</small></span><input type="number" id="sIdle" min="5" max="240" placeholder="30" value="${esc(s.idleMinutes||"")}"></label></div></div>
     <div class="group"><h3><span>Online application</span></h3><div class="ios">
@@ -1134,10 +1239,15 @@ function openSettings(){
       <div class="row"><span class="lbl">Import records<small>The migration file from the old Claude version</small></span><label class="btn small" for="sImport">Choose file</label><input type="file" id="sImport" accept="application/json,.json" hidden></div></div></div>
     <div class="acts"><button class="btn" type="button" id="sCancel">Cancel</button><button class="btn primary" type="button" id="sSave">Save</button></div>`, true);
   $("#sImport").addEventListener("change", e => importFile(e.target.files && e.target.files[0]));
+  $("#sAi").querySelectorAll("button").forEach(b => { const on = b.dataset.v === (s.ai ? "on" : "off"); b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
   M.onclick = async e => {
     const id = e.target.id;
     if (id === "sCancel") closeModal();
     if (id === "sPreview") openPreview(S.sel);
+    if (id === "sRetReview") return openRetention();
+    const sa = e.target.closest("#sAi button"); if (sa) { $("#sAi").querySelectorAll("button").forEach(b => { b.classList.toggle("on", b === sa); b.setAttribute("aria-pressed", b === sa); }); return; }
+    if (id === "qrAdd") { $("#qrList").insertAdjacentHTML("beforeend", replyRowHTML()); $("#qrList .qredit:last-child .qrTitle").focus(); return; }
+    const qrm = e.target.closest("[data-qrrm]"); if (qrm) { qrm.closest(".qredit").remove(); return; }
     if (id === "sCopyApply") { const u = location.origin + "/apply"; toast((await copyText(u)) ? "Copied " + u : u); }
     if (id === "sFull") exportFull();
     if (id === "sSummary") exportSummary();
@@ -1155,7 +1265,11 @@ function openSettings(){
       try { await deleteDoc(doc(db, "staff", rm.dataset.rmstaff)); toast("Removed"); } catch { toast("Couldn't remove."); } }
     if (id === "sSave") {
       const idle = parseInt($("#sIdle").value, 10);
-      const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now() };
+      const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now(),
+        ai: $("#sAi .on")?.dataset.v === "on",
+        retentionYears: parseInt($("#sRet").value, 10) > 0 ? Math.min(20, parseInt($("#sRet").value, 10)) : null,
+        onbItems: [...new Set($("#sOnb").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
+        replies: [...document.querySelectorAll("#qrList .qredit")].map(r => ({ title: r.querySelector(".qrTitle").value.trim(), text: r.querySelector(".qrText").value.trim() })).filter(r => r.title && r.text).slice(0, 20) };
       try { await setDoc(doc(db, "settings", "main"), next, { merge: true }); closeModal(); toast("Settings saved"); } catch { toast("Couldn't save settings."); }
     }
   };
@@ -1235,7 +1349,7 @@ function confirmDelete(id){
     if (e.target.closest("#delGo")) { e.target.closest("#delGo").disabled = true; await deleteApplicant(id); closeModal(); }
   };
 }
-async function deleteApplicant(id){
+async function deleteApplicant(id, quiet = false){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id);
   try {
@@ -1259,7 +1373,8 @@ async function deleteApplicant(id){
     if (subs) for (const sd of subs.docs) await deleteDoc(sd.ref).catch(() => {});
     await deleteDoc(doc(db, "applicants", id, "private", "main"));
     await deleteDoc(doc(db, "applicants", id));
-    S.sel = null; renderList(); renderDetail(); toast("Applicant deleted");
+    if (S.sel === id) S.sel = null;
+    renderList(); renderDetail(); if (!quiet) toast("Applicant deleted");
   } catch (e) { console.error(e); toast("Couldn't delete. Try again."); }
 }
 
@@ -1307,6 +1422,9 @@ function openPalette(){
     { label: "Interview times", show: S.canEdit, words: "interview times slots schedule calendar", run: go(openSlots) },
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(openInbox) },
     { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
+    { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
+    { label: "Notifications", show: S.admin, words: "notifications alerts push bell phone", run: go(openNotifications) },
+    { label: "Two-step sign-in", show: true, words: "two step 2fa mfa authenticator security code", run: go(openTwoStep) },
     { label: "Sign-in password", show: true, words: "password key sign in", run: go(openPassword) },
     { label: "Keyboard shortcuts", hint: "?", show: true, words: "keyboard shortcuts help keys", run: go(openShortcuts) },
     { label: "Sign out", show: true, words: "sign out log out logout", run: go(() => document.querySelector("[data-signout]").click()) },
@@ -1326,7 +1444,7 @@ function openPalette(){
       out.push({ label: `Interview mode`, sub: fn, icon: "▶", run: go(() => { select(id); enterIvMode(); }) });
       if (S.admin) out.push({ label: "Open Checks", sub: fn, icon: "✓", run: openFile(id, "checks") });
       if (S.canEdit && refList(top).length) out.push({ label: "Email reference forms", sub: fn, icon: "✉", run: go(() => openRefsAll(id)) });
-      if (S.canEdit && !get(top, "portal.invited") && okEmail(top.email)) out.push({ label: "Send portal invite", sub: fn, icon: "✉", run: go(() => inviteToPortal(id)) });
+      if (S.canEdit && !get(top, "portal.invited") && okEmail(top.email)) out.push({ label: `Welcome ${first(top.name)}`, sub: "Portal invite, welcome message and email", icon: "✉", run: go(() => inviteToPortal(id)) });
       if (S.canEdit && okEmail(top.email)) out.push({ label: `Email ${first(top.name)}`, sub: top.email, icon: "✉", run: go(() => { select(id); openEmailPicker(); }) });
     }
     commands.filter(c => !q || has(`${c.label.toLowerCase()} ${c.words}`, q))
@@ -1426,7 +1544,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["newBtn", "New applicant"], ["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
@@ -1560,11 +1678,15 @@ function bindEvents(){
     const ta = t.closest("[data-todoact]");
     if (ta) { const id = ta.dataset.id, k = ta.dataset.todoact;
       if (k === "refsall") return openRefsAll(id);
+      if (k === "retention") return openRetention();
       if (k === "invite") return inviteToPortal(id);
       if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
       return; }
     const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); return; }
     const om = t.closest("[data-openmsg]"); if (om) { select(om.dataset.openmsg); switchTab("msgs"); return; }
+    const qr = t.closest("[data-qr]"); if (qr) return useQuickReply(+qr.dataset.qr);
+    const air = t.closest("[data-aireply]"); if (air) return aiDraftReply(air);
+    const aib = t.closest("[data-aibrief]"); if (aib) return aiMakeBrief(aib);
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
     if (!S.canEdit && t.closest(OWNER_ONLY)) return ownerOnlyToast();
@@ -1616,7 +1738,7 @@ function bindEvents(){
     const segBtn = t.closest(".seg button");
     if (segBtn && segBtn.parentElement.dataset.k) { const k = segBtn.parentElement.dataset.k; const cur = get(S.apps.get(S.sel), k);
       const v = cur === segBtn.dataset.v && k !== "status" ? "" : segBtn.dataset.v; edit(S.sel, k, v);
-      if (k === "portal.bookingOpen" && v === "yes") { const a = S.apps.get(S.sel); if (a.email && !get(a,"portal.invited")) toast("Send them a portal invite so they can book."); else if (a.email) setTimeout(() => openEmail("interview"), 300); }
+      if (k === "portal.bookingOpen" && v === "yes") { const a = S.apps.get(S.sel); if (a.email && !get(a,"portal.invited")) toast("Welcome them first (the Welcome button above) so they can sign in and book."); else if (a.email) setTimeout(() => openEmail("interview"), 300); }
       return; }
     if (t.closest("#backBtn")) { deselect(); return; }
     const cp = t.closest("[data-copy]");
@@ -1638,6 +1760,7 @@ function bindEvents(){
   setInterval(() => { if (S.sel && !document.hidden) syncDetail(); }, 60000);
   $("#modal").addEventListener("mousedown", e => { if (e.target.id === "modal") closeModal(); });
   $("#settingsBtn").addEventListener("click", gateSettings);
+  $("#aiBtn").addEventListener("click", openMedControl);
   $("#slotsBtn").addEventListener("click", openSlots);
   $("#newBtn").addEventListener("click", openNew);
   $("#boardBtn").addEventListener("click", () => openBoardMtg());
@@ -1851,7 +1974,7 @@ async function importSubmission(snap){
   const certs = (f.experience && f.experience.certs) || [], col = (f.education && f.education.college) || {};
   const id = doc(collection(db, "applicants")).id, now = Date.now(), name = `${p.first || ""} ${p.last || ""}`.trim();
   const shared = { name, phone: p.phone || "", email: lower(p.email), type: p.type || "", location: potsdam ? "Potsdam" : "other", ...(potsdam ? {} : { locationOther: local.city || "" }),
-    stage: "screen", app: { received: isoDay(f.submittedAt || now), source: "online" },
+    stage: "screen", app: { received: isoDay(f.submittedAt || now), source: "online", ...(f.heard?.source ? { heard: String(f.heard.source).slice(0, 60), heardDetail: String(f.heard.detail || "").slice(0, 200) } : {}) },
     iv: { college: col.name ? "yes" : "", collegeWhere: [col.name, col.grad ? "graduating " + col.grad : ""].filter(Boolean).join(", "),
       isEmt: certs.some(c => /^(EMT|AEMT|Paramedic)$/.test(c)) ? "yes" : "",
       otherOrg: f.experience?.otherAgencies === "yes" ? "yes" : f.experience?.otherAgencies === "no" ? "no" : "", otherOrgWhere: f.experience?.agenciesDetail || "",
@@ -2078,10 +2201,12 @@ function openPassword(){
       <label for="pwAgain">Type it again</label><input id="pwAgain" type="password" autocomplete="new-password" required>
       <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="pwShow" style="width:auto"> Show password</label></div>
     <p class="help">At least 10 characters. Don't reuse a password from another site.</p>
+    <div class="ios" style="margin-top:6px"><div class="row"><span class="lbl">Two-step sign-in<small>${twoStepOn(user) ? "On: a code from your authenticator app at each sign-in" : "Off: add a code from an authenticator app"}</small></span><button class="btn small" type="button" id="twoStepBtn">${twoStepOn(user) ? "Manage" : "Set up"}</button></div>
+      ${S.admin ? `<div class="row"><span class="lbl">Notifications<small>Alerts on this device for new applications, messages and bookings</small></span><button class="btn small" type="button" id="notifBtn">${pushToken() ? "On" : "Set up"}</button></div>` : ""}</div>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="submit">Save password</button></div></form>`);
   $("#pwNew").focus();
   $("#pwShow").addEventListener("change", e => { $("#pwNew").type = $("#pwAgain").type = e.target.checked ? "text" : "password"; });
-  M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); };
+  M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); if (e.target.closest("#twoStepBtn")) openTwoStep(); if (e.target.closest("#notifBtn")) openNotifications(); };
   const save = async pw => {
     if (user.providerData.some(p => p.providerId === "password")) await updatePassword(user, pw);
     else await linkWithCredential(user, EmailAuthProvider.credential(user.email, pw));
@@ -2109,6 +2234,242 @@ function openPassword(){
         : c === "auth/popup-closed-by-user" ? "Google confirmation was closed. Try again."
         : "Couldn't save the password. Try again.");
     } finally { btn.disabled = false; }
+  };
+}
+
+/* ---------- two-step sign-in (authenticator app codes, Firebase TOTP) ---------- */
+// Needs the project upgraded to Identity Platform with TOTP switched on (docs/two-step-sign-in.md).
+const totpFactor = user => multiFactor(user).enrolledFactors.find(f => f.factorId === TotpMultiFactorGenerator.FACTOR_ID);
+const twoStepOn = user => { try { return !!totpFactor(user); } catch { return false; } };
+// Changing sign-in settings needs a recent sign-in; Google accounts can confirm in a popup, others sign out and back in.
+async function recentLogin(user, fn){
+  try { return await fn(); }
+  catch (err) {
+    if (err && err.code === "auth/requires-recent-login" && user.providerData.some(p => p.providerId === "google.com")) {
+      toast("For security, confirm it's you with Google first.");
+      await reauthenticateWithPopup(user, new GoogleAuthProvider()); return fn();
+    }
+    throw err;
+  }
+}
+const twoStepError = err => { const c = err && err.code; if (c !== "auth/invalid-verification-code") console.error(err);
+  toast(c === "auth/requires-recent-login" || c === "auth/multi-factor-auth-required" ? "For security, sign out, sign back in, and try again."
+    : c === "auth/invalid-verification-code" ? "That code didn't match. Wait for the next code and try again."
+    : c === "auth/operation-not-allowed" || c === "auth/admin-restricted-operation" || c === "auth/unsupported-first-factor" ? "Two-step sign-in isn't switched on for the PVRS project yet (see docs/two-step-sign-in.md)."
+    : c === "auth/unverified-email" ? "Confirm your email address first." : "Couldn't change two-step sign-in. Try again."); };
+function openTwoStep(){
+  const user = auth.currentUser; if (!user) return;
+  const f = (() => { try { return totpFactor(user); } catch { return null; } })();
+  if (f) {
+    const M = openModal(`<h3>Two-step sign-in is on</h3>
+      <p class="help">Each time you sign in, PVRS Membership asks for the 6-digit code from ${esc(f.displayName || "your authenticator app")}${f.enrollmentTime ? `, set up ${esc(new Date(f.enrollmentTime).toLocaleDateString())}` : ""}.</p>
+      <p class="help">Got a new phone? Turn it off, then set it up again on the new phone.</p>
+      <div class="acts"><button class="btn" type="button" data-x>Done</button><button class="btn danger" type="button" id="tsOff">Turn off</button></div>`);
+    M.onclick = async e => {
+      if (e.target.closest("[data-x]")) return closeModal();
+      const b = e.target.closest("#tsOff"); if (!b) return;
+      if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Confirm turn off"; return; }
+      b.disabled = true;
+      try { await recentLogin(user, () => multiFactor(user).unenroll(f)); closeModal(); toast("Two-step sign-in is off."); }
+      catch (err) { twoStepError(err); b.disabled = false; }
+    };
+    return;
+  }
+  const M = openModal(`<h3>Set up two-step sign-in</h3>
+    <p class="help">After your password or Google, you'll also type a 6-digit code from an authenticator app on your phone (Google Authenticator, Microsoft Authenticator, 1Password, or the iPhone Passwords app). Someone with your password still can't get in without your phone.</p>
+    <div id="tsBody"><div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="tsStart">Start</button></div></div>`);
+  let secret = null;
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    if (e.target.closest("[data-tscopy]")) return toast((await copyText(secret.secretKey)) ? "Setup key copied" : secret.secretKey);
+    const st = e.target.closest("#tsStart"); if (!st) return;
+    st.disabled = true;
+    try {
+      secret = await recentLogin(user, async () => TotpMultiFactorGenerator.generateSecret(await multiFactor(user).getSession()));
+      const url = secret.generateQrCodeUrl(user.email, "PVRS Membership"), key = secret.secretKey.replace(/(.{4})/g, "$1 ").trim();
+      $("#tsBody").innerHTML = `<form id="tsForm" style="display:contents" novalidate><div class="ios">
+        <div class="row stack"><span class="lbl">1. In your authenticator app, add an account with a setup key<small>Account: ${esc(user.email)} · Key type: time based</small></span>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code class="tskey">${esc(key)}</code><button class="copy" type="button" data-tscopy>Copy</button><a class="btn small" href="${esc(url)}">Open in app</a></div>
+          <small class="help" style="margin:0">On this phone? Tap Open in app instead of typing the key.</small></div>
+        <label class="row stack"><span class="lbl">2. Type the 6-digit code it shows</span><input id="tsCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></label></div>
+        <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="submit">Turn on</button></div></form>`;
+      $("#tsCode").focus();
+      $("#tsForm").onsubmit = async ev => {
+        ev.preventDefault();
+        const code = $("#tsCode").value.replace(/\D/g, ""); if (code.length !== 6) return toast("Type the 6 digits from your app.");
+        const b = ev.target.querySelector("button[type=submit]"); b.disabled = true;
+        try { await multiFactor(user).enroll(TotpMultiFactorGenerator.assertionForEnrollment(secret, code), "Authenticator app"); closeModal(); toast("Two-step sign-in is on. Keep your phone handy when you sign in."); }
+        catch (err) { twoStepError(err); $("#tsCode").select(); b.disabled = false; }
+      };
+    } catch (err) { twoStepError(err); st.disabled = false; }
+  };
+}
+
+/* ---------- Med Control: the AI assistant (functions/medcontrol.js does the work and the privacy filtering) ---------- */
+// Off until the owner switches it on in Settings (after the board's OK and the API key are in place).
+const aiOn = () => !!(S.admin && S.settings.ai === true);
+function paintAi(){ const b = $("#aiBtn"); if (b) b.hidden = !aiOn(); }
+const FN_URL = "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+let aiCall = null;
+async function medControl(data){
+  if (!aiCall) { const m = await import(FN_URL); aiCall = m.httpsCallable(m.getFunctions(app), "ai-medControl", { timeout: 120000 }); }
+  try { return (await aiCall(data)).data; }
+  catch (e) {
+    const c = String(e && e.code || "").replace("functions/", "");
+    const msg = ["not-found", "internal", "unavailable", "failed-precondition", "resource-exhausted", "permission-denied", "invalid-argument"].includes(c) && e.message && c !== "not-found" && c !== "internal" ? e.message
+      : c === "not-found" ? "Med Control isn't set up yet (docs/med-control.md)." : "Med Control couldn't answer. Try again.";
+    if (!["invalid-argument", "not-found", "resource-exhausted", "permission-denied", "failed-precondition"].includes(c)) console.error(e);
+    throw new Error(msg);
+  }
+}
+// What the desk already knows (stage label, next step, to do, booked interview) goes along as short hints.
+function aiHints(){
+  const todo = {}; for (const x of todoItems()) (todo[x.id] = todo[x.id] || []).push(x.text);
+  const out = {};
+  for (const a of S.apps.values()) { const p = progress(a);
+    out[a._id] = { stage: STAGES[view(a).stage]?.label || "", next: p.next || "", todo: (todo[a._id] || []).join("; ").slice(0, 300), booked: a._booked ? slotLong(a._booked.start) : "" }; }
+  return out;
+}
+const aiText = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+function aiPeople(t){ return [...S.apps.values()].filter(a => a.name && t.includes(a.name)).slice(0, 4); }
+S.aiChat = [];
+function openMedControl(){
+  if (!aiOn()) return;
+  const SUGGEST = ["Who's waiting on references more than 2 weeks?", "What's on the board agenda?", "Who needs a portal invite?", "Which cards expire this month?"];
+  const paint = () => {
+    const T = $("#mcThread"); if (!T) return;
+    T.innerHTML = S.aiChat.length ? S.aiChat.map((m, i) => m.role === "user" ? `<div class="mc-me">${esc(m.text)}</div>`
+      : `<div class="mc-ai"><span class="mc-badge" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M6.6 1.5h2.8v4l3.5-2 1.4 2.4L10.8 8l3.5 2.1-1.4 2.4-3.5-2v4H6.6v-4l-3.5 2-1.4-2.4L5.2 8 1.7 5.9l1.4-2.4 3.5 2z"/></svg></span>
+        <div class="mc-body">${m.pending ? `<span class="spin" aria-label="Thinking"></span>` : m.error ? `<span class="mc-err">${esc(m.text)}</span>` : `<div class="mc-text">${aiText(m.text)}</div>
+          <div class="mc-acts">${aiPeople(m.text).map(a => `<button class="btn small" type="button" data-mcopen="${esc(a._id)}">Open ${esc(a.name)}</button>`).join("")}
+            <button class="btn small" type="button" data-mccopy="${i}">Copy</button>${/^Subject:/im.test(m.text) ? `<button class="btn small" type="button" data-mcmail="${i}">Open in Mail</button>` : ""}</div>`}</div></div>`).join("")
+      : `<div class="mc-empty"><b>Ask about applicants, deadlines or the board, or ask for a draft.</b><small>Med Control reads the desk's records (never license numbers, birth dates, addresses, phone numbers, conviction details or files). It finds and drafts; you decide and send.</small></div>`;
+    T.scrollTop = T.scrollHeight;
+  };
+  const M = openModal(`<h3>Med Control</h3>
+    <div class="mc-thread" id="mcThread" aria-live="polite"></div>
+    <div class="mc-chips">${SUGGEST.map(q => `<button class="chip" type="button" data-mcq="${esc(q)}">${esc(q)}</button>`).join("")}</div>
+    <form id="mcForm" class="mc-form"><label class="sr" for="mcIn">Ask Med Control</label><textarea id="mcIn" rows="2" maxlength="2000" placeholder="Ask anything about your applicants… (Enter to send)"></textarea>
+      <button class="btn primary" type="submit">Ask</button></form>
+    <div class="acts"><button class="btn" type="button" data-mcclear>New chat</button><button class="btn" type="button" data-x>Close</button></div>`, true);
+  M.querySelector(".sheet").classList.add("mcsheet");
+  paint(); $("#mcIn").focus();
+  const ask = async q => {
+    q = String(q || "").trim(); if (!q || S.aiChat.some(m => m.pending)) return;
+    S.aiChat.push({ role: "user", text: q }); const ans = { role: "assistant", pending: true, text: "" }; S.aiChat.push(ans); paint();
+    try { const r = await medControl({ job: "chat", messages: S.aiChat.filter(m => !m.pending && !m.error).map(m => ({ role: m.role, text: m.text })), hints: aiHints() }); ans.text = r.text || "No answer."; }
+    catch (e) { ans.error = true; ans.text = e.message; }
+    ans.pending = false; paint();
+  };
+  $("#mcForm").onsubmit = e => { e.preventDefault(); const v = $("#mcIn").value; $("#mcIn").value = ""; ask(v); };
+  $("#mcIn").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#mcForm").requestSubmit(); } });
+  M.onclick = async e => {
+    const t = e.target;
+    if (t.closest("[data-x]")) return closeModal();
+    if (t.closest("[data-mcclear]")) { S.aiChat = []; paint(); return $("#mcIn").focus(); }
+    const q = t.closest("[data-mcq]"); if (q) return ask(q.dataset.mcq);
+    const o = t.closest("[data-mcopen]"); if (o) { closeModal(); return select(o.dataset.mcopen); }
+    const c = t.closest("[data-mccopy]"); if (c) { const ok = await copyText(S.aiChat[+c.dataset.mccopy].text); return toast(ok ? "Copied" : "Select the text and copy it"); }
+    const ml = t.closest("[data-mcmail]"); if (ml) { const txt = S.aiChat[+ml.dataset.mcmail].text, sm = /^Subject:\s*(.*)$/im.exec(txt);
+      const body = txt.slice(sm.index + sm[0].length).replace(/^\s+/, ""); const a = document.createElement("a");
+      a.href = `mailto:?subject=${encodeURIComponent(sm[1].trim())}&body=${encodeURIComponent(body)}`; a.click(); }
+  };
+}
+async function aiDraftReply(btn){
+  if (!S.canEdit) return ownerOnlyToast();
+  const a = S.apps.get(S.sel), ta = $("#replyText"); if (!a || !ta) return;
+  if (!threadOf(S.sel).some(m => m.from === "applicant")) return toast(`${first(a.name)} hasn't sent a message to answer yet.`);
+  const label = btn.textContent; btn.disabled = true; btn.textContent = "Drafting…";
+  try {
+    const h = aiHints()[a._id];
+    const r = await medControl({ job: "reply", id: a._id, hint: h, typeInfo: TYPE_INFO[a.type] || "" });
+    ta.value = r.text || ""; ta.focus(); toast("Draft ready. Check it, then send.");
+  } catch (e) { toast(e.message); }
+  finally { btn.disabled = false; btn.textContent = label; }
+}
+async function aiMakeBrief(btn){
+  if (!S.canEdit) return ownerOnlyToast();
+  const id = S.sel; if (!id) return;
+  btn.disabled = true; btn.textContent = "Writing brief…";
+  try { await medControl({ job: "brief", id }); toast("Brief ready"); }
+  catch (e) { toast(e.message); }
+  finally { btn.disabled = false; const a = S.apps.get(id); btn.textContent = a && get(a, "ai.brief") ? "Redo brief" : "Make brief"; }
+}
+const TONE = { strong: ["Strong", "good"], positive: ["Positive", "good"], mixed: ["Mixed", "warn"], concern: ["Concern", "bad"], waiting: ["Waiting", ""] };
+function briefHTML(b){
+  if (!b) return `<div class="row"><span class="lbl"><small>${S.canEdit ? "Make brief writes a one-page summary from the application, interview answers and reference answers: strengths, things to follow up on, interview questions and a reference digest." : "No brief yet. The owner can make one."}</small></span></div>`;
+  const list = (title, xs, cls) => xs && xs.length ? `<div class="aib-sec"><h4 class="${cls}">${title}</h4><ul>${xs.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "";
+  return `<div class="aibody"><div class="aib-tag">AI draft · check before using · ${esc(new Date(b.at).toLocaleDateString())}</div>
+    <p class="aib-sum">${esc(b.summary || "")}</p>
+    <div class="aib-cols">${list("Strengths", b.strengths, "good")}${list("Follow up on", b.followUps, "warn")}</div>
+    ${list("Interview follow-up questions", b.questions, "")}
+    ${b.references && b.references.length ? `<div class="aib-sec"><h4>References</h4>${b.references.map(r => { const [l, c] = TONE[r.tone] || [r.tone, ""];
+      return `<div class="aib-ref"><b>${esc(r.name)}</b><span class="badge ${c === "good" ? "ok" : c === "bad" ? "bad" : "wait"}">${esc(l)}</span><small>${esc(r.note)}</small></div>`; }).join("")}</div>` : ""}</div>`;
+}
+
+/* ---------- push notifications on this device (functions/push.js sends them) ---------- */
+// The messaging SDK loads only here, so the public pages never pay for it. Each device that turns them on gets
+// pushTokens/{token} = {email, device, at}; the owner's devices get everything, admins' devices get interview bookings.
+const FM_URL = "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
+const PUSH_KEY = "pvrsPushToken";
+const pushToken = () => { try { return localStorage.getItem(PUSH_KEY) || ""; } catch { return ""; } };
+const deviceName = () => { const u = navigator.userAgent;
+  return (/iPhone/.test(u) ? "iPhone" : /iPad/.test(u) ? "iPad" : /Android/.test(u) ? "Android" : /Mac/.test(u) ? "Mac" : /Windows/.test(u) ? "Windows" : "Computer")
+    + " · " + (/Edg\//.test(u) ? "Edge" : /Chrome\//.test(u) ? "Chrome" : /Firefox\//.test(u) ? "Firefox" : /Safari\//.test(u) ? "Safari" : "browser"); };
+let fmMod = null;
+const fm = async () => fmMod || (fmMod = await import(FM_URL));
+async function pushState(){
+  if (!VAPID_KEY) return "unset";
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return /iPhone|iPad/.test(navigator.userAgent) ? "ios" : "unsupported";
+  try { if (!(await (await fm()).isSupported())) return /iPhone|iPad/.test(navigator.userAgent) ? "ios" : "unsupported"; } catch { return "unsupported"; }
+  if (Notification.permission === "denied") return "blocked";
+  return pushToken() ? "on" : "off";
+}
+async function pushOn(){
+  const m = await fm(), messaging = m.getMessaging(app);
+  const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  const token = await m.getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+  if (!token) throw new Error("no token");
+  await setDoc(doc(db, "pushTokens", token), { email: S.me, device: deviceName(), at: Date.now() });
+  try { localStorage.setItem(PUSH_KEY, token); } catch {}
+  startPushToasts();
+}
+async function pushOff(){
+  const token = pushToken(); if (!token) return;
+  await deleteDoc(doc(db, "pushTokens", token)).catch(e => console.error(e));
+  try { const m = await fm(); await m.deleteToken(m.getMessaging(app)); } catch (e) { console.error(e); }
+  try { localStorage.removeItem(PUSH_KEY); } catch {}
+}
+// While the desk is open and in front, alerts arrive here instead of as system notifications.
+let pushToasting = false;
+async function startPushToasts(){
+  if (pushToasting || !pushToken() || !VAPID_KEY) return; pushToasting = true;
+  try { const m = await fm(); if (await m.isSupported()) m.onMessage(m.getMessaging(app), p => { const n = p.notification || {}; toast([n.title, n.body].filter(Boolean).join(": ")); }); } catch {}
+}
+async function openNotifications(){
+  if (!S.admin) return;
+  const st = await pushState();
+  const what = S.owner ? "a new online application, an applicant message, an interview booked or cancelled, a reference answering, or a document uploaded"
+    : "an interview booked or cancelled";
+  const body = {
+    unset: `<p class="help">Notifications aren't set up for PVRS yet. The owner needs to add the Web Push key (docs/notifications.md).</p>`,
+    ios: `<p class="help">On iPhone and iPad, notifications only work from the Home Screen app: in Safari tap Share → <b>Add to Home Screen</b>, open PVRS Desk from your Home Screen, sign in, and come back here.</p>`,
+    unsupported: `<p class="help">This browser can't receive notifications. Try Chrome, Edge, Firefox or Safari (on Mac), or the Home Screen app on iPhone.</p>`,
+    blocked: `<p class="help">Notifications are blocked for this site. Allow them in your browser's site settings (the icon left of the address), then reload.</p>`,
+    off: `<p class="help">Get an alert on <b>this device</b> for ${what}. Alerts say who and what, never the message itself.</p>`,
+    on: `<p class="help">This device (${esc(deviceName())}) gets an alert for ${what}.</p>`,
+  }[st];
+  const M = openModal(`<h3>Notifications</h3>${body}
+    <div class="acts"><button class="btn" type="button" data-x>${st === "on" || st === "off" ? "Cancel" : "Close"}</button>
+      ${st === "off" ? `<button class="btn primary" type="button" id="pushGo">Turn on</button>` : st === "on" ? `<button class="btn danger" type="button" id="pushStop">Turn off on this device</button>` : ""}</div>`);
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    const go = e.target.closest("#pushGo"), stop = e.target.closest("#pushStop");
+    if (go) { go.disabled = true;
+      try { await pushOn(); closeModal(); toast("Notifications are on for this device."); }
+      catch (err) { console.error(err); go.disabled = false;
+        toast(Notification.permission === "denied" || /permission/.test(err && err.code || "") ? "Notifications were blocked. Allow them in your browser's site settings." : "Couldn't turn on notifications. Try again."); } }
+    if (stop) { stop.disabled = true; await pushOff(); closeModal(); toast("Notifications are off for this device."); }
   };
 }
 
@@ -2146,6 +2507,7 @@ export function startDesk({ email, role, owner, name }){
   if (!S.canEdit) document.body.classList.add("viewonly-user");
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
   startIdleLock();
+  startPushToasts();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
 
   onSnapshot(collection(db, "applicants"), snap => {
@@ -2194,7 +2556,7 @@ export function startDesk({ email, role, owner, name }){
         if (!S.sel) renderOverview();
       }, e => console.error(e));
     }
-    onSnapshot(doc(db, "settings", "main"), s => { S.settings = s.exists() ? s.data() : {}; }, () => {});
+    onSnapshot(doc(db, "settings", "main"), s => { S.settings = s.exists() ? s.data() : {}; paintAi(); }, () => {});
     onSnapshot(collection(db, "staff"), snap => { S.staff = new Map(snap.docs.map(d => [d.id, d.data()])); if (S._teamPaint && !$("#modal").hidden) S._teamPaint(); if (S.sel) syncDetail(); }, () => {});
   }
 }
