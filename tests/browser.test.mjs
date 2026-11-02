@@ -469,26 +469,6 @@ try {
     if (!(await page.locator("#desk").isVisible().catch(() => false)) && !(await page.locator("#app").isVisible().catch(() => false))) fail("the right code didn't open the desk"); else ok("the right code opens the desk");
     await ctx.close();
   }
-  // ---- Notifications: off until the Web Push key is set; then each device turns them on for itself
-  {
-    const { ctx, page } = await open(browser); await wait(page, 600);
-    await page.locator("#pwBtn").click(); await wait(page, 200); await page.locator("#notifBtn").click(); await wait(page, 400);
-    if (!/aren't set up for PVRS yet/.test(await page.locator("#modal").textContent())) fail("notifications without a key: " + await page.locator("#modal").textContent()); else ok("notifications explain they need setting up first");
-    await ctx.close();
-  }
-  {
-    const { ctx, page } = await open(browser, { files: { "/js/config.js": t => t.replace('VAPID_KEY = ""', 'VAPID_KEY = "test-key"') } }); await wait(page, 600);
-    await ctx.grantPermissions(["notifications"]);
-    await page.evaluate(() => { window.__mock.pushOk = true; navigator.serviceWorker.register = async () => ({}); });
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await page.locator("#palQ").fill("notif"); await wait(page, 150); await page.keyboard.press("Enter"); await wait(page, 500);
-    await page.locator("#pushGo").click(); await wait(page, 500);
-    const t = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("pushTokens/")).map(([k, v]) => ({ k, ...v })));
-    if (t.length !== 1 || t[0].email !== "dkota@pvrs.org" || !t[0].device) fail("push token: " + JSON.stringify(t)); else ok("turning notifications on registers this device");
-    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await page.locator("#palQ").fill("notif"); await wait(page, 150); await page.keyboard.press("Enter"); await wait(page, 500);
-    await page.locator("#pushStop").click(); await wait(page, 500);
-    if (await page.evaluate(() => [...window.__mock.docs.keys()].some(k => k.startsWith("pushTokens/")))) fail("push token not removed"); else ok("turning them off removes this device");
-    await ctx.close();
-  }
   // ---- Med Control (AI): hidden until switched on; chat, brief and reply drafts go through the function
   {
     const { ctx, page } = await open(browser, { seed: [["portal/a2/messages/m1", { text: "Can I join if I'm only here in the school year?", from: "applicant", by: "marcus.bell@example.com", name: "Marcus", at: Date.now() - 6e4 }]] }); await wait(page, 600);

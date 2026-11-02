@@ -8,10 +8,6 @@ export const firebaseConfig = {
   appId: "1:1066878367633:web:84e23e24b83916e4360c30"
 };
 
-// Push notifications: the "Web Push certificates" key pair from Firebase console → Project settings → Cloud Messaging.
-// Public by design (safe to commit). Empty = notifications not set up yet; see docs/notifications.md.
-export const VAPID_KEY = "";
-
 // 2) The owner always has full access. Must match the email in firestore.rules and storage.rules.
 export const OWNER_EMAIL = "dkota@pvrs.org";
 

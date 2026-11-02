@@ -7,7 +7,7 @@ import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysS
   progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
-import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL, VAPID_KEY } from "./config.js";
+import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
 
 /* ---------- form builders ---------- */
 const fid = k => "f-" + k.replace(/\./g, "-");
@@ -1423,7 +1423,6 @@ function openPalette(){
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(openInbox) },
     { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
     { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
-    { label: "Notifications", show: S.admin, words: "notifications alerts push bell phone", run: go(openNotifications) },
     { label: "Two-step sign-in", show: true, words: "two step 2fa mfa authenticator security code", run: go(openTwoStep) },
     { label: "Sign-in password", show: true, words: "password key sign in", run: go(openPassword) },
     { label: "Keyboard shortcuts", hint: "?", show: true, words: "keyboard shortcuts help keys", run: go(openShortcuts) },
@@ -2202,11 +2201,10 @@ function openPassword(){
       <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="pwShow" style="width:auto"> Show password</label></div>
     <p class="help">At least 10 characters. Don't reuse a password from another site.</p>
     <div class="ios" style="margin-top:6px"><div class="row"><span class="lbl">Two-step sign-in<small>${twoStepOn(user) ? "On: a code from your authenticator app at each sign-in" : "Off: add a code from an authenticator app"}</small></span><button class="btn small" type="button" id="twoStepBtn">${twoStepOn(user) ? "Manage" : "Set up"}</button></div>
-      ${S.admin ? `<div class="row"><span class="lbl">Notifications<small>Alerts on this device for new applications, messages and bookings</small></span><button class="btn small" type="button" id="notifBtn">${pushToken() ? "On" : "Set up"}</button></div>` : ""}</div>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="submit">Save password</button></div></form>`);
   $("#pwNew").focus();
   $("#pwShow").addEventListener("change", e => { $("#pwNew").type = $("#pwAgain").type = e.target.checked ? "text" : "password"; });
-  M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); if (e.target.closest("#twoStepBtn")) openTwoStep(); if (e.target.closest("#notifBtn")) openNotifications(); };
+  M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); if (e.target.closest("#twoStepBtn")) openTwoStep(); };
   const save = async pw => {
     if (user.providerData.some(p => p.providerId === "password")) await updatePassword(user, pw);
     else await linkWithCredential(user, EmailAuthProvider.credential(user.email, pw));
@@ -2407,72 +2405,6 @@ function briefHTML(b){
       return `<div class="aib-ref"><b>${esc(r.name)}</b><span class="badge ${c === "good" ? "ok" : c === "bad" ? "bad" : "wait"}">${esc(l)}</span><small>${esc(r.note)}</small></div>`; }).join("")}</div>` : ""}</div>`;
 }
 
-/* ---------- push notifications on this device (functions/push.js sends them) ---------- */
-// The messaging SDK loads only here, so the public pages never pay for it. Each device that turns them on gets
-// pushTokens/{token} = {email, device, at}; the owner's devices get everything, admins' devices get interview bookings.
-const FM_URL = "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
-const PUSH_KEY = "pvrsPushToken";
-const pushToken = () => { try { return localStorage.getItem(PUSH_KEY) || ""; } catch { return ""; } };
-const deviceName = () => { const u = navigator.userAgent;
-  return (/iPhone/.test(u) ? "iPhone" : /iPad/.test(u) ? "iPad" : /Android/.test(u) ? "Android" : /Mac/.test(u) ? "Mac" : /Windows/.test(u) ? "Windows" : "Computer")
-    + " · " + (/Edg\//.test(u) ? "Edge" : /Chrome\//.test(u) ? "Chrome" : /Firefox\//.test(u) ? "Firefox" : /Safari\//.test(u) ? "Safari" : "browser"); };
-let fmMod = null;
-const fm = async () => fmMod || (fmMod = await import(FM_URL));
-async function pushState(){
-  if (!VAPID_KEY) return "unset";
-  if (!("Notification" in window) || !("serviceWorker" in navigator)) return /iPhone|iPad/.test(navigator.userAgent) ? "ios" : "unsupported";
-  try { if (!(await (await fm()).isSupported())) return /iPhone|iPad/.test(navigator.userAgent) ? "ios" : "unsupported"; } catch { return "unsupported"; }
-  if (Notification.permission === "denied") return "blocked";
-  return pushToken() ? "on" : "off";
-}
-async function pushOn(){
-  const m = await fm(), messaging = m.getMessaging(app);
-  const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-  const token = await m.getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-  if (!token) throw new Error("no token");
-  await setDoc(doc(db, "pushTokens", token), { email: S.me, device: deviceName(), at: Date.now() });
-  try { localStorage.setItem(PUSH_KEY, token); } catch {}
-  startPushToasts();
-}
-async function pushOff(){
-  const token = pushToken(); if (!token) return;
-  await deleteDoc(doc(db, "pushTokens", token)).catch(e => console.error(e));
-  try { const m = await fm(); await m.deleteToken(m.getMessaging(app)); } catch (e) { console.error(e); }
-  try { localStorage.removeItem(PUSH_KEY); } catch {}
-}
-// While the desk is open and in front, alerts arrive here instead of as system notifications.
-let pushToasting = false;
-async function startPushToasts(){
-  if (pushToasting || !pushToken() || !VAPID_KEY) return; pushToasting = true;
-  try { const m = await fm(); if (await m.isSupported()) m.onMessage(m.getMessaging(app), p => { const n = p.notification || {}; toast([n.title, n.body].filter(Boolean).join(": ")); }); } catch {}
-}
-async function openNotifications(){
-  if (!S.admin) return;
-  const st = await pushState();
-  const what = S.owner ? "a new online application, an applicant message, an interview booked or cancelled, a reference answering, or a document uploaded"
-    : "an interview booked or cancelled";
-  const body = {
-    unset: `<p class="help">Notifications aren't set up for PVRS yet. The owner needs to add the Web Push key (docs/notifications.md).</p>`,
-    ios: `<p class="help">On iPhone and iPad, notifications only work from the Home Screen app: in Safari tap Share → <b>Add to Home Screen</b>, open PVRS Desk from your Home Screen, sign in, and come back here.</p>`,
-    unsupported: `<p class="help">This browser can't receive notifications. Try Chrome, Edge, Firefox or Safari (on Mac), or the Home Screen app on iPhone.</p>`,
-    blocked: `<p class="help">Notifications are blocked for this site. Allow them in your browser's site settings (the icon left of the address), then reload.</p>`,
-    off: `<p class="help">Get an alert on <b>this device</b> for ${what}. Alerts say who and what, never the message itself.</p>`,
-    on: `<p class="help">This device (${esc(deviceName())}) gets an alert for ${what}.</p>`,
-  }[st];
-  const M = openModal(`<h3>Notifications</h3>${body}
-    <div class="acts"><button class="btn" type="button" data-x>${st === "on" || st === "off" ? "Cancel" : "Close"}</button>
-      ${st === "off" ? `<button class="btn primary" type="button" id="pushGo">Turn on</button>` : st === "on" ? `<button class="btn danger" type="button" id="pushStop">Turn off on this device</button>` : ""}</div>`);
-  M.onclick = async e => {
-    if (e.target.closest("[data-x]")) return closeModal();
-    const go = e.target.closest("#pushGo"), stop = e.target.closest("#pushStop");
-    if (go) { go.disabled = true;
-      try { await pushOn(); closeModal(); toast("Notifications are on for this device."); }
-      catch (err) { console.error(err); go.disabled = false;
-        toast(Notification.permission === "denied" || /permission/.test(err && err.code || "") ? "Notifications were blocked. Allow them in your browser's site settings." : "Couldn't turn on notifications. Try again."); } }
-    if (stop) { stop.disabled = true; await pushOff(); closeModal(); toast("Notifications are off for this device."); }
-  };
-}
-
 /* ---------- auto sign-out after inactivity ---------- */
 function startIdleLock(){
   // Sign-in is shared across tabs, so activity is too: the latest activity in any tab keeps everyone signed in.
@@ -2507,7 +2439,6 @@ export function startDesk({ email, role, owner, name }){
   if (!S.canEdit) document.body.classList.add("viewonly-user");
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
   startIdleLock();
-  startPushToasts();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
 
   onSnapshot(collection(db, "applicants"), snap => {

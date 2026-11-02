@@ -1,5 +1,5 @@
-# Auto-deploy: every push to main runs the tests, then deploys the website, security rules and the server functions
-# for notifications (push) and Med Control (ai). The paperwork email (notifyPaperwork) is left out until its SMTP secret exists.
+# Auto-deploy: every push to main runs the tests, then deploys the website, security rules and the Med Control
+# server function (ai). The paperwork email (notifyPaperwork) is left out until its SMTP secret exists.
 # Needs the repo secret FIREBASE_SERVICE_ACCOUNT, and ANTHROPIC_API_KEY in Google Secret Manager (setup in docs/auto-deploy.md).
 name: Test and deploy
 
@@ -66,4 +66,4 @@ jobs:
       - name: Install function dependencies
         run: npm ci --prefix functions
       - name: Deploy website, rules and functions
-        run: npx -y firebase-tools@15 deploy --only hosting,firestore:rules,storage,functions:push,functions:ai --project pvrs-membership --non-interactive --force
+        run: npx -y firebase-tools@15 deploy --only hosting,firestore:rules,storage,functions:ai --project pvrs-membership --non-interactive --force
