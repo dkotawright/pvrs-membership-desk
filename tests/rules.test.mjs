@@ -120,6 +120,30 @@ console.log("Reference items are claimed once, even with several desks open");
   }
 }
 
+console.log("Interviewer role");
+await env.withSecurityRulesDisabled(async c => { const db = c.firestore();
+  await setDoc(doc(db, "staff/iv@pvrs.org"), { role: "interviewer" });
+  await setDoc(doc(db, "applicants/a2"), { name: "Assigned Person", interviewers: ["iv@pvrs.org"] });
+});
+const iv = fsOf("iv@pvrs.org");
+const ivEdit = (db, x) => updateDoc(doc(db, "applicants/a2"), { "iv.why": "Wants to help", updatedAt: now(), updatedBy: x });
+await t("a member can't read applicant files", getDoc(doc(member, "applicants/a1")), false);
+await t("a member can't list applicants", getDocs(collection(member, "applicants")), false);
+await t("an interviewer reads an assigned file", getDoc(doc(iv, "applicants/a2")), true);
+await t("an interviewer can't read an unassigned file", getDoc(doc(iv, "applicants/a1")), false);
+await t("an interviewer lists only assigned files", getDocs(query(collection(iv, "applicants"), where("interviewers", "array-contains", "iv@pvrs.org"))), true);
+await t("an interviewer can't list every file", getDocs(collection(iv, "applicants")), false);
+await t("an interviewer fills in an assigned interview", ivEdit(iv, "iv@pvrs.org"), true);
+await t("an interviewer can't fill in an unassigned interview", updateDoc(doc(iv, "applicants/a1"), { "iv.why": "x", updatedAt: now(), updatedBy: "iv@pvrs.org" }), false);
+await t("an interviewer can't assign themselves elsewhere", updateDoc(doc(iv, "applicants/a2"), { interviewers: ["iv@pvrs.org", "member@pvrs.org"], updatedAt: now(), updatedBy: "iv@pvrs.org" }), false);
+await t("an interviewer can't read private records", getDoc(doc(iv, "applicants/a2/private/main")), false);
+await t("a member can't fill in interviews any more", ivEdit(member, "member@pvrs.org"), false);
+await t("an interviewer logs their own edits", addDoc(collection(iv, "applicants/a2/history"), { at: now(), by: "iv@pvrs.org", changes: [] }), true);
+await t("not on files they aren't assigned to", addDoc(collection(iv, "applicants/a1/history"), { at: now(), by: "iv@pvrs.org", changes: [] }), false);
+await t("an admin still reads every file", getDocs(collection(admin, "applicants")), true);
+await t("any staff member can turn on notifications", setDoc(doc(member, "pushTokens/tokM"), { email: "member@pvrs.org", device: "Mac", at: now() }), true);
+await t("applicants can't", setDoc(doc(applicant, "pushTokens/tokA"), { email: "app@example.com", device: "Mac", at: now() }), false);
+
 console.log("Team messaging");
 await env.withSecurityRulesDisabled(async c => { const db = c.firestore();
   await setDoc(doc(db, "channels/ch1"), { name: "interview-team", color: "int", members: ["dkota@pvrs.org", "admin@pvrs.org"], names: {}, createdAt: 1, createdBy: "dkota@pvrs.org", updatedAt: 1 });

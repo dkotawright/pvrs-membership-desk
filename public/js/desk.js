@@ -83,6 +83,7 @@ function tabHTML(tab){
   </div>`;
   if (tab === "iv") return `<div class="ivstart"><button class="btn primary" type="button" data-act="ivmode"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>Start interview mode</button>
     <span class="help">Full screen, one section at a time, big enough to read across the table. Answers save as you go.</span></div><div class="cols">
+    ${admin ? `<section class="group noiv"><h3><span>Interviewers</span>${S.canEdit ? `<button class="btn small" type="button" data-act="assigniv">Assign</button>` : ""}</h3><div class="ios" id="ivAssign"></div></section>` : ""}
     ${group("Scheduling",[
       `<div class="row"><span class="lbl">Booked time<small id="bookedEcho">—</small></span><span id="bookedActs" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"></span></div>`,
       F.date("sched.contacted","Applicant contacted"),F.date("sched.scheduled","Interview date (if not booked above)"),F.text("sched.time","Interview time","6:30 PM"),F.date("sched.completed","Interview completed"),F.init("sched.completedInit","Completed by (initials)")])}
@@ -258,7 +259,9 @@ function paintList(){
   const L = $("#list");
   if (!S.sel) renderOverview();
   if (!S.ready) { L.innerHTML = `<div class="empty"><span class="spin" aria-hidden="true"></span><h3>Loading roster…</h3></div>`; return; }
-  if (!rows.length) { L.innerHTML = `<div class="empty"><h3>No applicants yet</h3>When an application comes in, click <strong>New applicant</strong> or press <kbd>N</kbd> to start their file.</div>`; return; }
+  if (!rows.length) { L.innerHTML = S.member ? `<div class="empty"><h3>Messages only</h3>Your account is for squad messages. Ask the membership coordinator if you need to interview someone.</div>`
+    : S.role === "interviewer" ? `<div class="empty"><h3>No interviews assigned</h3>Applicants you're assigned to interview show up here.</div>`
+    : `<div class="empty"><h3>No applicants yet</h3>When an application comes in, click <strong>New applicant</strong> or press <kbd>N</kbd> to start their file.</div>`; return; }
   if (!vis.length) { L.innerHTML = `<div class="empty"><h3>${S.filter==="board"&&!q?"Board queue is empty":"No matches"}</h3>${S.filter==="board"&&!q?"Applicants show up here once the committee approves them.":q?`Nothing matches “${esc(S.q.trim())}”${S.filter!=="all"?` in ${esc(filterLabel(S.filter))}`:""}.`:"Try a different stage."}</div>`; return; }
   L.innerHTML = vis.map(({a,p}) => {
     const d = daysSince(get(a,"app.received"));
@@ -672,7 +675,7 @@ function syncDetail(){
     const cal = a._booked ? `<button class="btn small" type="button" data-act="ics" title="Add to Calendar">${ICON.cal}<span class="tl">Calendar</span></button>` : "";
     $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
-  renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges();
+  renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges(); renderInterviewers(a);
   if (S.tab === "msgs" && !$("#dThread")?.childElementCount) renderMessages();
   syncSignoff(a);
   const dlr = $("#dlFromApp"); if (dlr) { const n = get(a, "form.person.dlNumber"); dlr.hidden = !n; if (n) { $("#dlNum").textContent = n; $("#dlFromAppNote").textContent = `Issued in ${get(a, "form.person.dlState") || "—"} · admins only`; } }
@@ -1307,11 +1310,14 @@ async function decideRequest(email, role){
     toast(role ? `${q.name || email} approved as ${role}. They can sign in now.` : `Request from ${q.name || email} denied.`);
   } catch (e) { console.error(e); toast("Couldn't save that. Try again."); }
 }
+const ROLE_LABEL = { admin: "Admin", interviewer: "Interviewer", member: "Member" };
+const roleLabel = r => ROLE_LABEL[r] || "Member";
 function teamHTML(){
   const rows = [...S.staff.entries()].sort((x,y) => x[0].localeCompare(y[0])).map(([email, s]) => `<div class="row"><span class="lbl">${esc(s.name || email)}<small>${esc(email)}</small></span>
-    <div class="seg" role="group" aria-label="Role">${[["member","Member"],["admin","Admin"]].map(([v,l]) => `<button type="button" class="${s.role===v?"on":""}" data-role="${esc(email)}" data-v="${v}">${l}</button>`).join("")}</div>
+    <div class="seg" role="group" aria-label="Role">${[["member","Member"],["interviewer","Interviewer"],["admin","Admin"]].map(([v,l]) => `<button type="button" class="${s.role===v?"on":""}" data-role="${esc(email)}" data-v="${v}">${l}</button>`).join("")}</div>
     <button class="copy" type="button" data-rmstaff="${esc(email)}">Remove</button></div>`).join("");
   return `<div class="row"><span class="lbl">${esc(OWNER_EMAIL)}<small>Owner · full access</small></span></div>${rows}
+    <p class="help" style="margin:6px 12px">Admin: sees every file (view only). Interviewer: only the applicants you assign on their Interview tab. Member: Messages only.</p>
     <div class="row" style="flex-wrap:wrap"><input id="tmEmail" type="email" placeholder="member@pvrs.org" class="inlinefield" style="flex:2 1 180px">
       <input id="tmName" type="text" placeholder="Name" class="inlinefield" style="flex:1 1 120px">
       <button class="btn small primary" type="button" id="tmAdd">Add member</button></div>`;
@@ -1534,7 +1540,7 @@ function openPalette(){
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(() => openChat()) },
     { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
     { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
-    { label: "Notifications", show: S.admin, words: "notifications alerts push bell phone", run: go(openNotifications) },
+    { label: "Notifications", show: true, words: "notifications alerts push bell phone", run: go(openNotifications) },
     { label: "Two-step sign-in", show: true, words: "two step 2fa mfa authenticator security code", run: go(openTwoStep) },
     { label: "Sign-in password", show: true, words: "password key sign in", run: go(openPassword) },
     { label: "Keyboard shortcuts", hint: "?", show: true, words: "keyboard shortcuts help keys", run: go(openShortcuts) },
@@ -1602,7 +1608,7 @@ const ivSteps = () => {
   const out = [];
   document.querySelectorAll("#dpanel .cols").forEach(c => out.push(...[...c.querySelectorAll(".group")].sort((x, y) => (+x.style.order || 0) - (+y.style.order || 0))));
   document.querySelectorAll("#dpanel > .group").forEach(g => out.push(g));
-  return out.filter(g => !g.hidden && !g.closest("[hidden]"));
+  return out.filter(g => !g.hidden && !g.closest("[hidden]") && !g.classList.contains("noiv"));
 };
 function applyIvMode(){
   if (!S.ivMode || S.tab !== "iv" || !S.sel) return exitIvMode();
@@ -1662,7 +1668,7 @@ function openMore(){
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
     <div class="ios morelist">${tools.map(([id, label]) => `<button class="row" type="button" data-more="${id}"><span class="mi">${icon(id)}</span><span class="lbl">${esc(label)}</span><span class="chev" aria-hidden="true">›</span></button>`).join("")}
-      ${S.admin ? `<button class="row" type="button" data-notif><span class="mi"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3l1-1zM6.5 14h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lbl">Notifications</span><span class="chev" aria-hidden="true">›</span></button>` : ""}
+      ${S.me ? `<button class="row" type="button" data-notif><span class="mi"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3l1-1zM6.5 14h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lbl">Notifications</span><span class="chev" aria-hidden="true">›</span></button>` : ""}
       <button class="row" type="button" data-signout><span class="mi">${$(".me [data-signout] svg")?.outerHTML || ""}</span><span class="lbl" style="color:var(--s-dec)">Sign out</span></button></div>
     <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`);
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("[data-notif]")) { closeModal(); setTimeout(openNotifications, 60); return; } const b = e.target.closest("[data-more]"); if (b) { closeModal(); setTimeout(() => $("#" + b.dataset.more).click(), 60); } };
@@ -1821,6 +1827,7 @@ function bindEvents(){
       if (k === "viewform") return openForm(S.sel);
       if (k === "printform") { const a = S.apps.get(S.sel); if (a && a.form) printForm(a.form); return; }
       if (k === "printapp") return printOriginal(S.sel);
+      if (k === "assigniv") return openAssignInterviewers(S.sel);
       if (k === "uploadapp") return openUploadRecords(S.sel, "Application");
       if (k === "book") return openBook(S.sel);
       if (k === "packet") { flushAll(); return printPacket([S.apps.get(S.sel)]); }
@@ -2335,7 +2342,7 @@ function openPassword(){
       <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="pwShow" style="width:auto"> Show password</label></div>
     <p class="help">At least 10 characters. Don't reuse a password from another site.</p>
     <div class="ios" style="margin-top:6px"><div class="row"><span class="lbl">Two-step sign-in<small>${twoStepOn(user) ? "On: a code from your authenticator app at each sign-in" : "Off: add a code from an authenticator app"}</small></span><button class="btn small" type="button" id="twoStepBtn">${twoStepOn(user) ? "Manage" : "Set up"}</button></div>
-      ${S.admin ? `<div class="row"><span class="lbl">Notifications<small>Alerts on this device for applications, references, completed pages and bookings</small></span><button class="btn small" type="button" id="notifBtn">${pushToken() ? "On" : "Set up"}</button></div>` : ""}</div>
+      ${S.me ? `<div class="row"><span class="lbl">Notifications<small>Alerts on this device</small></span><button class="btn small" type="button" id="notifBtn">${pushToken() ? "On" : "Set up"}</button></div>` : ""}</div>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="submit">Save password</button></div></form>`);
   $("#pwNew").focus();
   $("#pwShow").addEventListener("change", e => { $("#pwNew").type = $("#pwAgain").type = e.target.checked ? "text" : "password"; });
@@ -2549,6 +2556,41 @@ function openFromLink(){
   if (S.apps.has(id)) select(id);
 }
 
+/* ---------- interviewers: the owner assigns who can open an applicant's file and do the interview ---------- */
+// applicants/{id}.interviewers = [emails] (rules: interviewers read + fill in only those files). Assigning also adds them to
+// the applicant's conversation (convos/{id}); removing takes them out of it.
+function renderInterviewers(a){
+  const el = $("#ivAssign"); if (!el) return;
+  const list = Array.isArray(a.interviewers) ? a.interviewers : [];
+  el.innerHTML = list.length ? list.map(e => `<div class="row"><span class="av sm" style="--stage-c:${personColor(e)}" aria-hidden="true">${esc(initials(memberName(e)))}</span><span class="lbl">${esc(memberName(e))}<small>${esc(e)} · ${esc(roleLabel(S.staff.get(e)?.role))}</small></span></div>`).join("")
+    : `<div class="row"><span class="lbl" style="color:var(--fg2)">Nobody assigned yet${S.canEdit ? ". Click <b>Assign</b> to pick who interviews " + esc(first(a.name) || "them") + "." : "."}</span></div>`;
+}
+function openAssignInterviewers(id){
+  if (!S.canEdit) return ownerOnlyToast();
+  const a = S.apps.get(id); if (!a) return;
+  const cur = Array.isArray(a.interviewers) ? a.interviewers : [];
+  const team = [...S.staff.entries()].filter(([, s]) => s.role === "interviewer" || s.role === "admin").sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
+  const M = openModal(`<h3>Who interviews ${esc(first(a.name) || "this applicant")}?</h3>
+    <p class="help">They can open ${esc(first(a.name) || "the")}'s Application and Interview tabs, fill in the interview, and message ${esc(first(a.name) || "them")}. Nothing else.</p>
+    <div class="ios cv-pick">${team.length ? team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"${cur.includes(e) ? " checked" : ""}><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${roleLabel(s.role)}</small></span></label>`).join("")
+      : `<div class="row"><span class="lbl" style="color:var(--fg2)">No interviewers yet. In Settings → Team, set someone's role to <b>Interviewer</b>.</span></div>`}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="ivaSave">Save</button></div>`);
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    if (!e.target.closest("#ivaSave")) return;
+    const next = [...M.querySelectorAll(".cv-pick input:checked")].map(i => i.value);
+    const added = next.filter(x => !cur.includes(x)), removed = cur.filter(x => !next.includes(x));
+    try {
+      await updateDoc(doc(db, "applicants", id), { interviewers: next, updatedAt: Date.now(), updatedBy: S.me });
+      const cv = C.convos.get(id) || {}, members = [...new Set([...(cv.members || []).filter(m => !removed.includes(m)), ...added])].filter(m => m !== OWNER_EMAIL);
+      if (members.length) await setDoc(doc(db, "convos", id), { members, names: Object.fromEntries(members.map(m => [m, S.staff.get(m)?.name || m.split("@")[0]])), updatedAt: Date.now() });
+      else if (C.convos.has(id)) await deleteDoc(doc(db, "convos", id));
+      addDoc(collection(db, "applicants", id, "history"), { at: Date.now(), by: S.me, changes: [{ path: "interviewers", from: cur.join(", "), to: next.join(", ") }] }).catch(() => {});
+      closeModal(); toast(next.length ? `Saved. ${next.map(m => first(memberName(m))).join(", ")} can now see ${first(a.name)}'s interview.` : "No interviewers assigned.");
+    } catch (err) { console.error(err); toast("Couldn't save. Try again."); }
+  };
+}
+
 /* ---------- team messaging: squad channels + applicant conversations (one Messages screen) ---------- */
 // channels/{cid} {name, color, members[], names{}} + channels/{cid}/posts: squad-only group chats the owner creates.
 // Applicant conversations stay in portal/{id}/messages; convos/{id}.members = squad members the owner added (they can read and reply).
@@ -2684,7 +2726,7 @@ function chatMembers(k){
   return [...new Set([OWNER_EMAIL, ...(cv.members || [])])].map(e => ({ email: e, name: memberName(e, cv.names) }));
 }
 function chatInfoHTML(k){
-  const mem = chatMembers(k), roleOf = e => e === OWNER_EMAIL ? "Owner" : !S.staff.has(e) ? "Squad" : S.staff.get(e).role === "admin" ? "Admin" : "Member";
+  const mem = chatMembers(k), roleOf = e => e === OWNER_EMAIL ? "Owner" : !S.staff.has(e) ? "Squad" : roleLabel(S.staff.get(e).role);
   const row = m => `<div class="cv-mem"><span class="av sm" style="--stage-c:${personColor(m.email)}" aria-hidden="true">${esc(initials(m.name))}</span><span><b>${esc(m.name)}</b><small>${esc(roleOf(m.email))}</small></span></div>`;
   if (k.kind === "c") return `<h3>Members · ${mem.length}</h3>${mem.map(row).join("")}
     ${S.owner ? `<button class="btn small" type="button" data-chedit="${esc(k.id)}">Edit channel</button>` : ""}
@@ -2757,7 +2799,7 @@ function openChannelEditor(cid){
   const M = openModal(`<h3>${cid ? "Edit channel" : "New channel"}</h3>
     <div class="field"><label for="chName">Name</label><input id="chName" maxlength="60" placeholder="interview-team" value="${esc(c.name || "")}"></div>
     <div class="field"><label>Colour</label><div class="cv-colors">${Object.entries(CH_COLORS).map(([k, v]) => `<button type="button" class="cv-ic${(c.color || "int") === k ? " pick" : ""}" data-chcolor="${k}" style="background:${v}" aria-label="${k}" aria-pressed="${(c.color || "int") === k}">#</button>`).join("")}</div></div>
-    <div class="field"><label>Members</label><div class="ios cv-pick">${team.length ? team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"${(c.members || []).includes(e) ? " checked" : ""}><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${s.role === "admin" ? "Admin" : "Member"}</small></span></label>`).join("")
+    <div class="field"><label>Members</label><div class="ios cv-pick">${team.length ? team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"${(c.members || []).includes(e) ? " checked" : ""}><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${roleLabel(s.role)}</small></span></label>`).join("")
       : `<div class="row"><span class="lbl" style="color:var(--fg2)">No team members yet. Approve them in Settings → Team first.</span></div>`}</div>
       <p class="help">You're always in every channel.</p></div>
     <div class="acts">${cid ? `<button class="btn danger" type="button" id="chDel">Delete channel</button>` : ""}<span style="flex:1"></span><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="chSave">${cid ? "Save" : "Create channel"}</button></div>`);
@@ -2790,7 +2832,7 @@ function openConvoEditor(appId){
   const cur = C.convos.get(appId)?.members || [];
   const team = [...S.staff.entries()].sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
   const M = openModal(`<h3>People in ${esc(first(a.name) || "this")}'s conversation</h3><p class="help">They can read everything in it and reply. ${esc(first(a.name) || "The applicant")} sees their first name on replies.</p>
-    <div class="ios cv-pick">${team.length ? team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"${cur.includes(e) ? " checked" : ""}><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${s.role === "admin" ? "Admin" : "Member"}</small></span></label>`).join("")
+    <div class="ios cv-pick">${team.length ? team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"${cur.includes(e) ? " checked" : ""}><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${roleLabel(s.role)}</small></span></label>`).join("")
       : `<div class="row"><span class="lbl" style="color:var(--fg2)">No team members yet. Approve them in Settings → Team first.</span></div>`}</div>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="cvSave">Save</button></div>`);
   M.onclick = async e => {
@@ -2862,10 +2904,11 @@ async function startPushToasts(){
   try { const m = await fm(); if (await m.isSupported()) m.onMessage(m.getMessaging(app), p => { const n = p.notification || {}; toast([n.title, n.body].filter(Boolean).join(": ")); }); } catch {}
 }
 async function openNotifications(){
-  if (!S.admin) return;
   const st = await pushState();
-  const what = S.owner ? "a new online application, a reference check answered, all references in, a page marked complete (Application, Checks, Interview, Board, Onboard), an interview booked or cancelled, an applicant message or upload, and desk access requests"
-    : "an interview booked or cancelled";
+  const what = S.owner ? "a new online application, a reference check answered, all references in, a page marked complete (Application, Checks, Interview, Board, Onboard), an interview booked or cancelled, an applicant message or upload, desk access requests, and new messages in your channels"
+    : S.admin ? "an interview booked or cancelled and new messages in your channels and conversations"
+    : S.role === "interviewer" ? "being assigned an interview, your applicants booking or cancelling, and new messages in your channels and conversations"
+    : "new messages in your channels";
   const body = {
     unset: `<p class="help">Notifications aren't set up for PVRS yet. The owner needs to add the Web Push key (docs/notifications.md).</p>`,
     ios: `<p class="help">On iPhone and iPad, notifications only work from the Home Screen app: in Safari tap Share → <b>Add to Home Screen</b>, open PVRS Desk from your Home Screen, sign in, and come back here.</p>`,
@@ -2908,10 +2951,11 @@ function startIdleLock(){
 /* ---------- start ---------- */
 export function startDesk({ email, role, owner, name }){
   S.me = email; S.admin = role === "admin"; S.owner = !!owner; S.canEdit = !!owner; S.name = name || "";
+  S.role = owner ? "owner" : role; S.member = S.role === "member";
   S.sort = SORTS[prefs.get("sort")] ? prefs.get("sort") : "stage";
   bindEvents(); renderList(); renderDetail();
   const conn = $("#conn");
-  conn.textContent = S.owner ? "Owner" : S.admin ? "Admin" : "Member";
+  conn.textContent = S.owner ? "Owner" : roleLabel(role);
   conn.classList.add("on");
   $("#meName").textContent = S.name || email;
   $("#meName").title = email;
@@ -2926,7 +2970,10 @@ export function startDesk({ email, role, owner, name }){
   watchChat(); $("#msgsBtn").hidden = false; paintMnav();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
 
-  onSnapshot(collection(db, "applicants"), snap => {
+  // Admins load every file, interviewers only the ones assigned to them, members none (Messages only).
+  const appsQ = S.admin || S.owner ? collection(db, "applicants") : S.member ? null : query(collection(db, "applicants"), where("interviewers", "array-contains", S.me));
+  if (!appsQ) { S.ready = true; document.body.classList.add("member-user"); rebuildAll(); renderList(); setTimeout(() => { if (!S.chatOn) openChat(); }, 0); }
+  if (appsQ) onSnapshot(appsQ, snap => {
     const next = new Map();
     snap.docs.forEach(d => { const data = d.data(); merge(data, clone(inflight["pub|"+d.id] || {})); merge(data, clone(pending["pub|"+d.id] || {})); next.set(d.id, data); });
     S.shared = next; S.ready = true; rebuildAll();

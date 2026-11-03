@@ -3,7 +3,9 @@ rules_version = '2';
 // PVRS Membership Desk — who can see what
 //   Owner (dkota@pvrs.org): reads and edits everything
 //   Staff with role "admin": read everything; may only fill in the interview questionnaire
-//   Staff with role "member": read application + interview; may only fill in the interview questionnaire
+//   Staff with role "interviewer": read application + interview of the applicants the owner assigned them to
+//     (applicants/{id}.interviewers); may only fill in those interview questionnaires
+//   Staff with role "member": no applicant files; Messages only (channels and conversations they're added to)
 //   Applicants: their own portal page, their own uploads, open interview times
 //   Paperwork account (orientationpaperwork@pvrs.org): the only one who can open confidential (medical / Social Security) files
 service cloud.firestore {
@@ -17,6 +19,8 @@ service cloud.firestore {
     function staffPath() { return /databases/$(database)/documents/staff/$(myEmail()); }
     function isStaff()   { return isOwner() || (verified() && exists(staffPath())); }
     function isAdmin()   { return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'admin'); }
+    // Interviewers the owner assigned to this applicant (applicants/{id}.interviewers, a list of emails).
+    function assignedTo(data)  { return verified() && exists(staffPath()) && myEmail() in data.get('interviewers', []); }
     function portalOf(id)      { return get(/databases/$(database)/documents/portal/$(id)); }
     // Team messaging: squad channels (channels/{id}) and the squad members the owner adds to an applicant's conversation (convos/{appId}).
     function inChannel(cid)    { return verified() && exists(/databases/$(database)/documents/channels/$(cid)) && myEmail() in get(/databases/$(database)/documents/channels/$(cid)).data.members; }
@@ -155,11 +159,12 @@ service cloud.firestore {
       allow write: if isOwner() && email != 'dkota@pvrs.org';
     }
 
-    // Application + interview (shared with members)
+    // Application + interview: admins see all; interviewers only the applicants assigned to them (works for
+    // "where interviewers array-contains me" queries); members none.
     match /applicants/{id} {
-      allow read: if isStaff();
+      allow read: if isAdmin() || assignedTo(resource.data);
       allow create, delete: if isOwner();
-      allow update: if isOwner() || (isStaff() && interviewOnly());
+      allow update: if isOwner() || ((isAdmin() || assignedTo(resource.data)) && interviewOnly());
 
       // Screening, board, onboarding, notes (admins only)
       match /private/{doc} {
@@ -183,7 +188,7 @@ service cloud.firestore {
       // Change history: append-only. Any staff member's edits are logged under their own email; only admins read it.
       match /history/{entryId} {
         allow read: if isAdmin();
-        allow create: if isStaff()
+        allow create: if (isAdmin() || assignedTo(get(/databases/$(database)/documents/applicants/$(id)).data))
           && request.resource.data.keys().hasOnly(['at','by','changes'])
           && request.resource.data.by == myEmail()
           && request.resource.data.at is int
@@ -301,7 +306,7 @@ service cloud.firestore {
     // their own devices; functions/push.js reads them with the Admin SDK. Each person sees and removes only their own.
     match /pushTokens/{token} {
       allow read, delete: if isOwner() || (verified() && resource.data.email == myEmail());
-      allow create, update: if isAdmin()
+      allow create, update: if isStaff()
         && request.resource.data.keys().hasOnly(['email', 'device', 'at'])
         && request.resource.data.email == myEmail()
         && request.resource.data.device is string && request.resource.data.device.size() <= 100
