@@ -10,6 +10,8 @@ const MOCK = fs.readFileSync(new URL("./mockfb.js", import.meta.url), "utf8");
 const TYPES = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".png": "image/png", ".json": "application/json", ".webmanifest": "application/manifest+json" };
 const errors = [], notes = [];
 const fail = m => errors.push("[check] " + m), ok = m => notes.push("ok: " + m);
+// YYYY-MM-DD in the local time zone (toISOString is UTC, a day ahead on US evenings)
+const localDay = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const OWNER = { email: "dkota@pvrs.org", displayName: "Dkota Wright" };
 
 async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark = false, seed = null, files = {} } = {}){
@@ -324,7 +326,7 @@ try {
   // ---- nudges: references emailed 7+ days ago with no answer get a reminder
   {
     const { ctx, page } = await open(browser);
-    const iso = d => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+    const iso = d => localDay(Date.now() - d * 864e5);
     await page.evaluate(([old, recent]) => { const d = window.__mock.docs, p = d.get("applicants/a1/private/main");
       p.refs = { r1: { name: "Ann Lee", email: "ann.lee@example.com", contacted: old, method: "Email" }, r2: { name: "Sam Ortiz", email: "sam@example.com", contacted: recent }, r3: { name: "Kim Park", email: "kim@example.com" } };
       window.__mock.emit(); }, [iso(10), iso(3)]);
@@ -405,7 +407,7 @@ try {
     const { ctx, page } = await open(browser); await wait(page, 600);
     await pickApplicant(page, "Marcus Bell");
     await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
-    const soon = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10);
+    const soon = localDay(Date.now() + 10 * 864e5);
     await page.locator('[data-k="onb.cprExpires"]').fill(soon); await page.locator('[data-k="onb.cprExpires"]').blur(); await wait(page, 400);
     if ((await priv(page, "a2"))?.onb?.cprExpires !== soon) fail("CPR expiry not saved privately"); else ok("expiration dates save to the private record");
     const items = await page.locator('[data-k^="onb.items."]').count();
@@ -414,7 +416,7 @@ try {
     await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
     await page.locator('[data-k="board.result"] [data-v="approved"]').click(); await wait(page, 300);
     await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
-    await page.locator('[data-k="onb.items.id_badge_issued"]').fill(new Date().toISOString().slice(0, 10)); await page.locator('[data-k="onb.items.id_badge_issued"]').blur(); await wait(page, 400);
+    await page.locator('[data-k="onb.items.id_badge_issued"]').fill(localDay(Date.now())); await page.locator('[data-k="onb.items.id_badge_issued"]').blur(); await wait(page, 400);
     if (!/1 of 11 done/.test(await page.locator("#onbCount").textContent())) fail("checklist count: " + await page.locator("#onbCount").textContent()); else ok("checking off an item updates the count");
     await page.keyboard.press("Escape"); await wait(page, 200); await page.keyboard.press("Escape"); await wait(page, 500);
     await page.evaluate(() => document.querySelector("#overviewBtn")?.click()); await wait(page, 500);
