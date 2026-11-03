@@ -52,7 +52,8 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
       <div class="info">${esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div>
       ${preview ? `<span class="badge wait">Preview</span>` : `<button class="btn small" type="button" data-signout>Sign out</button>`}</div></section>
 
-    <section class="card glass"><h2>Your application</h2>${timelineHTML(pd.steps || [])}</section>
+${ivSoonHTML(iv, ivDone, now, dis)}
+    <section class="card glass"><h2>Your application</h2>${trackerHTML(pd.steps || [])}${timelineHTML(pd.steps || [])}</section>
 
     <section class="card glass" id="msgCard"><div class="ptop"><h2>Messages</h2>${msgs.some(m => m.from === "staff" && !m.seenAt) ? `<span class="badge wait">New reply</span>` : ""}</div>
       <p class="info" style="margin:0">Questions about your application? Send them here. We'll reply in this space, usually within a few days.</p>
@@ -82,6 +83,25 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
   </div>`;
 }
 // "How to prepare" under the interview card (until the interview is done). Topics follow the committee's question list.
+// "Step 3 of 6": a delivery-style progress bar above the status timeline.
+function trackerHTML(steps){
+  if (!steps.length) return "";
+  const done = steps.filter(s => s.state === "done").length, cur = steps.findIndex(s => s.state === "now");
+  const at = cur >= 0 ? cur : done >= steps.length ? steps.length - 1 : done;
+  const label = done >= steps.length ? "All steps complete" : `Step ${at + 1} of ${steps.length}: ${steps[at].label}`;
+  return `<div class="tracker" role="img" aria-label="${esc(label)}"><div class="tk-top"><b>${esc(label)}</b><span>${Math.round(done / steps.length * 100)}%</span></div>
+    <div class="tk-bar">${steps.map((s, i) => `<i class="${s.state === "done" ? "done" : i === at && done < steps.length ? "cur" : ""}"></i>`).join("")}</div></div>`;
+}
+// A reminder at the top of the portal when the interview is within two days.
+function ivSoonHTML(iv, ivDone, now, dis){
+  if (!iv || ivDone || iv.start <= now || iv.start - now > 2 * DAY) return "";
+  const d = new Date(iv.start), today = new Date(now), tmr = new Date(now + DAY);
+  const same = (x, y) => x.toDateString() === y.toDateString();
+  const when = same(d, today) ? "today" : same(d, tmr) ? "tomorrow" : slotDay(iv.start);
+  return `<section class="card glass ivsoon" role="status"><div class="ivs-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+    <div class="ivs-t"><b>Your interview is ${esc(when)} at ${esc(slotTime(iv.start))}</b><span>${esc(iv.location || "PVRS building")} · bring your driver's license</span></div>
+    <button class="btn small" type="button" data-ics ${dis}>Add to calendar</button></section>`;
+}
 function ivPrepHTML(iv){
   const len = iv && iv.duration ? `about ${iv.duration} minutes` : "usually under an hour";
   return `<details class="ivprep"${iv ? " open" : ""}><summary>How to prepare for your interview</summary><div class="info">
