@@ -294,6 +294,17 @@ service cloud.firestore {
     }
 
     // Email signature, contact address (admins only)
+    // Push notifications: one doc per device that turned them on (id = the device's messaging token). Admins register
+    // their own devices; functions/push.js reads them with the Admin SDK. Each person sees and removes only their own.
+    match /pushTokens/{token} {
+      allow read, delete: if isOwner() || (verified() && resource.data.email == myEmail());
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['email', 'device', 'at'])
+        && request.resource.data.email == myEmail()
+        && request.resource.data.device is string && request.resource.data.device.size() <= 100
+        && request.resource.data.at is int;
+    }
+
     match /settings/{doc} {
       allow read: if isAdmin();
       allow write: if isOwner();

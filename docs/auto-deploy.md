@@ -44,7 +44,8 @@ The deploy account can't run functions as the project's built-in account yet. Th
 1. Open https://console.cloud.google.com/iam-admin/serviceaccounts?project=pvrs-membership
 2. Click **pvrs-membership@appspot.gserviceaccount.com** → **Principals with access** tab → **Grant access**.
 3. **New principals**: start typing `github-deploy` and pick it. **Role**: **Service Account User**. Click **Save**.
-4. Rerun: GitHub → Actions → the failed run → **Re-run all jobs**.
+4. Do the same for **<project number>-compute@developer.gserviceaccount.com** ("Default compute service account"; for PVRS: 1066878367633-compute@developer.gserviceaccount.com). The newer functions run as this account, and the deploy fails with the same ActAs error naming it until it's granted too.
+5. Rerun: GitHub → Actions → the failed run → **Re-run all jobs**.
 
 ## What it doesn't deploy
 The paperwork email function (`notifyPaperwork`) waits until an email password exists (see CLAUDE.md, Server-side email).

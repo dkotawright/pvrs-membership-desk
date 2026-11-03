@@ -1,5 +1,5 @@
-# Auto-deploy: every push to main runs the tests, then deploys the website, security rules and the Med Control
-# server function (ai). The paperwork email (notifyPaperwork) is left out until its SMTP secret exists.
+# Auto-deploy: every push to main runs the tests, then deploys the website, security rules and the server functions
+# for notifications (push) and Med Control (ai). The paperwork email (notifyPaperwork) is left out until its SMTP secret exists.
 # Needs the repo secret FIREBASE_SERVICE_ACCOUNT, and ANTHROPIC_API_KEY in Google Secret Manager (setup in docs/auto-deploy.md).
 name: Test and deploy
 
@@ -31,6 +31,8 @@ jobs:
         run: node tests/browser.test.mjs
       - name: Med Control privacy filter
         run: npm ci --prefix functions && node tests/medcontrol-privacy.test.cjs
+      - name: Notification functions
+        run: node tests/push.test.cjs
 
   # Security-rule tests in the emulators. Informational for now (2 known storage failures); make it gate deploy once green.
   rules:
@@ -68,5 +70,5 @@ jobs:
         run: npx -y firebase-tools@15 deploy --only hosting,firestore:rules,storage --project pvrs-membership --non-interactive
       - name: Install function dependencies
         run: npm ci --prefix functions
-      - name: Deploy Med Control function
-        run: npx -y firebase-tools@15 deploy --only functions:ai --project pvrs-membership --non-interactive --force
+      - name: Deploy server functions (notifications and Med Control)
+        run: npx -y firebase-tools@15 deploy --only functions:push,functions:ai --project pvrs-membership --non-interactive --force
