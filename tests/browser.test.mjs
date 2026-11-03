@@ -578,6 +578,50 @@ try {
       if (!/Dkota · PVRS Membership/.test(t) || /interview-team/.test(t)) fail("portal labels: " + t.replace(/\s+/g, " ").slice(0, 900)); else ok("applicants see the replier's first name with PVRS Membership, never squad channels");
       await ctx.close(); }
   }
+  // ---- Interviewer role: only assigned applicants; members see none
+  {
+    const { ctx, page } = await open(browser, { seed: [["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Interviewer" }]] }); await wait(page, 700);
+    await page.locator("#settingsBtn").click(); await wait(page, 500);
+    const seg = page.locator('[data-role="alex@pvrs.org"][data-v="interviewer"]');
+    if (!(await seg.count())) fail("Team has no Interviewer role"); else { await seg.click(); await wait(page, 400);
+      if ((await page.evaluate(() => window.__mock.docs.get("staff/alex@pvrs.org").role)) !== "interviewer") fail("role not saved"); else ok("Settings → Team offers Member, Interviewer, Admin"); }
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    await pickApplicant(page, "Georgia Thurmond");
+    await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
+    if (!/Nobody assigned yet/.test(await page.locator("#ivAssign").textContent())) fail("assign box: " + await page.locator("#ivAssign").textContent()); else ok("Interview tab shows who's assigned");
+    await page.locator('[data-act="assigniv"]').click(); await wait(page, 300);
+    const opts = await page.locator(".cv-pick input").evaluateAll(xs => xs.map(x => x.value));
+    if (opts.includes("dkota@pvrs.org") || !opts.includes("ivy@pvrs.org") || !opts.includes("admin@pvrs.org")) fail("assign options: " + opts); else ok("only interviewers and admins can be assigned");
+    await page.locator('.cv-pick input[value="ivy@pvrs.org"]').check(); await page.locator("#ivaSave").click(); await wait(page, 600);
+    const a1 = await page.evaluate(() => window.__mock.docs.get("applicants/a1")), cv = await page.evaluate(() => window.__mock.docs.get("convos/a1"));
+    if ((a1.interviewers || []).join() !== "ivy@pvrs.org") fail("assignment: " + JSON.stringify(a1.interviewers)); else ok("assigning saves the interviewer on the file");
+    if (!cv || !cv.members.includes("ivy@pvrs.org")) fail("convo not updated: " + JSON.stringify(cv)); else ok("assigning also adds them to the applicant's conversation");
+    if (!/Ivy Interviewer/.test(await page.locator("#ivAssign").textContent())) fail("assigned name not shown"); else ok("the assigned interviewer shows on the Interview tab");
+    await page.screenshot({ path: path.join(OUT, "50-assign-interviewer.png") });
+    const seed = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => /^(staff\/ivy|convos\/)/.test(k)));
+    const ivs = (await page.evaluate(() => window.__mock.docs.get("applicants/a1"))).interviewers;
+    // unassign removes them from the conversation too
+    await page.locator('[data-act="assigniv"]').click(); await wait(page, 300);
+    await page.locator('.cv-pick input[value="ivy@pvrs.org"]').uncheck(); await page.locator("#ivaSave").click(); await wait(page, 600);
+    if (await page.evaluate(() => (window.__mock.docs.get("convos/a1")?.members || []).includes("ivy@pvrs.org"))) fail("unassign left them in the conversation"); else ok("unassigning takes them out of the conversation");
+    await ctx.close();
+    // Ivy, assigned to Georgia only
+    { const { ctx, page } = await open(browser, { user: { email: "ivy@pvrs.org", displayName: "Ivy" }, seed }); await wait(page, 500);
+      await page.evaluate(v => { window.__mock.docs.get("applicants/a1").interviewers = v; window.__mock.emit(); }, ivs); await wait(page, 500);
+      const names = await page.locator("#list .arow").allTextContents();
+      if (names.length !== 1 || !/Georgia/.test(names[0])) fail("interviewer's list: " + names); else ok("an interviewer sees only the applicants assigned to them");
+      await pickApplicant(page, "Georgia Thurmond");
+      const tabs = await page.locator(".tabdock [data-tab]").evaluateAll(b => b.map(x => x.dataset.tab));
+      if (tabs.join() !== "app,iv") fail("interviewer tabs: " + tabs); else ok("an interviewer gets only the Application and Interview tabs");
+      if (!/Interviewer/.test(await page.locator("#conn").textContent())) fail("role label"); else ok("the sidebar shows the Interviewer role");
+      await page.screenshot({ path: path.join(OUT, "51-interviewer-view.png") });
+      await ctx.close(); }
+    // Alex, a member: no applicants, Messages opens
+    { const { ctx, page } = await open(browser, { user: { email: "alex@pvrs.org", displayName: "Alex" } }); await wait(page, 900);
+      if (await page.locator("#list .arow").count() || !/Messages only/.test(await page.locator("#list").textContent())) fail("member list: " + await page.locator("#list").textContent()); else ok("members see no applicant files");
+      if (!(await page.locator(".cv").count())) fail("member didn't land on Messages"); else ok("members land on Messages");
+      await ctx.close(); }
+  }
   // ---- Med Control (AI): hidden until switched on; chat, brief and reply drafts go through the function
   {
     const { ctx, page } = await open(browser, { seed: [["portal/a2/messages/m1", { text: "Can I join if I'm only here in the school year?", from: "applicant", by: "marcus.bell@example.com", name: "Marcus", at: Date.now() - 6e4 }]] }); await wait(page, 600);
@@ -626,13 +670,14 @@ try {
     await ctx.close();
   }
   // ---- Interview mode
-  for (const [w, h, who] of [[1440, 900, OWNER], [390, 844, { email: "alex@pvrs.org", displayName: "Alex" }]]) {
-    const { ctx, page } = await open(browser, { w, h, user: who });
+  for (const [w, h, who] of [[1440, 900, OWNER], [390, 844, { email: "ivy@pvrs.org", displayName: "Ivy" }]]) {
+    const { ctx, page } = await open(browser, { w, h, user: who, seed: [["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Interviewer" }]] });
+    await page.evaluate(() => { window.__mock.docs.get("applicants/a1").interviewers = ["ivy@pvrs.org"]; window.__mock.emit(); }); await wait(page, 400);
     await pickApplicant(page, "Georgia Thurmond");
     await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
     await page.locator('[data-act="ivmode"]').click(); await wait(page, 400);
     const vis = await page.locator("#dpanel .group:visible").count(), pos = await page.locator("#ivBar .ivpos").textContent();
-    if (vis !== 1 || !/1 of \d+/.test(pos)) fail(`interview mode at ${w}: ${vis} sections visible, ${pos}`); else ok(`interview mode shows one section at a time (${w}px${who === OWNER ? "" : ", member"})`);
+    if (vis !== 1 || !/1 of \d+/.test(pos)) fail(`interview mode at ${w}: ${vis} sections visible, ${pos}`); else ok(`interview mode shows one section at a time (${w}px${who === OWNER ? "" : ", assigned interviewer"})`);
     const total = +pos.match(/of (\d+)/)[1];
     let i = 0; while (i < 3) { await page.locator('#ivBar [data-iv="next"]').click(); await wait(page, 150); i++; }
     const title = await page.locator("#ivBar .ivpos b").textContent();

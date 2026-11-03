@@ -12,7 +12,7 @@ Read this first. It's the full context from the original build conversation (Oct
 - Hosting: Firebase Hosting (`public/`). SDK v10.12.2 loaded from gstatic CDN as ES modules; no npm/bundler.
 - Auth: staff sign in with email + password (set in-app via the key button next to their name, which links a password credential to their account; Google stays as a backup). Applicants use the email link. Passwords are never stored in code. Owner hardcoded as `dkota@pvrs.org` in `public/js/config.js`, `firestore.rules`, `storage.rules`.
 - Team access requests: anyone can sign in with Google (Staff tab → "Request access") and file `accessRequests/{email}` (pending). The owner approves (creates `staff/{email}`) or denies in Settings → Team; the requester's page opens the desk once approved.
-- Roles: **only the owner (dkota@pvrs.org) edits anything.** `staff/{email}` admins can view every tab and members the Application + Interview tabs, but both can only fill in the interview questionnaire (`iv.*`), `sched.completed`/`completedInit` and the Interview page sign-off (`signoff.iv`). Enforced in firestore.rules (`interviewOnly()`), storage.rules and in the UI (`S.canEdit`, `canEditPath`). Only the owner's client writes portal docs and mirrors `stage`. Applicants see their own portal only (matched by `portal/{id}.email`).
+- Roles: **only the owner (dkota@pvrs.org) edits anything.** `staff/{email}` admins can view every tab and interviewers the Application + Interview tabs of applicants assigned to them (members: no files since Nov 3; see Interviewer role), but they can only fill in the interview questionnaire (`iv.*`), `sched.completed`/`completedInit` and the Interview page sign-off (`signoff.iv`). Enforced in firestore.rules (`interviewOnly()`), storage.rules and in the UI (`S.canEdit`, `canEditPath`). Only the owner's client writes portal docs and mirrors `stage`. Applicants see their own portal only (matched by `portal/{id}.email`).
 
 ## Files
 - `public/js/main.js`: sign-in and routing (owner → admin desk; staff doc → desk; portal match → applicant portal; else "No application found").
@@ -97,6 +97,14 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - Application tab group **Original application** (`renderOriginal`, called from `renderRecords`) replaces the old hidden "Online application" row and shows for every file (admins): online form → View / Print; records labelled "Application" → "Paper copy · Open to print"; neither → "No original on file". Owner-only **Upload original** button on the group header for every file (online applicants can have a paper copy too; `openUploadRecords(id, "Application")` pre-picks the label).
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
+
+## Interviewer role (Nov 3, night; Dkota's choices)
+- Roles now: owner · **admin** (every file, view only + interview) · **interviewer** (only applicants assigned to them: Application + Interview tabs, fill in the interview) · **member** (NO applicant files; Messages only, lands on Messages, `body.member-user`). Settings → Team seg Member/Interviewer/Admin (`ROLE_LABEL`, `roleLabel`).
+- Assignment: `applicants/{id}.interviewers = [emails]` (shared doc), owner-only via Interview tab "Interviewers" box → Assign (`renderInterviewers`, `openAssignInterviewers`; picker lists interviewers + admins). Saving also adds/removes them in `convos/{id}` (Dkota: yes). Box has class `noiv` so interview mode skips it.
+- Desk loads applicants per role: admin/owner all; interviewer `where("interviewers","array-contains",me)`; member none.
+- Rules: `assignedTo(data)`; applicants read `isAdmin() || assignedTo(resource.data)`, update interviewOnly for admins/assigned; history create same; pushTokens create any staff. Members lost interview access (tests updated).
+- Push: `interviewBooking` → owner + admins + that applicant's interviewers (`bookingCrew`); "Interview assigned" to newly added interviewers (in `pageCompleteShared`). Notifications available to every role.
+- Tests: 216 browser, 16 push, 93 rules.
 
 ## Team messaging (Nov 3, evening; Dkota picked from mockups)
 - Messages is a full screen in #detail (`openChat`/`paintChat`/`closeChat`, `S.chatOn`, `.app.chatopen` on phones; `C` state in desk.js). Sidebar #msgsBtn (now shown to ALL staff), phone mnav Messages, ⌘K, Overview "New messages" all open it. Links `/?chat=c:<cid>` or `a:<appId>` (`openFromLink`).

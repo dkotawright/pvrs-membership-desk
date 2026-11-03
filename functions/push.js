@@ -68,10 +68,16 @@ exports.channelPost = onDocumentCreated({ document: "channels/{cid}/posts/{pid}"
   await send({ to: [OWNER_EMAIL, ...(ch.members || [])], skip: p.by, title: `#${ch.name}`, body: `${p.name || "Someone"} posted in #${ch.name}`, chat: `c:${e.params.cid}` });
 });
 
+// Bookings: the owner, admins, and the interviewers assigned to that applicant (members never hear about applicants).
+const bookingCrew = async appId => {
+  const admins = (await db.collection("staff").get()).docs.filter(d => d.data().role === "admin").map(d => d.id);
+  const a = appId ? await db.doc(`applicants/${appId}`).get() : null;
+  return [OWNER_EMAIL, ...admins, ...((a && a.exists && a.data().interviewers) || [])];
+};
 exports.interviewBooking = onDocumentUpdated({ document: "slots/{id}", ...OPTS }, async e => {
   const b = e.data.before.data() || {}, a = e.data.after.data() || {};
-  if (!b.bookedBy && a.bookedBy) await send({ everyone: true, title: "Interview booked", body: `${await nameOf(a.bookedBy)} · ${when(a.start)}`, id: a.bookedBy });
-  else if (b.bookedBy && !a.bookedBy) await send({ everyone: true, title: "Interview cancelled", body: `${await nameOf(b.bookedBy)} · ${when(b.start)} is open again`, id: b.bookedBy });
+  if (!b.bookedBy && a.bookedBy) await send({ to: await bookingCrew(a.bookedBy), title: "Interview booked", body: `${await nameOf(a.bookedBy)} · ${when(a.start)}`, id: a.bookedBy });
+  else if (b.bookedBy && !a.bookedBy) await send({ to: await bookingCrew(b.bookedBy), title: "Interview cancelled", body: `${await nameOf(b.bookedBy)} · ${when(b.start)} is open again`, id: b.bookedBy });
 });
 
 exports.referenceAnswered = onDocumentCreated({ document: "refResponses/{token}", ...OPTS }, async e => {
@@ -102,6 +108,9 @@ async function pagesDone(before, after, root, id, by){
 exports.pageCompleteShared = onDocumentUpdated({ document: "applicants/{id}", ...OPTS }, async e => {
   const b = e.data.before.data() || {}, a = e.data.after.data() || {};
   await pagesDone(b, a, "signoff", e.params.id, a.updatedBy);
+  // Newly assigned interviewers hear about it.
+  const added = (a.interviewers || []).filter(x => !(b.interviewers || []).includes(x));
+  if (added.length) await send({ to: added, title: "Interview assigned", body: `You're interviewing ${a.name || "an applicant"}`, id: e.params.id });
 });
 exports.privateUpdate = onDocumentUpdated({ document: "applicants/{id}/private/main", ...OPTS }, async e => {
   const b = e.data.before.data() || {}, a = e.data.after.data() || {}, id = e.params.id;

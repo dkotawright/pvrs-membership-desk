@@ -56,8 +56,13 @@ const last = () => sent[sent.length - 1];
   await P.privateUpdate(upd({ refs: { r1: r(1), r2: r(2), r3: r(3) } }, { refs: { r1: r(1), r2: r(2), r3: r(3), r4: r(4) } }, { id: "a1" }));
   check(sent.length === k, "4th reference re-sent References complete");
 
+  docs.set("staff/admin@pvrs.org", { name: "Casey Admin", role: "admin" });
+  docs.set("pushTokens/ivTok", { email: "iv@pvrs.org" }); docs.set("pushTokens/memTok", { email: "mem@pvrs.org" });
+  docs.set("applicants/a1", { name: "Jack Gradzewicz", interviewers: ["iv@pvrs.org"] });
   await P.interviewBooking(upd({ start: 1e12 }, { start: 1e12, bookedBy: "a1" }));
-  check(last().notification.title === "Interview booked" && last().tokens.length === 2, "booking goes to admins too");
+  check(last().notification.title === "Interview booked" && last().tokens.sort().join() === "adminTok,ivTok,ownerTok", "booking goes to owner, admins and that applicant's interviewers only: " + last().tokens);
+  await P.pageCompleteShared(upd({ name: "Jack Gradzewicz", interviewers: [] }, { name: "Jack Gradzewicz", interviewers: ["iv@pvrs.org"] }, { id: "a1" }));
+  check(last().notification.title === "Interview assigned" && last().tokens.join() === "ivTok" && /You're interviewing Jack/.test(last().notification.body), "assigned interviewer alerted: " + JSON.stringify(last()));
 
   await P.accessRequest(ev({ name: "Casey New" }, { email: "casey@pvrs.org" }));
   check(/Casey New asked for access/.test(last().notification.body) && last().tokens.join() === "ownerTok", "access request");
