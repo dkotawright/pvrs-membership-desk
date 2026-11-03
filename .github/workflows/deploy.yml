@@ -63,7 +63,10 @@ jobs:
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      # Website and rules first, so they go live even if the function deploy hits a problem.
+      - name: Deploy website and rules
+        run: npx -y firebase-tools@15 deploy --only hosting,firestore:rules,storage --project pvrs-membership --non-interactive
       - name: Install function dependencies
         run: npm ci --prefix functions
-      - name: Deploy website, rules and functions
-        run: npx -y firebase-tools@15 deploy --only hosting,firestore:rules,storage,functions:ai --project pvrs-membership --non-interactive --force
+      - name: Deploy Med Control function
+        run: npx -y firebase-tools@15 deploy --only functions:ai --project pvrs-membership --non-interactive --force

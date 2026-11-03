@@ -82,6 +82,15 @@ MVR results, license details, reference answers, Sterling results, board votes, 
 
 ---
 
+## Updating the live site
+Once auto-deploy is set up, merging a change into `main` on GitHub tests it and puts it live, with no computer needed. The `firebase deploy` commands below are only needed without it.
+
+Setup guides in `docs/`:
+- `auto-deploy.md`: GitHub deploys every change to main
+- `med-control.md`: the desk's AI assistant
+- `two-step-sign-in.md`: authenticator-app codes for staff
+- `restore-drill.md`: practising a backup restore
+
 ## Changing things
 
 | Change | Where |
@@ -92,7 +101,7 @@ MVR results, license details, reference answers, Sterling results, board votes, 
 | Interview questions / checklist | `public/js/desk.js` (`tabHTML`) and `public/js/shared.js` (`MILESTONES`) |
 
 ## Handing it off
-The project lives under dkota@pvrs.org. To hand the Desk to the next membership chair, add them as an **Owner** under **Project settings → Users and permissions**. Then change the owner email in the three files above and redeploy.
+The Firebase project is owned by Dkota's personal Google account for now (the plan is to add dkota@pvrs.org as Owner). To hand the Desk to the next membership chair, add them as an **Owner** under **Project settings → Users and permissions**. Then change the owner email in the three files above and redeploy.
 
 ## Checking the security rules (optional)
 In the Firebase console go to **Firestore → Rules → Rules Playground**. Simulate a **get** on `/applicants/ANY-ID/private/main` as an authenticated user with a non-staff email. It should be **denied**.
