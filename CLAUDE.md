@@ -84,6 +84,15 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - **Email the board** (Board meeting toolbar, `emailBoard`): mailto to `settings.boardEmails` (Settings → Emails) with the meeting's agenda (`agendaText(list)`); the packet PDF is attached by hand (Print packet → Save as PDF) until server email exists.
 - Dkota's wish list still open: Med Control (needs the IAM grant), Slack/email alerts (Slack webhook or pvrs.org email service), text reminders (Twilio, needs his OK on cost), duty schedule (needs who/which shifts).
 
+## Nov 3 batch (features that needed nothing from Dkota)
+- **Go to it**: button next to "Next: …" in the file header (`goNextStep`, `STEP_FIELD`) opens the step's tab and focuses its field (step 5 opens booking). Also a To do action (`nextgo`).
+- **Interview score**: Interview tab group, `iv.score.{comm,motiv,avail,team,fit}` 1–5 (`IV_SCORE`, `ivScore`, `ivScoreText`); average in Board meeting mode and the board packet (flagged under 3).
+- **To do**: "No movement in N days" (14+ days since `lastTouched`, not while waiting for the board); "Pair X with a mentor" / "Mentor check-in" (Onboard tab: `onb.mentor`, `onb.mentorSince`, `onb.mentorCheck`, `onb.mentorNotes`; monthly); membership anniversaries in the next 7 days.
+- **Portal**: "Step X of Y" tracker above the timeline (`trackerHTML`) and an interview-within-2-days banner with Add to calendar (`ivSoonHTML`).
+- **Recruiting flyer** (`printFlyer`, Year at a glance button / ⌘K): QR code from `public/js/qr.js` (own encoder, byte mode, level M, v1–6; verified with OpenCV) linking to `/apply?src=flyer`, which pre-picks "Flyer or poster".
+- **Year-end report** (`printYearReport`): KPIs, funnel, months, sources, printable.
+- Tests: 174 browser checks.
+
 ## Status Nov 2
 - The Oct 31 batch, Friendly Modern look and Med Control are merged into `main` (PRs #7, #8). The auto-deploys of both failed at the functions step: the `github-deploy` account lacks **Service Account User** on `pvrs-membership@appspot.gserviceaccount.com` (`iam.serviceAccounts.ActAs`). PR #9 deploys hosting + rules before the function so the site goes live regardless; the fix for Med Control is in docs/auto-deploy.md (Dkota grants the role in the Cloud console, then re-runs the job).
 - Old open PRs #1–#6 (Oct 19–26: isolated testing, UI polish, Homey redesign, duty schedule, Slack, sign-in wallpaper) predate the Friendly Modern look and conflict with `main`. Left open, not merged, pending Dkota's decision on which features to rebuild on the current design.

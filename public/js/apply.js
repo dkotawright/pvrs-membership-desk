@@ -311,5 +311,7 @@ function bind(){
 export function startApply(){
   if (!A) { const dft = load(); A = dft ? { step: dft.step || 0, data: Object.assign(blank(), dft.data), startedAt: dft.startedAt || Date.now(), maxStep: dft.step || 0 } : { step: 0, data: blank(), startedAt: Date.now(), maxStep: 0 }; }
   if (A.done) A = { step: 0, data: blank(), startedAt: Date.now(), maxStep: 0 };
+  // Came from the recruiting flyer's QR code: pre-pick "Flyer or poster" (they can still change it)
+  try { if (new URLSearchParams(location.search).get("src") === "flyer" && !filled(A.data.heard?.source)) set(A.data, "heard.source", "Flyer or poster"); } catch {}
   bind(); render();
 }

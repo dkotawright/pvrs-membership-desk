@@ -716,6 +716,57 @@ try {
     if (await page.locator(sel).isHidden()) fail(label + " didn't load"); else ok(label + " loads");
     await ctx.close();
   }
+  // ---- Nov 3 batch: Go to it, interview score, stalled / mentor / anniversary to-dos, flyer, year-end report
+  {
+    const day = 864e5, iso = t => localDay(t);
+    const ann = new Date(); ann.setFullYear(ann.getFullYear() - 1); ann.setDate(ann.getDate() + 3);
+    const { ctx, page } = await open(browser, { seed: [["applicants/a9", { name: "Riley Park", email: "riley@example.com", type: "Regular", location: "Potsdam", app: { received: "2025-09-01", complete: "yes" }, updatedAt: Date.now() }],
+      ["applicants/a9/private/main", { board: { result: "approved", date: iso(ann.getTime()) }, appr: { committee: "yes" } }]] }); await wait(page, 600);
+    await page.evaluate(() => { window.print = () => { window.__printed = (window.__printed || 0) + 1; window.__printHTML = document.querySelector("#print")?.innerHTML || ""; }; });
+    await pickApplicant(page, "Marcus Bell");   // next step: MVR completed, on the Checks tab
+    await page.locator('[data-act="nextgo"]').click(); await wait(page, 600);
+    const onChecks = await page.locator('.tabdock [data-tab="checks"][aria-selected="true"]').count(), foc = await page.evaluate(() => document.activeElement?.dataset?.k || "");
+    if (!onChecks || foc !== "mvr.completed") fail(`Go to it: checks tab ${onChecks}, focus ${foc}`); else ok("Go to it opens the right tab and lands on the next step's field");
+    await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
+    for (const [k, v] of [["comm", "4"], ["motiv", "5"], ["avail", "3"]]) await page.locator(`[data-k="iv.score.${k}"] [data-v="${v}"]`).click();
+    await wait(page, 700);
+    const tot = (await page.locator("#ivScoreTotal").textContent()).trim(), sc = await page.evaluate(() => window.__mock.docs.get("applicants/a2").iv?.score);
+    if (!/^4\.0 \/ 5 \(3 of 5 rated\)$/.test(tot) || String(sc?.comm) !== "4") fail(`interview score: ${tot} ${JSON.stringify(sc)}`); else ok("interview scores save and show their average");
+    // Georgia untouched for 20 days → stalled to-do; Riley approved a year ago → mentor + anniversary to-dos
+    await page.evaluate(d => { const m = window.__mock.docs, a = m.get("applicants/a1"), p = m.get("applicants/a1/private/main"); a.updatedAt = Date.now() - 20 * d; p.secUpdatedAt = Date.now() - 20 * d; window.__mock.emit(); }, day);
+    await page.locator("#overviewBtn").click(); await wait(page, 500);
+    const cmdAll = page.locator('[data-cmd="todoall"]'); if (await cmdAll.count()) { await cmdAll.click(); await wait(page, 300); }
+    const td = (await page.locator(".todoitem").allTextContents()).map(t => t.replace(/\s+/g, " "));
+    const has = re => td.some(t => re.test(t));
+    if (!has(/No movement in 20 days.*Georgia Thurmond/)) fail("no stalled to-do: " + JSON.stringify(td)); else ok("To do flags applicants with no movement in 14+ days");
+    if (!has(/Pair Riley with a mentor/)) fail("no mentor to-do: " + JSON.stringify(td)); else ok("To do asks to pair new members with a mentor");
+    if (!has(/Riley's 1-year anniversary.*in 3 days/)) fail("no anniversary: " + JSON.stringify(td)); else ok("To do shows membership anniversaries coming up");
+    await page.locator('[data-cmd="flyer"]').click(); await wait(page, 600);
+    const fl = await page.evaluate(() => window.__printHTML || "");
+    if (!/Join Potsdam's volunteer EMS/.test(fl) || !/<svg[^>]*aria-label="QR code"/.test(fl)) fail("flyer: " + fl.slice(0, 120)); else ok("Recruiting flyer prints with a QR code");
+    await page.locator('[data-cmd="yearreport"]').click(); await wait(page, 400);
+    const yr = await page.evaluate(() => window.__printHTML || "");
+    if (!new RegExp(`${new Date().getFullYear()} membership report`).test(yr) || !/How far applicants got/.test(yr)) fail("year report: " + yr.slice(0, 120)); else ok("Year-end report prints the year's numbers and funnel");
+    await ctx.close();
+  }
+  // ---- applicant portal: "Step 2 of 3" tracker and the interview-tomorrow reminder
+  {
+    const soon = Date.now() + 20 * 36e5;
+    const { ctx, page } = await open(browser, { user: { email: "riley@example.com", displayName: "Riley" }, seed: [["portal/p9", { email: "riley@example.com", name: "Riley Park", firstName: "Riley", type: "Regular", docs: [], refs: [], bookingOpen: true,
+      steps: [{ label: "Application", state: "done" }, { label: "References", state: "now" }, { label: "Interview", state: "todo" }], interview: { slotId: "s9", start: soon, duration: 30, location: "PVRS building" } }], ["portalEmails/riley@example.com", { id: "p9" }]] });
+    await wait(page, 800);
+    const tk = (await page.locator(".tracker").textContent().catch(() => "")).replace(/\s+/g, " "), iv = (await page.locator(".ivsoon").textContent().catch(() => "")).replace(/\s+/g, " ");
+    if (!/Step 2 of 3: References/.test(tk) || !/33%/.test(tk)) fail("portal tracker: " + tk); else ok("the portal shows a Step X of Y progress bar");
+    if (!/Your interview is (today|tomorrow) at/.test(iv) || !/Add to calendar/.test(iv)) fail("interview reminder: " + iv); else ok("the portal reminds applicants the day before their interview");
+    await ctx.close();
+  }
+  // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
+  {
+    const { ctx, page } = await open(browser, { url: "/apply?src=flyer", user: null }); await wait(page, 600);
+    const v = await page.locator('[data-p="heard.source"]').inputValue().catch(() => "");
+    if (v !== "Flyer or poster") fail(`?src=flyer didn't pre-pick: "${v}"`); else ok("scanning the flyer pre-picks Flyer or poster on the application");
+    await ctx.close();
+  }
 } catch (e) { errors.push("[harness] " + (e.stack || e.message)); }
 await browser.close();
 console.log(notes.join("\n"));
