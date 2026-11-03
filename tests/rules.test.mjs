@@ -120,6 +120,38 @@ console.log("Reference items are claimed once, even with several desks open");
   }
 }
 
+console.log("Team messaging");
+await env.withSecurityRulesDisabled(async c => { const db = c.firestore();
+  await setDoc(doc(db, "channels/ch1"), { name: "interview-team", color: "int", members: ["dkota@pvrs.org", "admin@pvrs.org"], names: {}, createdAt: 1, createdBy: "dkota@pvrs.org", updatedAt: 1 });
+  await setDoc(doc(db, "channels/ch1/posts/p1"), { text: "hi", by: "admin@pvrs.org", name: "Casey", at: 1 });
+  await setDoc(doc(db, "portal/a1/messages/m1"), { text: "question", from: "applicant", by: "app@example.com", name: "Test", at: 1 });
+});
+const post = (by, x = {}) => ({ text: "hello", by, name: "X", at: now(), ...x });
+const chMsg = (by, x = {}) => ({ text: "reply", from: "staff", by, name: "X", at: now(), ...x });
+await t("only the owner creates channels", setDoc(doc(admin, "channels/ch2"), { name: "x", members: ["admin@pvrs.org"] }), false);
+await t("the owner creates a channel", setDoc(doc(owner, "channels/ch3"), { name: "board", color: "appr", members: ["dkota@pvrs.org", "member@pvrs.org"], names: {}, createdAt: now(), createdBy: "dkota@pvrs.org", updatedAt: now() }), true);
+await t("a channel member lists their channels", getDocs(query(collection(admin, "channels"), where("members", "array-contains", "admin@pvrs.org"))), true);
+await t("a member can't list every channel", getDocs(collection(member, "channels")), false);
+await t("a channel member reads its posts", getDocs(collection(admin, "channels/ch1/posts")), true);
+await t("someone not in the channel can't read its posts", getDocs(collection(member, "channels/ch1/posts")), false);
+await t("an applicant can't read squad channels", getDocs(collection(applicant, "channels/ch1/posts")), false);
+await t("a channel member posts as themselves", addDoc(collection(admin, "channels/ch1/posts"), post("admin@pvrs.org")), true);
+await t("nobody posts as someone else", addDoc(collection(admin, "channels/ch1/posts"), post("dkota@pvrs.org")), false);
+await t("someone not in the channel can't post", addDoc(collection(member, "channels/ch1/posts"), post("member@pvrs.org")), false);
+await t("a member can't add themselves to a channel", updateDoc(doc(member, "channels/ch1"), { members: ["dkota@pvrs.org", "admin@pvrs.org", "member@pvrs.org"] }), false);
+await t("an admin not in the conversation can't read applicant messages", getDocs(collection(admin, "portal/a1/messages")), false);
+await t("admins can't load every conversation at once", getDocs(collectionGroup(admin, "messages")), false);
+await t("the owner can", getDocs(collectionGroup(owner, "messages")), true);
+await t("only the owner adds people to a conversation", setDoc(doc(admin, "convos/a1"), { members: ["admin@pvrs.org"], names: {}, updatedAt: now() }), false);
+await t("the owner adds an admin to a conversation", setDoc(doc(owner, "convos/a1"), { members: ["admin@pvrs.org"], names: {}, updatedAt: now() }), true);
+await t("a conversation member reads it", getDocs(collection(admin, "portal/a1/messages")), true);
+await t("a conversation member replies as staff", addDoc(collection(admin, "portal/a1/messages"), chMsg("admin@pvrs.org")), true);
+await t("someone not in it can't reply", addDoc(collection(member, "portal/a1/messages"), chMsg("member@pvrs.org")), false);
+await t("an applicant can't write as staff", addDoc(collection(applicant, "portal/a1/messages"), chMsg("app@example.com")), false);
+await t("you keep your own read marks", setDoc(doc(admin, "chatReads/admin@pvrs.org"), { "c:ch1": now() }), true);
+await t("not someone else's", setDoc(doc(admin, "chatReads/dkota@pvrs.org"), { "c:ch1": now() }), false);
+await t("applicants have no read marks", setDoc(doc(applicant, "chatReads/app@example.com"), { x: 1 }), false);
+
 // Storage rules look up portal/{id} in Firestore. firebase-tools sends that emulator-to-emulator call through
 // HTTPS_PROXY and ignores NO_PROXY, so behind a proxy (e.g. a cloud sandbox) the lookup fails and the upload test
 // below fails too. Run without a proxy (a Mac, GitHub Actions) or let localhost bypass it.

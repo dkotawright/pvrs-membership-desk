@@ -98,6 +98,15 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## Team messaging (Nov 3, evening; Dkota picked from mockups)
+- Messages is a full screen in #detail (`openChat`/`paintChat`/`closeChat`, `S.chatOn`, `.app.chatopen` on phones; `C` state in desk.js). Sidebar #msgsBtn (now shown to ALL staff), phone mnav Messages, ⌘K, Overview "New messages" all open it. Links `/?chat=c:<cid>` or `a:<appId>` (`openFromLink`).
+- **Channels** `channels/{cid}` {name, color, members[], names{}, createdAt/By, updatedAt} + `channels/{cid}/posts` {text ≤4000, by, name, at}. Owner-only create/edit/delete (`openChannelEditor`); members see only channels they're in (array-contains query; rule checks `resource.data.members`).
+- **Applicant conversations** stay in `portal/{id}/messages`. `convos/{appId}` {members[], names{}} = squad members the owner added (`openConvoEditor`); they read + reply (rules `inConvo`). Applicants are never in groups with each other (Dkota's rule). Collection-group messages read is now OWNER ONLY (admins used to read all; now only conversations they're added to). Portal shows staff replies as "<first name> · PVRS Membership".
+- Unread per person: `chatReads/{email}` {key: ms} (own doc only). Owner's old `readAt` still counts until a marker exists.
+- Push (functions/push.js): `channelPost` (members minus author, "X posted in #name", no text), `applicantMessage` (owner + convo members, staff replies skip the author). `send({to, skip, chat})`.
+- Not built yet (Dkota OK'd later): reactions, attachments, typing, pinned notes, online dots.
+- Tests: 204 browser checks, 15 push checks, 77 rules tests (all pass on a Mac; Java can be fetched from Adoptium into the scratchpad when ~/.local/jdk21 is missing).
+
 ## Deploy fixes (Nov 3, later)
 - Dkota granted **Service Account User** to github-deploy on the appspot account: the ActAs error is gone.
 - `notifyPaperwork` (functions/index.js) switched OFF (`PAPERWORK_EMAIL_ON = false`): the CLI refused to deploy any function while the unset SMTP_PASSWORD secret was declared. Dkota then also granted Service Account User on the **compute** default account (1066878367633-compute@…); first fully green deploy. Slack was dropped for desk push notifications (see Oct 31 batch → Push notifications). Old PR #5 (Slack) is obsolete.

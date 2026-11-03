@@ -495,7 +495,7 @@ function statsHover(e){
 
 /* ---------- overview (nothing selected) ---------- */
 function renderOverview(){
-  const D = $("#detail"); if (!D || S.sel) return;
+  const D = $("#detail"); if (!D || S.sel || S.chatOn) return;
   $("#app").classList.remove("open");
   $("#overviewBtn").classList.add("on");
   const keepScroll = D.querySelector(".ov")?.scrollTop || 0;
@@ -519,7 +519,7 @@ function renderOverview(){
       <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
     <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
     ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
-      ${S.admin && unreadTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open inbox</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => m.from === "applicant" && !m.readAt && S.apps.has(m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
+      ${unreadChatTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open messages</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => S.apps.has(m.appId) && unreadIn("a:" + m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
         return `<button class="oitem" type="button" data-openmsg="${esc(id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name)}</b><small>${esc(last.text.slice(0, 80))}</small></span><span class="when"><span class="newdot"></span>${esc(ago(last.at))}</span></button>`; }).join("")}</div></section>` : ""}
       ${S.owner && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="settings">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}</div>
       <div class="ovcol ovside">${comingUp}${activityCard()}${statsCard()}</div></div>`
@@ -616,8 +616,8 @@ function renderDetail(){
 function paintDetail(){
   const D = $("#detail"), a = S.apps.get(S.sel);
   $("#app").classList.toggle("open", !!a);
-  $("#overviewBtn").classList.toggle("on", !a);
-  if (!a) return renderOverview();
+  $("#overviewBtn").classList.toggle("on", !a && !S.chatOn);
+  if (!a) return S.chatOn ? paintChat() : renderOverview();
   const tabs = S.admin ? TABS_ADMIN : TABS_MEMBER;
   if (S.tab === "screen" || S.tab === "refs") S.tab = "checks";   // the two tabs merged into Checks
   if (!tabs.some(t => t[0] === S.tab)) S.tab = "app";
@@ -1086,7 +1086,7 @@ function useQuickReply(i){
 const replyRowHTML = (r = { title: "", text: "" }) => `<div class="row stack qredit"><div style="display:flex;gap:8px;align-items:center"><input type="text" class="qrTitle" maxlength="40" placeholder="Button label" value="${esc(r.title)}"><button class="copy" type="button" data-qrrm>Remove</button></div>
   <textarea class="qrText" rows="2" maxlength="2000" placeholder="Reply text. {first} becomes their first name.">${esc(r.text)}</textarea></div>`;
 async function sendReply(){
-  if (!S.canEdit) return ownerOnlyToast();
+  if (!canReplyApp(S.sel)) return toast("Only the people in this conversation can reply. The membership coordinator can add you.");
   const a = S.apps.get(S.sel), ta = $("#replyText"); if (!a || !ta) return;
   const text = ta.value.trim(); if (!text) return ta.focus();
   if (text.length > 2000) return toast("Replies can be up to 2,000 characters.");
@@ -1100,9 +1100,9 @@ async function sendReply(){
   } catch (e) { console.error(e); toast("Couldn't send the reply. Try again."); }
 }
 function updateMsgBadges(){
-  const n = unreadTotal(), b = $("#msgsBtn"); if (!b) return;
+  const n = unreadChatTotal(), b = $("#msgsBtn"); if (!b) return;
   let badge = b.querySelector(".navbadge"); if (!badge) { badge = document.createElement("b"); badge.className = "navbadge"; b.appendChild(badge); }
-  badge.textContent = n || ""; badge.hidden = !n; b.title = n ? `Messages · ${n} unread` : "Messages from applicants";
+  badge.textContent = n || ""; badge.hidden = !n; b.title = n ? `Messages · ${n} unread` : "Messages";
   const mb = $("#mnav [data-m=msgs] .navbadge"); if (mb) { mb.textContent = n || ""; mb.hidden = !n; }
   const tb = document.querySelector('.tabdock [data-tab="msgs"]'); if (tb && S.sel) tb.classList.toggle("unread", unreadOf(S.sel) > 0);
 }
@@ -1531,7 +1531,7 @@ function openPalette(){
     { label: "Recruiting flyer (print)", show: S.admin, words: "flyer poster qr recruit print", run: go(printFlyer) },
     { label: "Year-end report (print)", show: S.admin, words: "year end annual report stats print", run: go(printYearReport) },
     { label: "Interview times", show: S.canEdit, words: "interview times slots schedule calendar", run: go(openSlots) },
-    { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(openInbox) },
+    { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(() => openChat()) },
     { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
     { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
     { label: "Notifications", show: S.admin, words: "notifications alerts push bell phone", run: go(openNotifications) },
@@ -1634,12 +1634,13 @@ function ivGo(d){
 function paintMnav(){
   const m = $("#mnav"); if (!m) return;
   m.querySelector('[data-m="msgs"]').hidden = $("#msgsBtn").hidden;
-  m.querySelectorAll("[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === (S.mOv ? "ov" : "list")));
+  m.querySelectorAll("[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === (S.chatOn ? "msgs" : S.mOv ? "ov" : "list")));
   $("#app").classList.toggle("ovopen", !!S.mOv && !S.sel);
 }
 function mnavGo(k){
   if (k === "new") return openNew();
-  if (k === "msgs") return openInbox();
+  if (k === "msgs") return openChat();
+  if (S.chatOn) closeChat();
   if (k === "more") return openMore();
   S.mOv = k === "ov";
   if (S.sel) deselect(); else renderDetail();
@@ -1769,7 +1770,7 @@ function bindEvents(){
   document.addEventListener("pointerdown", e => { if (R.classList.contains("peek") && !e.target.closest(".roster, #chips, #chipsMini, .stg, [data-filter]")) R.classList.remove("peek"); });
   $(".rhandle").addEventListener("mouseenter", () => R.classList.remove("nohover"));
   const sortSel = $("#sort"); sortSel.value = S.sort; sortSel.addEventListener("change", e => { S.sort = e.target.value; prefs.set("sort", S.sort); renderList(); });
-  $("#overviewBtn").addEventListener("click", () => { if (S.sel) deselect(); else { S.filter = "all"; renderList(); } });
+  $("#overviewBtn").addEventListener("click", () => { if (S.chatOn) { closeChat(); renderDetail(); return; } if (S.sel) deselect(); else { S.filter = "all"; renderList(); } });
   $("#mnav").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) mnavGo(b.dataset.m); });
   $("#detail").addEventListener("pointerover", statsHover); $("#detail").addEventListener("pointerleave", () => { const t = $("#mtip"); if (t) t.hidden = true; });
   $("#kbdBtn").addEventListener("click", openShortcuts);
@@ -1796,8 +1797,8 @@ function bindEvents(){
       if (k === "invite") return inviteToPortal(id);
       if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
       return; }
-    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openInbox(); return; }
-    const om = t.closest("[data-openmsg]"); if (om) { select(om.dataset.openmsg); switchTab("msgs"); return; }
+    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openChat(); return; }
+    const om = t.closest("[data-openmsg]"); if (om) return openChat("a:" + om.dataset.openmsg);
     const qr = t.closest("[data-qr]"); if (qr) return useQuickReply(+qr.dataset.qr);
     const air = t.closest("[data-aireply]"); if (air) return aiDraftReply(air);
     const aib = t.closest("[data-aibrief]"); if (aib) return aiMakeBrief(aib);
@@ -1882,11 +1883,13 @@ function bindEvents(){
   $("#newBtn").addEventListener("click", openNew);
   $("#boardBtn").addEventListener("click", () => openBoardMtg());
   $("#pwBtn").addEventListener("click", openPassword);
-  $("#msgsBtn").addEventListener("click", openInbox);
+  $("#msgsBtn").addEventListener("click", () => openChat());
+  bindChat();
 
 }
 function select(id){
   if (!S.apps.has(id)) return;
+  if (S.chatOn) closeChat();
   flushAll(); const same = S.sel === id; S.sel = id;
   if (!same) { watchFiles(id); watchHistory(id); watchRecords(id); }
   renderList(); renderDetail();
@@ -2539,10 +2542,284 @@ function briefHTML(b){
 
 // Tapping a notification opens the desk at /?open=<applicant id> (functions/push.js): select that file once, then tidy the address.
 function openFromLink(){
-  let id = ""; try { id = new URLSearchParams(location.search).get("open") || ""; } catch {}
+  let id = "", chat = ""; try { const u = new URLSearchParams(location.search); id = u.get("open") || ""; chat = u.get("chat") || ""; } catch {}
+  if (chat) { history.replaceState(null, "", location.pathname); return openChat(chat); }
   if (!id) return;
   history.replaceState(null, "", location.pathname);
   if (S.apps.has(id)) select(id);
+}
+
+/* ---------- team messaging: squad channels + applicant conversations (one Messages screen) ---------- */
+// channels/{cid} {name, color, members[], names{}} + channels/{cid}/posts: squad-only group chats the owner creates.
+// Applicant conversations stay in portal/{id}/messages; convos/{id}.members = squad members the owner added (they can read and reply).
+// chatReads/{me} = {"c:<cid>"|"a:<appId>": ms} drives unread badges per person.
+const CH_COLORS = { int: "var(--g-int)", appr: "var(--g-appr)", onb: "var(--g-onb)", screen: "var(--g-screen)", act: "var(--g-act)" };
+const C = { channels: new Map(), posts: new Map(), convos: new Map(), reads: {}, postUnsubs: new Map(), msgUnsubs: new Map(), key: null, q: "", info: false, primed: new Set() };
+const chatKeyOf = (kind, id) => (kind === "c" ? "c:" : "a:") + id;
+const parseKey = k => k ? { kind: k[0], id: k.slice(2) } : null;
+const channelPosts = cid => (C.posts.get(cid) || []).slice().sort((x, y) => (x.at || 0) - (y.at || 0));
+const canSeeApp = id => S.owner || C.convos.has(id);
+const canReplyApp = id => S.owner || (C.convos.get(id)?.members || []).includes(S.me);
+function lastReadOf(key){ return C.reads[key] || 0; }
+function unreadIn(key){
+  const k = parseKey(key); if (!k) return 0;
+  if (k.kind === "c") { const r = lastReadOf(key); return channelPosts(k.id).filter(p => p.by !== S.me && (p.at || 0) > r).length; }
+  const t = threadOf(k.id), r = C.reads[key];
+  // Before someone has a read marker for this conversation, the old owner-only "readAt" still counts as read.
+  return t.filter(m => m.by !== S.me && (r ? (m.at || 0) > r : (m.from === "applicant" && !m.readAt && S.owner))).length;
+}
+let readTimer = null;
+function markChatRead(key){
+  if (!key || !S.me) return;
+  C.reads[key] = Date.now();
+  clearTimeout(readTimer);
+  readTimer = setTimeout(() => setDoc(doc(db, "chatReads", S.me), { [key]: C.reads[key] }, { merge: true }).catch(() => {}), 400);
+  const k = parseKey(key);
+  if (k.kind === "a" && S.owner) for (const m of threadOf(k.id)) if (m.from === "applicant" && !m.readAt && !markedRead.has(m.key)) {
+    markedRead.add(m.key); updateDoc(doc(db, "portal", k.id, "messages", m.id), { readAt: Date.now() }).catch(() => markedRead.delete(m.key));
+  }
+  updateMsgBadges();
+}
+function chatItems(){
+  const chans = [...C.channels.entries()].map(([id, c]) => { const ps = channelPosts(id), last = ps[ps.length - 1];
+    return { key: chatKeyOf("c", id), kind: "c", id, name: c.name, color: c.color, last, at: last ? last.at : (c.createdAt || 0) }; });
+  const ids = new Set([...S.msgs.map(m => m.appId), ...C.convos.keys()].filter(id => S.apps.has(id) && canSeeApp(id)));
+  const apps = [...ids].map(id => { const t = threadOf(id), last = t[t.length - 1];
+    return { key: chatKeyOf("a", id), kind: "a", id, name: S.apps.get(id).name || "Applicant", last, at: last ? last.at : 0 }; });
+  const byNew = (x, y) => (y.at || 0) - (x.at || 0);
+  return { chans: chans.sort(byNew), apps: apps.sort(byNew) };
+}
+function unreadChatTotal(){ const { chans, apps } = chatItems(); return [...chans, ...apps].reduce((n, it) => n + unreadIn(it.key), 0); }
+
+function watchChat(){
+  if (!S.me) return;
+  const chQ = S.owner ? collection(db, "channels") : query(collection(db, "channels"), where("members", "array-contains", S.me));
+  onSnapshot(chQ, snap => {
+    const next = new Map(snap.docs.map(d => [d.id, d.data()]));
+    for (const [id, un] of C.postUnsubs) if (!next.has(id)) { un(); C.postUnsubs.delete(id); C.posts.delete(id); }
+    for (const id of next.keys()) if (!C.postUnsubs.has(id)) C.postUnsubs.set(id, onSnapshot(collection(db, "channels", id, "posts"), ps => {
+      const before = new Set((C.posts.get(id) || []).map(p => p.id));
+      C.posts.set(id, ps.docs.map(d => ({ id: d.id, ...d.data() })));
+      const fresh = C.posts.get(id).filter(p => !before.has(p.id) && p.by !== S.me);
+      if (C.primed.has("c:" + id) && fresh.length && !(S.chatOn && C.key === "c:" + id)) toast(`${fresh[0].name || "New message"} in #${(C.channels.get(id) || {}).name || "channel"}`);
+      C.primed.add("c:" + id);
+      chatChanged();
+    }, () => {}));
+    C.channels = next; chatChanged();
+  }, e => console.error(e));
+  const cvQ = S.owner ? collection(db, "convos") : query(collection(db, "convos"), where("members", "array-contains", S.me));
+  onSnapshot(cvQ, snap => {
+    C.convos = new Map(snap.docs.map(d => [d.id, d.data()]));
+    // The owner already loads every conversation (watchMessages); everyone else loads just the ones they're in.
+    if (!S.owner) {
+      for (const [id, un] of C.msgUnsubs) if (!C.convos.has(id)) { un(); C.msgUnsubs.delete(id); S.msgs = S.msgs.filter(m => m.appId !== id); }
+      for (const id of C.convos.keys()) if (!C.msgUnsubs.has(id)) C.msgUnsubs.set(id, onSnapshot(collection(db, "portal", id, "messages"), ms => {
+        S.msgs = S.msgs.filter(m => m.appId !== id).concat(ms.docs.map(d => ({ id: d.id, key: d.ref.path, appId: id, ...d.data() })));
+        updateMsgBadges(); if (S.sel === id && S.tab === "msgs") renderMessages(); chatChanged();
+      }, () => {}));
+    }
+    chatChanged();
+  }, e => console.error(e));
+  onSnapshot(doc(db, "chatReads", S.me), d => { const mine = d.exists() ? d.data() : {}; for (const k in mine) if ((mine[k] || 0) > (C.reads[k] || 0)) C.reads[k] = mine[k]; chatChanged(); }, () => {});
+}
+const chatReady = key => { const k = parseKey(key); return k && (k.kind === "c" ? C.channels.has(k.id) : S.apps.has(k.id) && canSeeApp(k.id)); };
+function chatChanged(){
+  if (C.pendingKey && chatReady(C.pendingKey)) { C.key = C.pendingKey; C.pendingKey = null; if (S.chatOn) $("#detail")._chatKey = undefined; else return openChat(C.key); }
+  updateMsgBadges(); if (S.chatOn) paintChat();
+}
+
+// The screen. Lives in #detail like the Overview; the composer is built once per conversation so typing isn't interrupted.
+function openChat(key){
+  if (key) { if (chatReady(key)) { C.key = key; C.pendingKey = null; } else C.pendingKey = key; }
+  if (S.sel) { if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); }
+  S.chatOn = true; S.mOv = false;
+  if (!C.key && !matchMedia("(max-width:860px)").matches) { const { chans, apps } = chatItems(); C.key = (chans[0] || apps[0] || {}).key || null; }
+  const D = $("#detail"); D._chatKey = undefined; D.innerHTML = "";
+  $("#app").classList.remove("open"); $("#app").classList.add("chatopen"); $("#overviewBtn").classList.remove("on"); $("#msgsBtn").classList.add("on");
+  paintChat(); renderDetail();
+}
+function closeChat(){
+  if (!S.chatOn) return;
+  S.chatOn = false; $("#app").classList.remove("chatopen"); $("#msgsBtn").classList.remove("on");
+  const D = $("#detail"); D._chatKey = undefined; D.innerHTML = "";
+}
+const chIcon = (it, big) => it.kind === "c"
+  ? `<span class="cv-ic${big ? " big" : ""}" style="background:${CH_COLORS[it.color] || CH_COLORS.int}" aria-hidden="true">#</span>`
+  : `<span class="av${big ? " big" : ""}" style="--stage-c:${stageVar(view(S.apps.get(it.id)).stage)}" aria-hidden="true">${esc(initials(it.name))}</span>`;
+function chatListHTML(){
+  const { chans, apps } = chatItems(), q = C.q.trim().toLowerCase();
+  const hit = it => !q || it.name.toLowerCase().includes(q);
+  // Owner's search also offers invited applicants with no messages yet, so a conversation can be started.
+  const extra = S.owner && q ? [...S.apps.values()].filter(a => get(a, "portal.invited") && !apps.some(x => x.id === a._id) && (a.name || "").toLowerCase().includes(q)).slice(0, 5)
+    .map(a => ({ key: chatKeyOf("a", a._id), kind: "a", id: a._id, name: a.name || "Applicant", last: null })) : [];
+  const row = it => { const n = unreadIn(it.key), st = it.kind === "a" ? STAGES[view(S.apps.get(it.id)).stage] : null;
+    const prev = it.last ? (it.last.by === S.me ? "You: " : it.kind === "c" || it.last.from === "staff" ? (first(it.last.name) || "Squad") + ": " : "") + it.last.text : it.kind === "c" ? "No messages yet" : "Start the conversation";
+    return `<button class="cv-row${C.key === it.key ? " on" : ""}" type="button" data-chat="${esc(it.key)}">${chIcon(it)}
+      <span class="cv-rt"><b>${it.kind === "c" ? "#" : ""}${esc(it.name)}${st ? ` <span class="cv-tag">${esc(st.label)}</span>` : ""}</b><small>${esc(prev.slice(0, 80))}</small></span>
+      <span class="cv-meta">${it.last ? esc(ago(it.last.at)) : ""}${n ? `<span class="cv-un">${n}</span>` : ""}</span></button>`; };
+  const cs = chans.filter(hit), as = [...apps.filter(hit), ...extra];
+  return `${cs.length || S.owner ? `<div class="cv-grp">Channels</div>${cs.map(row).join("") || `<p class="cv-none">${S.owner ? "No channels yet. Click <b>+ Channel</b> to make one." : ""}</p>`}` : ""}
+    ${as.length || S.owner ? `<div class="cv-grp">Applicants</div>${as.map(row).join("") || `<p class="cv-none">${q ? "No matches." : "Applicant conversations show up here."}</p>`}` : ""}
+    ${!cs.length && !as.length && !S.owner ? `<p class="cv-none">You're not in any channels or conversations yet. The membership coordinator adds you.</p>` : ""}`;
+}
+const dayLabel = ms => { const d = new Date(ms), t = new Date(); const y = new Date(t); y.setDate(t.getDate() - 1);
+  return d.toDateString() === t.toDateString() ? "Today" : d.toDateString() === y.toDateString() ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }); };
+function chatThreadHTML(k){
+  const items = k.kind === "c" ? channelPosts(k.id).map(p => ({ ...p, mine: p.by === S.me }))
+    : threadOf(k.id).map(m => ({ ...m, mine: m.from === "staff", name: m.from === "staff" ? (m.by === S.me ? "" : m.name || "PVRS") : (S.apps.get(k.id)?.name || m.name || "Applicant") }));
+  if (!items.length) return `<div class="cv-empty">${k.kind === "c" ? "No messages yet. Say hi 👋" : "No messages yet. Anything you send shows up in their applicant portal."}</div>`;
+  let day = "";
+  return items.map(m => { const dl = dayLabel(m.at || 0), sep = dl !== day ? `<div class="cv-day">${esc(dl)}</div>` : ""; day = dl;
+    const me = m.by === S.me, who = me ? "You" : (m.name || personName(m.by) || "Squad");
+    return `${sep}<div class="cv-m${m.mine ? " mine" : ""}"><span class="av sm" style="--stage-c:${m.from === "applicant" ? stageVar(view(S.apps.get(k.id)).stage) : personColor(m.by)}" aria-hidden="true">${esc(initials(me ? (S.name || S.me) : who))}</span>
+      <div><div class="cv-who">${me ? "" : `<b>${esc(who)}</b> · `}${esc(slotTime(m.at || 0))}${me ? " · You" : ""}${m.from === "staff" && m.seenAt ? " · Seen" : ""}</div><div class="cv-bub">${esc(m.text)}</div></div></div>`; }).join("");
+}
+// Each squad member gets their own avatar colour (same everywhere).
+const PERSON_COLORS = ["#2F5BE0", "#6E48E0", "#F07A1A", "#0B9A8C", "#1F9A45", "#E8432B", "#C2338A"];
+const personColor = e => { let h = 0; for (const ch of String(e || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return PERSON_COLORS[h % PERSON_COLORS.length]; };
+const memberName = (e, names) => e === S.me ? (S.name || "You") : (names || {})[e] || (S.staff.get(e)?.name) || e.split("@")[0];
+function chatMembers(k){
+  if (k.kind === "c") { const c = C.channels.get(k.id) || {}; return [...new Set([OWNER_EMAIL, ...(c.members || [])])].map(e => ({ email: e, name: memberName(e, c.names) })); }
+  const cv = C.convos.get(k.id) || {};
+  return [...new Set([OWNER_EMAIL, ...(cv.members || [])])].map(e => ({ email: e, name: memberName(e, cv.names) }));
+}
+function chatInfoHTML(k){
+  const mem = chatMembers(k), roleOf = e => e === OWNER_EMAIL ? "Owner" : !S.staff.has(e) ? "Squad" : S.staff.get(e).role === "admin" ? "Admin" : "Member";
+  const row = m => `<div class="cv-mem"><span class="av sm" style="--stage-c:${personColor(m.email)}" aria-hidden="true">${esc(initials(m.name))}</span><span><b>${esc(m.name)}</b><small>${esc(roleOf(m.email))}</small></span></div>`;
+  if (k.kind === "c") return `<h3>Members · ${mem.length}</h3>${mem.map(row).join("")}
+    ${S.owner ? `<button class="btn small" type="button" data-chedit="${esc(k.id)}">Edit channel</button>` : ""}
+    <p class="cv-note">Only the people listed here can see this channel. Applicants never see squad channels.</p>`;
+  const a = S.apps.get(k.id) || {};
+  return `<h3>In this conversation</h3>
+    <div class="cv-mem"><span class="av sm" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span><b>${esc(a.name || "Applicant")}</b><small>Applicant</small></span></div>
+    ${mem.map(row).join("")}
+    ${S.owner ? `<button class="btn small" type="button" data-cvedit="${esc(k.id)}">+ Add squad member</button>` : ""}
+    ${S.admin ? `<button class="btn small" type="button" data-cvfile="${esc(k.id)}">Open file</button>` : ""}
+    <p class="cv-note">${esc(first(a.name) || "The applicant")} sees replies in the applicant portal as <b>PVRS Membership</b> with the sender's first name, and never sees other applicants or squad channels.${get(a, "portal.invited") ? "" : ` <b>Not invited to the portal yet</b>, so they can't see messages.`}</p>`;
+}
+function paintChat(){
+  const D = $("#detail"); if (!D || !S.chatOn) return;
+  const k = parseKey(C.key), narrow = matchMedia("(max-width:860px)").matches;
+  if (k && ((k.kind === "c" && !C.channels.has(k.id)) || (k.kind === "a" && !S.apps.has(k.id)))) C.key = null;
+  const kk = parseKey(C.key);
+  if (D._chatKey !== C.key || !D.querySelector(".cv")) {
+    const it = kk ? (kk.kind === "c" ? { kind: "c", id: kk.id, name: C.channels.get(kk.id).name, color: C.channels.get(kk.id).color } : { kind: "a", id: kk.id, name: S.apps.get(kk.id).name || "Applicant" }) : null;
+    const canSend = kk && (kk.kind === "c" || canReplyApp(kk.id));
+    D.innerHTML = `<div class="cv${kk ? " has" : ""}${C.info ? " info" : ""}">
+      <section class="cv-list glass" aria-label="Conversations"><div class="cv-lh"><h1>Messages</h1>${S.owner ? `<button class="btn small primary" type="button" data-chnew>+ Channel</button>` : ""}</div>
+        <label class="search cv-search"><input id="cvQ" type="search" placeholder="${S.owner ? "Search, or find an applicant" : "Search"}" autocomplete="off" value="${esc(C.q)}" aria-label="Search conversations"></label>
+        <div class="cv-rows" id="cvRows"></div></section>
+      <section class="cv-thread glass" aria-label="Conversation">${it ? `<header class="cv-th"><button class="btn small cv-back" type="button" data-chback aria-label="Back to conversations">‹</button>${chIcon(it, true)}
+          <div class="cv-tt"><h2>${it.kind === "c" ? "#" : ""}${esc(it.name)}</h2><small id="cvSub"></small></div>
+          <button class="btn small cv-infob" type="button" data-chinfo aria-pressed="${C.info}">${it.kind === "c" ? "Members" : "People"}</button></header>
+        <div class="cv-msgs" id="cvMsgs" aria-live="polite"></div>
+        ${canSend ? `<div class="cv-compose">${it.kind === "a" && S.owner ? `<div class="chips cv-chips">${savedReplies().map((r, i) => `<button class="chip" type="button" data-qr="${i}">${esc(r.title)}</button>`).join("")}</div>` : ""}
+          <div class="cv-crow"><textarea id="cvText" rows="1" maxlength="${it.kind === "c" ? 4000 : 2000}" placeholder="${it.kind === "c" ? `Message #${esc(it.name)}` : `Reply to ${esc(first(it.name))}…`}" aria-label="Message"></textarea>
+          <button class="btn primary" type="button" data-chsend>Send</button></div><small class="cv-hint">Enter to send · Shift+Enter for a new line</small></div>`
+        : `<p class="cv-note cv-ro">You can read this conversation but not reply.</p>`}`
+      : `<div class="cv-empty big"><h3>Pick a conversation</h3><p>${S.owner ? "Or make a channel for a team: interviewers, the board, orientation…" : "Your channels and the applicant conversations you're added to show up here."}</p></div>`}</section>
+      ${kk ? `<aside class="cv-info glass" id="cvInfo" aria-label="People"></aside>` : ""}</div>`;
+    D._chatKey = C.key;
+    const q = $("#cvQ"); q.addEventListener("input", () => { C.q = q.value; $("#cvRows").innerHTML = chatListHTML(); });
+    const ta = $("#cvText");
+    if (ta) { ta.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendChat(); } });
+      ta.addEventListener("input", () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 160) + "px"; });
+      if (!narrow) ta.focus(); }
+  }
+  $("#cvRows").innerHTML = chatListHTML();
+  if (kk) {
+    const box = $("#cvMsgs"), atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 80 || !box.childElementCount;
+    box.innerHTML = chatThreadHTML(kk); if (atEnd) box.scrollTop = box.scrollHeight;
+    $("#cvInfo").innerHTML = chatInfoHTML(kk);
+    const n = chatMembers(kk).length;
+    $("#cvSub").textContent = kk.kind === "c" ? `${n} member${n === 1 ? "" : "s"} · squad only` : `Applicant · ${STAGES[view(S.apps.get(kk.id)).stage]?.label || ""} · sees this in their portal`;
+    if (document.visibilityState === "visible" && unreadIn(C.key)) markChatRead(C.key);
+  }
+}
+async function sendChat(){
+  const k = parseKey(C.key), ta = $("#cvText"); if (!k || !ta) return;
+  const text = ta.value.trim(); if (!text) return ta.focus();
+  const btn = $("[data-chsend]"); if (btn) btn.disabled = true;
+  try {
+    if (k.kind === "c") await addDoc(collection(db, "channels", k.id, "posts"), { text: text.slice(0, 4000), by: S.me, name: S.name || S.me.split("@")[0], at: Date.now() });
+    else { if (!canReplyApp(k.id)) return toast("You can read this conversation but not reply.");
+      if (text.length > 2000) return toast("Replies to applicants can be up to 2,000 characters.");
+      await addDoc(collection(db, "portal", k.id, "messages"), { text, from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() }); }
+    ta.value = ""; ta.style.height = ""; markChatRead(C.key); ta.focus();
+  } catch (e) { console.error(e); toast("Couldn't send. Try again."); }
+  finally { if (btn) btn.disabled = false; }
+}
+// Owner: make, rename, recolour or delete a channel and pick its members from the team.
+function openChannelEditor(cid){
+  if (!S.owner) return;
+  const c = cid ? C.channels.get(cid) : { name: "", color: "int", members: [] };
+  const team = [...S.staff.entries()].sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
+  const M = openModal(`<h3>${cid ? "Edit channel" : "New channel"}</h3>
+    <div class="field"><label for="chName">Name</label><input id="chName" maxlength="60" placeholder="interview-team" value="${esc(c.name || "")}"></div>
+    <div class="field"><label>Colour</label><div class="cv-colors">${Object.entries(CH_COLORS).map(([k, v]) => `<button type="button" class="cv-ic${(c.color || "int") === k ? " pick" : ""}" data-chcolor="${k}" style="background:${v}" aria-label="${k}" aria-pressed="${(c.color || "int") === k}">#</button>`).join("")}</div></div>
+    <div class="field"><label>Members</label><div class="ios cv-pick">${team.length ? team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"${(c.members || []).includes(e) ? " checked" : ""}><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${s.role === "admin" ? "Admin" : "Member"}</small></span></label>`).join("")
+      : `<div class="row"><span class="lbl" style="color:var(--fg2)">No team members yet. Approve them in Settings → Team first.</span></div>`}</div>
+      <p class="help">You're always in every channel.</p></div>
+    <div class="acts">${cid ? `<button class="btn danger" type="button" id="chDel">Delete channel</button>` : ""}<span style="flex:1"></span><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="chSave">${cid ? "Save" : "Create channel"}</button></div>`);
+  let color = c.color || "int";
+  $("#chName").focus();
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    const cb = e.target.closest("[data-chcolor]"); if (cb) { color = cb.dataset.chcolor; M.querySelectorAll("[data-chcolor]").forEach(b => { b.classList.toggle("pick", b === cb); b.setAttribute("aria-pressed", b === cb); }); return; }
+    const del = e.target.closest("#chDel");
+    if (del) { if (del.dataset.confirm !== "1") { del.dataset.confirm = "1"; del.textContent = "Delete channel and its messages?"; return; }
+      try { const ps = await getDocs(collection(db, "channels", cid, "posts")); const b = writeBatch(db); ps.docs.forEach(d => b.delete(d.ref)); b.delete(doc(db, "channels", cid)); await b.commit();
+        closeModal(); if (C.key === "c:" + cid) C.key = null; toast("Channel deleted"); paintChat(); } catch (err) { console.error(err); toast("Couldn't delete the channel."); }
+      return; }
+    if (e.target.closest("#chSave")) {
+      const name = $("#chName").value.trim().replace(/^#+/, "").slice(0, 60); if (!name) { toast("Give the channel a name."); return $("#chName").focus(); }
+      const members = [...M.querySelectorAll(".cv-pick input:checked")].map(i => i.value).filter(x => x !== OWNER_EMAIL);
+      const names = Object.fromEntries([[OWNER_EMAIL, S.name || "Owner"], ...members.map(m => [m, S.staff.get(m)?.name || m.split("@")[0]])]);
+      try {
+        const id = cid || doc(collection(db, "channels")).id;
+        await setDoc(doc(db, "channels", id), { name, color, members: [OWNER_EMAIL, ...members], names, createdAt: c.createdAt || Date.now(), createdBy: c.createdBy || S.me, updatedAt: Date.now() });
+        closeModal(); toast(cid ? "Channel saved" : `#${name} created`); C.key = "c:" + id; if (S.chatOn) { $("#detail")._chatKey = undefined; paintChat(); } else openChat(C.key);
+      } catch (err) { console.error(err); toast("Couldn't save the channel."); }
+    }
+  };
+}
+// Owner: choose which squad members can read and reply in an applicant's conversation.
+function openConvoEditor(appId){
+  if (!S.owner) return;
+  const a = S.apps.get(appId); if (!a) return;
+  const cur = C.convos.get(appId)?.members || [];
+  const team = [...S.staff.entries()].sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
+  const M = openModal(`<h3>People in ${esc(first(a.name) || "this")}'s conversation</h3><p class="help">They can read everything in it and reply. ${esc(first(a.name) || "The applicant")} sees their first name on replies.</p>
+    <div class="ios cv-pick">${team.length ? team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"${cur.includes(e) ? " checked" : ""}><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${s.role === "admin" ? "Admin" : "Member"}</small></span></label>`).join("")
+      : `<div class="row"><span class="lbl" style="color:var(--fg2)">No team members yet. Approve them in Settings → Team first.</span></div>`}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="cvSave">Save</button></div>`);
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    if (!e.target.closest("#cvSave")) return;
+    const members = [...M.querySelectorAll(".cv-pick input:checked")].map(i => i.value).filter(x => x !== OWNER_EMAIL);
+    try {
+      if (members.length) await setDoc(doc(db, "convos", appId), { members, names: Object.fromEntries(members.map(m => [m, S.staff.get(m)?.name || m.split("@")[0]])), updatedAt: Date.now() });
+      else await deleteDoc(doc(db, "convos", appId));
+      closeModal(); toast("Saved"); $("#detail")._chatKey = undefined; paintChat();
+    } catch (err) { console.error(err); toast("Couldn't save."); }
+  };
+}
+function bindChat(){
+  $("#detail").addEventListener("click", e => {
+    if (!S.chatOn) return;
+    const t = e.target;
+    const row = t.closest("[data-chat]"); if (row) { C.key = row.dataset.chat; paintChat(); return; }
+    if (t.closest("[data-chback]")) { C.key = null; paintChat(); return; }
+    if (t.closest("[data-chsend]")) return sendChat();
+    if (t.closest("[data-chnew]")) return openChannelEditor(null);
+    const ce = t.closest("[data-chedit]"); if (ce) return openChannelEditor(ce.dataset.chedit);
+    const cv = t.closest("[data-cvedit]"); if (cv) return openConvoEditor(cv.dataset.cvedit);
+    const cf = t.closest("[data-cvfile]"); if (cf) { closeChat(); select(cf.dataset.cvfile); switchTab("msgs"); return; }
+    if (t.closest("[data-chinfo]")) { C.info = !C.info; $(".cv")?.classList.toggle("info", C.info); t.closest("[data-chinfo]").setAttribute("aria-pressed", C.info); return; }
+    const qr = t.closest("[data-qr]"); if (qr && $("#cvText")) { e.stopPropagation(); const k = parseKey(C.key), a = S.apps.get(k?.id), r = savedReplies()[+qr.dataset.qr], ta = $("#cvText"); if (!r || !a) return;
+      const text = r.text.replace(/\{first\}/g, first(a.name)); ta.value = ta.value.trim() ? ta.value.trimEnd() + "\n\n" + text : text; ta.focus(); return; }
+  }, true);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.chatOn && C.key && unreadIn(C.key)) markChatRead(C.key); });
 }
 
 /* ---------- push notifications on this device (functions/push.js sends them) ---------- */
@@ -2646,6 +2923,7 @@ export function startDesk({ email, role, owner, name }){
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
   startIdleLock();
   startPushToasts();
+  watchChat(); $("#msgsBtn").hidden = false; paintMnav();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
 
   onSnapshot(collection(db, "applicants"), snap => {
@@ -2677,9 +2955,8 @@ export function startDesk({ email, role, owner, name }){
       reconcilePortalEmails();
     }, () => {});
     watchActivity();
-    watchMessages();
+    if (S.owner) watchMessages();
     if (S.owner) { watchSubmissions(); watchRefUpdates(); watchRefResponses(); }
-    $("#msgsBtn").hidden = false; paintMnav();
     if (S.owner) {
       let primed = false;
       onSnapshot(collection(db, "accessRequests"), snap => {

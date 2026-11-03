@@ -62,6 +62,16 @@ const last = () => sent[sent.length - 1];
   await P.accessRequest(ev({ name: "Casey New" }, { email: "casey@pvrs.org" }));
   check(/Casey New asked for access/.test(last().notification.body) && last().tokens.join() === "ownerTok", "access request");
 
+  // chat: channel posts go to members except the author; applicant messages to the owner + people added
+  docs.set("channels/c1", { name: "interview-team", members: ["dkota@pvrs.org", "admin@pvrs.org"] });
+  await P.channelPost(ev({ text: "secret plan", by: "admin@pvrs.org", name: "Casey" }, { cid: "c1", pid: "p1" }));
+  check(last().tokens.join() === "ownerTok" && /Casey posted in #interview-team/.test(last().notification.body) && /chat=c%3Ac1/.test(last().webpush.fcmOptions.link), "channel post: " + JSON.stringify(last()));
+  check(!JSON.stringify(last()).includes("secret plan"), "channel text leaked");
+  docs.set("convos/a1", { members: ["admin@pvrs.org"] });
+  await P.applicantMessage(ev({ from: "applicant", text: "hi", by: "jack@example.com" }, { id: "a1" }));
+  check(last().tokens.sort().join() === "adminTok,ownerTok" && /Jack Gradzewicz sent a message/.test(last().notification.body), "applicant message to convo: " + JSON.stringify(last()));
+  await P.applicantMessage(ev({ from: "staff", text: "hello", by: "dkota@pvrs.org", name: "Dkota" }, { id: "a1" }));
+  check(last().tokens.join() === "adminTok" && /Dkota replied to Jack/.test(last().notification.body), "staff reply skips the author: " + JSON.stringify(last()));
   console.log(errors.length ? "ERRORS:\n" + errors.join("\n") : `${n} notification checks, no errors`);
   process.exit(errors.length ? 1 : 0);
 })();
