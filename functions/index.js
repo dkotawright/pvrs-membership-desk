@@ -10,10 +10,14 @@ const PAPERWORK_EMAIL = "orientationpaperwork@pvrs.org";
 // The Google account that sends the notice. SMTP_PASSWORD is a Google app password for this account,
 // set once from Terminal with: firebase functions:secrets:set SMTP_PASSWORD
 const SENDER = PAPERWORK_EMAIL;
-const SMTP_PASSWORD = defineSecret("SMTP_PASSWORD");
+const PAPERWORK_EMAIL_ON = false;   // see the note above notifyPaperwork
 const SIGN_IN = "https://pvrs-membership.web.app/signin";
 
-exports.notifyPaperwork = onDocumentCreated({ document: "vault/{fileId}", secrets: [SMTP_PASSWORD], maxInstances: 2 }, async event => {
+// OFF (Nov 3, 2026): pvrs.org blocks Google app passwords, so SMTP_PASSWORD was never set, and the Firebase CLI refuses
+// to deploy ANY function from this file while a declared secret is missing (it blocked Med Control). To bring this back,
+// set the secret (firebase functions:secrets:set SMTP_PASSWORD) and set PAPERWORK_EMAIL_ON to true.
+const SMTP_PASSWORD = PAPERWORK_EMAIL_ON ? defineSecret("SMTP_PASSWORD") : null;
+if (PAPERWORK_EMAIL_ON) exports.notifyPaperwork = onDocumentCreated({ document: "vault/{fileId}", secrets: [SMTP_PASSWORD], maxInstances: 2 }, async event => {
   const d = event.data && event.data.data(); if (!d) return;
   const who = d.appName || "an applicant";
   const at = new Date(d.uploadedAt || Date.now()).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" });
