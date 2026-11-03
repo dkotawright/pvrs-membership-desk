@@ -540,7 +540,7 @@ function paintDetail(){
   const tabs = S.admin ? TABS_ADMIN : TABS_MEMBER;
   if (S.tab === "screen" || S.tab === "refs") S.tab = "checks";   // the two tabs merged into Checks
   if (!tabs.some(t => t[0] === S.tab)) S.tab = "app";
-  // The header sticks to the top of the scrolling file and the tab bar floats at the bottom; content scrolls under both.
+  // The header (name, progress, section tabs) sticks to the top of the scrolling file. On phones the tabs float at the bottom.
   D.innerHTML = `<div class="dbody" id="dbody"><div class="dhead">
       <div class="drow"><button class="btn small back" type="button" id="backBtn" aria-label="Back to roster">‹ Roster</button>
         <span class="av" id="dAv" aria-hidden="true"></span>
@@ -554,10 +554,10 @@ function paintDetail(){
           <button class="btn small hmore" type="button" data-act="actions" aria-haspopup="dialog"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.5" cy="8" r="1.4" fill="currentColor"/></svg>Actions</button>
         </div>` : ""}</div>
       ${S.admin?`<div class="prog" id="dProg"></div>`:""}
+      <nav class="tabdock" aria-label="Applicant file sections"><div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="dpanel" data-tab="${k}" aria-selected="${S.tab===k}" title="${l} (${i+1})"><span class="tl-long">${l}</span><span class="tl-short" aria-hidden="true">${TAB_SHORT[k] || l}</span></button>`).join("")}</div>
+      <span class="save" id="saveState" role="status"></span></nav>
     </div>
-    <div class="dinner" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${viewOnlyNote(S.tab)}${tabHTML(S.tab)}${signHTML(S.tab)}</div></div>
-    <nav class="tabdock" aria-label="Applicant file sections"><div class="tabs" role="tablist">${tabs.map(([k,l],i) => `<button type="button" role="tab" id="tab-${k}" aria-controls="dpanel" data-tab="${k}" aria-selected="${S.tab===k}" title="${l} (${i+1})"><span class="tl-long">${l}</span><span class="tl-short" aria-hidden="true">${TAB_SHORT[k] || l}</span></button>`).join("")}</div>
-      <span class="save" id="saveState" role="status"></span></nav>`;
+    <div class="dinner" id="dpanel" role="tabpanel" aria-labelledby="tab-${S.tab}">${viewOnlyNote(S.tab)}${tabHTML(S.tab)}${signHTML(S.tab)}</div></div>`;
   stackCols($("#dbody"));
   syncDetail();
 }
