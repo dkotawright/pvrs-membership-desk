@@ -1575,3 +1575,18 @@ body:has(.gate:not([hidden])){background:
 .apsteps li.cur span{background:linear-gradient(135deg,var(--coral-a),var(--coral-b))}
 @media (max-width:880px){ .welcome,.hero{padding:24px 22px 22px;border-radius:26px} }
 @media (prefers-reduced-transparency: reduce){ .gate .sheet,.applycard,.homecard{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--pane)} }
+/* funnel: how far this year's applicants get (Year at a glance) */
+.funnel{padding:6px 16px 4px}
+.funnel h4{display:flex;justify-content:space-between;align-items:baseline;margin:8px 0 8px;font-size:13px;font-weight:700;color:var(--fg)}
+.funnel h4 small{font-weight:500;color:var(--fg3);font-size:12px}
+.frow{display:grid;grid-template-columns:7.5em 1fr 2em 2.8em;align-items:center;gap:8px;font-size:12.5px;padding:3px 0}
+.frow .fl{color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frow .fbar{height:10px;border-radius:99px;background:color-mix(in srgb,var(--fill2) 70%,transparent);overflow:hidden}
+.frow .fbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#4F8BFF,#6E48E0)}
+.frow:nth-child(3) .fbar i{background:linear-gradient(90deg,#A07BFF,#6E48E0)}
+.frow:nth-child(4) .fbar i{background:linear-gradient(90deg,#FFB547,#F07A1A)}
+.frow:nth-child(5) .fbar i{background:linear-gradient(90deg,#2FD3BF,#0B9A8C)}
+.frow:nth-child(6) .fbar i{background:linear-gradient(90deg,#5BD67D,#1F9A45)}
+.frow b{text-align:right;font-variant-numeric:tabular-nums;color:var(--fg)}
+.frow small{text-align:right;color:var(--fg3);font-variant-numeric:tabular-nums}
+.flost{margin:6px 0 2px;font-size:12px;color:var(--fg3)}

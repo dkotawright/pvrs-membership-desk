@@ -398,15 +398,19 @@ function todoCard(){
 function statsData(){
   const now = new Date(), yr = now.getFullYear(), months = [];
   for (let k = 11; k >= 0; k--) { const d = new Date(yr, now.getMonth() - k, 1); months.push({ key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, d, n: 0 }); }
-  let apps = 0, joined = 0; const waits = [], heard = new Map();
+  let apps = 0, joined = 0, declined = 0, withdrew = 0; const waits = [], heard = new Map();
+  // Funnel: this year's applications, how many reached each step (milestone index in MILESTONES; -1 = fully active)
+  const funnel = [["Applied", 0], ["References in", 4], ["Interviewed", 6], ["Board approved", 8], ["Active member", -1]].map(([label, i]) => ({ label, i, n: 0 }));
   for (const a of S.apps.values()) {
     const rec = get(a, "app.received"), bd = get(a, "board.date"), ok = get(a, "board.result") === "approved";
+    if (rec && rec.startsWith(String(yr))) { const p = progress(a); for (const f of funnel) if (f.i === -1 ? p.cur === -1 : p.done[f.i]) f.n++;
+      if (isDeclined(a)) declined++; else if (a.status === "withdrawn") withdrew++; }
     if (rec) { const m = months.find(x => rec.startsWith(x.key)); if (m) m.n++; if (rec.startsWith(String(yr))) apps++; }
     const h = get(a, "app.heard"); if (h && rec && rec.startsWith(String(yr))) heard.set(h, (heard.get(h) || 0) + 1);
     if (ok && bd && bd.startsWith(String(yr))) joined++;
     if (ok && rec && bd && daysSince(bd) <= 365) waits.push(Math.max(0, Math.round((new Date(bd + "T12:00") - new Date(rec + "T12:00")) / 864e5)));
   }
-  return { heard: [...heard].sort((x, y) => y[1] - x[1]), months, apps, joined, avg: waits.length ? Math.round(waits.reduce((x, y) => x + y, 0) / waits.length) : null, yr };
+  return { funnel, declined, withdrew, heard: [...heard].sort((x, y) => y[1] - x[1]), months, apps, joined, avg: waits.length ? Math.round(waits.reduce((x, y) => x + y, 0) / waits.length) : null, yr };
 }
 function statsCard(){
   if (!S.admin) return "";
@@ -415,6 +419,7 @@ function statsCard(){
   return `<section class="ovcard stats"><h3>Year at a glance<small>${st.yr}</small></h3>
     <div class="kpis"><div class="kpi"><b>${st.apps}</b><span>Applications this year</span></div><div class="kpi"><b>${st.joined}</b><span>Approved by the board this year</span></div>
       <div class="kpi"><b>${st.avg == null ? "—" : st.avg}</b><span>${st.avg == null ? "Days to board (no approvals yet)" : "Average days from application to board"}</span></div></div>
+    ${funnelHTML(st)}
     <div class="mchart"><h4>Applications per month</h4>
       <div class="mbars" aria-hidden="true">${st.months.map(m => `<button type="button" class="bcol" tabindex="-1" data-mv="${m.n}" data-ml="${esc(mname(m.d, "long") + " " + m.d.getFullYear())}">${m.n && m.n === top ? `<span class="cap">${m.n}</span>` : ""}${m.n ? `<i style="height:${Math.max(4, Math.round(m.n / max * 100))}%"></i>` : ""}</button>`).join("")}</div>
       <div class="mlabels" aria-hidden="true">${st.months.map(m => `<span>${esc(mname(m.d, "short").slice(0, 3))}</span>`).join("")}</div>
@@ -422,6 +427,14 @@ function statsCard(){
         <tbody>${st.months.map(m => `<tr><th scope="row">${esc(mname(m.d, "long") + " " + m.d.getFullYear())}</th><td>${m.n}</td></tr>`).join("")}</tbody></table>
       <div class="mtip" id="mtip" hidden></div></div>
     ${st.heard.length ? `<div class="hchart"><h4>How applicants heard about us</h4>${st.heard.map(([k, n]) => `<div class="hrow"><span>${esc(k)}</span><i style="--w:${Math.round(n / st.heard[0][1] * 100)}%"></i><b>${n}</b></div>`).join("")}</div>` : ""}</section>`;
+}
+// How far this year's applicants got, as shrinking bars with the share of everyone who applied.
+function funnelHTML(st){
+  const top = st.funnel[0].n; if (!top) return "";
+  const lost = [st.declined && `${st.declined} declined`, st.withdrew && `${st.withdrew} withdrew`].filter(Boolean).join(" · ");
+  return `<div class="funnel"><h4>How far applicants get</h4>
+    ${st.funnel.map((f, i) => { const pc = Math.round(f.n / top * 100); return `<div class="frow" style="--i:${i}"><span class="fl">${esc(f.label)}</span><span class="fbar"><i style="width:${Math.max(f.n ? 6 : 0, pc)}%"></i></span><b>${f.n}</b><small>${i ? pc + "%" : ""}</small></div>`; }).join("")}
+    ${lost ? `<p class="flost">${esc(lost)}</p>` : ""}</div>`;
 }
 function statsHover(e){
   const col = e.target.closest?.(".bcol"), tip = $("#mtip");
@@ -1216,6 +1229,7 @@ function openSettings(){
     <div class="group"><h3><span>Emails</span></h3><div class="ios">
       <label class="row stack"><span class="lbl">Email signature<small>Printed at the end of every email</small></span><textarea id="sSig" rows="4" placeholder="Name, credentials">${esc(s.signature||"")}</textarea></label>
       <label class="row stack"><span class="lbl">Documents and questions go to</span><input type="text" id="sDocs" placeholder="${esc(CONTACT_EMAIL)}" value="${esc(s.docsEmail||"")}"></label>
+      <label class="row stack"><span class="lbl">Board emails<small>For "Email the board" in Board meeting mode; separate with commas</small></span><input type="text" id="sBoard" placeholder="president@pvrs.org, secretary@pvrs.org" value="${esc(s.boardEmails||"")}"></label>
       <label class="row stack"><span class="lbl">Default interview location</span><input type="text" id="sLoc" placeholder="PVRS building" value="${esc(s.defaultLocation||"")}"></label></div></div>
     <div class="group"><h3><span>Saved replies</span><button class="btn small" type="button" id="qrAdd">Add reply</button></h3><div class="ios" id="qrList">${savedReplies().map(replyRowHTML).join("")}</div>
       <p class="help" style="margin:4px 4px 0">Buttons above the reply box on the Messages tab. <b>{first}</b> becomes the applicant's first name.</p></div>
@@ -1265,7 +1279,7 @@ function openSettings(){
       try { await deleteDoc(doc(db, "staff", rm.dataset.rmstaff)); toast("Removed"); } catch { toast("Couldn't remove."); } }
     if (id === "sSave") {
       const idle = parseInt($("#sIdle").value, 10);
-      const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now(),
+      const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), boardEmails: $("#sBoard").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now(),
         ai: $("#sAi .on")?.dataset.v === "on",
         retentionYears: parseInt($("#sRet").value, 10) > 0 ? Math.min(20, parseInt($("#sRet").value, 10)) : null,
         onbItems: [...new Set($("#sOnb").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
@@ -1814,7 +1828,7 @@ function paintBoardMtg(){
   const el = $("#boardMtg"); if (!el) return;
   const n = BM.ids.length, id = BM.ids[BM.i], a = id && S.apps.get(id), ro = !S.canEdit ? "disabled" : "";
   const top = `<div class="bmtop glass"><div class="bmt"><b>Board meeting</b><label>Meeting date <input type="date" id="bmDate" value="${esc(BM.date)}" ${ro}></label></div>
-    <div class="bmacts"><button class="btn small" type="button" data-bm="agenda">Copy agenda</button><button class="btn small" type="button" data-bm="packet" ${n ? "" : "disabled"}>Print packet</button><button class="btn small primary" type="button" data-bm="close">Done</button></div></div>`;
+    <div class="bmacts"><button class="btn small" type="button" data-bm="agenda">Copy agenda</button><button class="btn small" type="button" data-bm="email" ${n ? "" : "disabled"}>Email the board</button><button class="btn small" type="button" data-bm="packet" ${n ? "" : "disabled"}>Print packet</button><button class="btn small primary" type="button" data-bm="close">Done</button></div></div>`;
   if (!a) { el.innerHTML = top + `<div class="bmbody"><div class="bmempty"><h2>Nobody is on the board queue</h2><p>Applicants show up here once the membership committee approves them and their references are in.</p></div></div>`; return; }
   const g = k => get(a, k), rs = refStatus(a), avg = avgRating(a);
   const chk = (ok, label, detail, bad) => `<div class="bmchk ${bad ? "bad" : ok ? "ok" : "no"}"><span class="dot" aria-hidden="true">${bad ? "!" : ok ? "✓" : "–"}</span><span><b>${esc(label)}</b><small>${esc(detail || "")}</small></span></div>`;
@@ -1853,6 +1867,7 @@ function wireBoardMtg(el){
     const k = b.dataset.bm;
     if (k === "close") return closeBoardMtg();
     if (k === "agenda") return copyAgenda();
+    if (k === "email") return emailBoard();
     if (k === "packet") { flushAll(); return printPacket(BM.ids.map(x => S.apps.get(x)).filter(Boolean)); }
     if (k === "prev" && BM.i > 0) { flushAll(); BM.i--; paintBoardMtg(); }
     if (k === "next") { flushAll(); if (BM.i < BM.ids.length - 1) { BM.i++; paintBoardMtg(); } else { closeBoardMtg(); toast("Board meeting closed. Everything is saved."); } }
@@ -1866,13 +1881,24 @@ function wireBoardMtg(el){
   });
   el.addEventListener("keydown", e => { if (e.key === "Escape" && $("#modal").hidden) { e.stopPropagation(); closeBoardMtg(); } });
 }
-async function copyAgenda(){
-  const q = sorted().filter(r => inBoardQueue(r.a));
+function agendaText(list){   // list: applicants to include (default: the board queue right now)
+  const q = list ? list.map(a => ({ a })) : sorted().filter(r => inBoardQueue(r.a));
   const dates = q.map(r => get(r.a,"board.date")).filter(Boolean).sort();
   const lines = q.map((r,i) => { const a = r.a; const bits = [a.type, loc(a), get(a,"sched.completed") ? "interviewed " + fmtDate(get(a,"sched.completed")) : null, get(a,"board.result")==="tabled" ? "tabled at last meeting" : null].filter(Boolean);
     return `${i+1}. ${a.name || "Unnamed"} (${bits.join(", ")})`; });
-  const text = `PVRS Board: membership applications for approval${dates.length?`\nMeeting: ${longDate(dates[dates.length-1])}`:""}\n\nRecommended by the Membership Committee:\n${lines.join("\n")}`;
-  toast((await copyText(text)) ? `Agenda copied (${q.length} applicant${q.length===1?"":"s"})` : "Couldn't copy the agenda");
+  return { n: q.length, text: `PVRS Board: membership applications for approval${dates.length?`\nMeeting: ${longDate(dates[dates.length-1])}`:""}\n\nRecommended by the Membership Committee:\n${lines.join("\n")}` };
+}
+async function copyAgenda(){
+  const { n, text } = agendaText();
+  toast((await copyText(text)) ? `Agenda copied (${n} applicant${n===1?"":"s"})` : "Couldn't copy the agenda");
+}
+// Opens an email to the board (Settings → Board emails) with the agenda filled in; the packet PDF is attached by hand
+// (Print packet → Save as PDF), since the app can't send email itself yet.
+function emailBoard(){
+  const { n, text } = agendaText(BM.ids.map(x => S.apps.get(x)).filter(Boolean)), to = (S.settings.boardEmails || "").trim();
+  const body = `${text}\n\nThe board packet is attached (${n} applicant${n===1?"":"s"}). It's confidential: please don't forward it.\n\n${sig()}`;
+  const l = document.createElement("a"); l.href = `mailto:${to.split(/[,;\s]+/).filter(Boolean).map(encodeURIComponent).join(",")}?subject=${encodeURIComponent("PVRS Board: membership applications" + (n ? ` (${n})` : ""))}&body=${encodeURIComponent(body)}`; l.click();
+  toast(to ? "Email opened. Attach the packet: Print packet → Save as PDF" : "Email opened. Add board addresses in Settings → Emails to fill them in next time");
 }
 
 /* ---------- board packet (print) ---------- */

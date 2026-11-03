@@ -566,6 +566,9 @@ try {
     if (!/Georgia Thurmond/.test(await page.locator("#boardMtg").textContent())) fail("approved applicant vanished from the meeting"); else ok("the meeting list stays put while votes are recorded");
     await page.locator('#boardMtg [data-bm="packet"]').click(); await wait(page, 400);
     if (!(await page.evaluate(() => window.__printed))) fail("Print packet didn't print"); else ok("Print packet works from the meeting");
+    await page.locator('#boardMtg [data-bm="email"]').click(); await wait(page, 300);
+    const em = decodeURIComponent((await page.evaluate(() => (window.__clicked || []).filter(h => h.startsWith("mailto:")).pop())) || "");
+    if (!/subject=PVRS Board: membership applications \(1\)/.test(em) || !/1\. Georgia Thurmond/.test(em) || !/packet is attached/.test(em)) fail("Email the board: " + em.slice(0, 160)); else ok("Email the board opens a draft with the meeting's agenda");
     await page.locator('#boardMtg [data-bm="close"]').click(); await wait(page, 300);
     if (await page.locator("#boardMtg").isVisible() || await page.locator("#app").evaluate(a => a.inert)) fail("Done didn't close the meeting"); else ok("Done closes the meeting");
     await ctx.close();
@@ -623,6 +626,10 @@ try {
     const cols = await card.locator(".bcol").count(), rows = await card.locator("table tbody tr").count();
     const kpis = await card.locator(".kpi b").allTextContents();
     if (cols !== 12 || rows !== 12 || kpis.length !== 3) fail(`stats card: ${cols} columns, ${rows} table rows, ${kpis}`); else if (!dark) ok("Year at a glance: 3 headline numbers, 12 months, screen-reader table");
+    if (!dark) { const fr = await card.locator(".funnel .frow").allTextContents(), first = fr[0] || "";
+      if (fr.length !== 5 || !/^Applied\s*\d+/.test(first) || !/Active member/.test(fr[4] || "")) fail("funnel: " + JSON.stringify(fr));
+      else { const nums = await card.locator(".funnel .frow b").allTextContents();
+        if (nums.map(Number).some((n, i, a) => i && n > a[i - 1])) fail("funnel steps grow: " + nums); else ok("Year at a glance: the funnel shows how far applicants get, never growing step to step"); } }
     const bar = card.locator(".bcol i").first();
     if (await bar.count()) { await bar.hover(); await wait(page, 150);
       const tip = await card.locator("#mtip").textContent();
