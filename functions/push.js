@@ -30,11 +30,13 @@ const when = ms => new Date(ms).toLocaleString("en-US", { timeZone: "America/New
 // References that count as received (same rule as refList/refStatus in shared.js).
 const refsIn = sec => [1, 2, 3, 4].filter(i => { const r = get(sec || {}, `refs.r${i}`) || {}; return r.name && String(r.name).trim() && r.returned && !r.replace; }).length;
 
-async function send({ title, body, id = "", everyone = false }){
+// `to` = exact list of emails (chat); otherwise the owner, plus everyone when `everyone`. `skip` = the person who caused it.
+async function send({ title, body, id = "", chat = "", everyone = false, to = null, skip = "" }){
   const snap = await db.collection("pushTokens").get();
-  const tokens = snap.docs.filter(d => everyone || d.data().email === OWNER_EMAIL).map(d => d.id);
+  const want = e => e !== skip && (to ? to.includes(e) : (everyone || e === OWNER_EMAIL));
+  const tokens = snap.docs.filter(d => want(d.data().email)).map(d => d.id);
   if (!tokens.length) return;
-  const link = DESK + (id ? `?open=${encodeURIComponent(id)}` : "");
+  const link = DESK + (chat ? `?chat=${encodeURIComponent(chat)}` : id ? `?open=${encodeURIComponent(id)}` : "");
   const res = await getMessaging().sendEachForMulticast({ tokens, notification: { title, body },
     webpush: { notification: { icon: "/img/icon-192.png", badge: "/img/icon-192.png" }, fcmOptions: { link } } });
   // Forget devices that uninstalled or revoked permission.
@@ -48,9 +50,22 @@ exports.newApplication = onDocumentCreated({ document: "submissions/{id}", ...OP
   await send({ title: "New application", body: `${[p.first, p.last].filter(Boolean).join(" ") || "Someone"} applied online` });
 });
 
+// Applicant conversations: the owner plus the squad members added to it (convos/{id}) hear about new messages.
 exports.applicantMessage = onDocumentCreated({ document: "portal/{id}/messages/{mid}", ...OPTS }, async e => {
-  if (e.data?.data()?.from !== "applicant") return;
-  await send({ title: "New message", body: `${await nameOf(e.params.id)} sent a message`, id: e.params.id });
+  const m = e.data?.data() || {}, id = e.params.id;
+  const cv = await db.doc(`convos/${id}`).get();
+  const to = [OWNER_EMAIL, ...((cv.exists && cv.data().members) || [])];
+  const name = await nameOf(id);
+  if (m.from === "applicant") await send({ to, title: "New message", body: `${name} sent a message`, chat: `a:${id}` });
+  else if (m.from === "staff") await send({ to, skip: m.by, title: `Reply to ${name}`, body: `${m.name || "Someone"} replied to ${name}`, chat: `a:${id}` });
+});
+
+// Squad channels: everyone in the channel except the author. Says who posted where, not what.
+exports.channelPost = onDocumentCreated({ document: "channels/{cid}/posts/{pid}", ...OPTS }, async e => {
+  const p = e.data?.data() || {};
+  const c = await db.doc(`channels/${e.params.cid}`).get(); if (!c.exists) return;
+  const ch = c.data();
+  await send({ to: [OWNER_EMAIL, ...(ch.members || [])], skip: p.by, title: `#${ch.name}`, body: `${p.name || "Someone"} posted in #${ch.name}`, chat: `c:${e.params.cid}` });
 });
 
 exports.interviewBooking = onDocumentUpdated({ document: "slots/{id}", ...OPTS }, async e => {

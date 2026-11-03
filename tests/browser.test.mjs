@@ -508,6 +508,76 @@ try {
       if (!/Notifications/.test(await page.locator("#modal h3").textContent())) fail("More → Notifications didn't open"); else ok("phones open Notifications from the More menu"); }
     await ctx.close();
   }
+  // ---- Team messaging: channels (owner creates, picks members) and applicant conversations (owner adds squad members)
+  {
+    const now = Date.now();
+    const { ctx, page } = await open(browser, { seed: [["portal/a2/messages/m1", { text: "When is my interview?", from: "applicant", by: "marcus.bell@example.com", name: "Marcus", at: now - 6e5 }]] }); await wait(page, 700);
+    if (!/1/.test(await page.locator("#msgsBtn .navbadge").textContent().catch(() => ""))) fail("no unread badge on Messages"); else ok("unread applicant messages show on the Messages button");
+    await page.locator("#msgsBtn").click(); await wait(page, 400);
+    if (!(await page.locator(".cv").count()) || !/Marcus Bell/.test(await page.locator("#cvRows").textContent())) fail("Messages screen: " + (await page.locator("#detail").textContent()).slice(0, 200)); else ok("Messages opens as a full screen with applicant conversations");
+    // new channel with Casey (admin) in it
+    await page.locator("[data-chnew]").click(); await wait(page, 300);
+    await page.locator("#chName").fill("#interview-team");
+    await page.locator('.cv-pick input[value="admin@pvrs.org"]').check();
+    await page.locator('[data-chcolor="onb"]').click();
+    await page.locator("#chSave").click(); await wait(page, 600);
+    const ch = await page.evaluate(() => [...window.__mock.docs.entries()].find(([k, v]) => /^channels\/[^/]+$/.test(k) && v.name === "interview-team"));
+    if (!ch || ch[1].members.join() !== "dkota@pvrs.org,admin@pvrs.org" || ch[1].color !== "onb" || ch[1].names["admin@pvrs.org"] !== "Casey Admin") fail("channel saved: " + JSON.stringify(ch)); else ok("owner creates a channel and picks its members");
+    await page.locator("#cvText").fill("Who can take Marcus's interview Thursday?"); await page.locator("#cvText").press("Enter"); await wait(page, 500);
+    const post = await page.evaluate(id => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith(`channels/${id}/posts/`)).map(([, v]) => v), ch[0].split("/")[1]);
+    if (post.length !== 1 || post[0].by !== "dkota@pvrs.org" || !/Thursday/.test(post[0].text)) fail("channel post: " + JSON.stringify(post)); else ok("Enter sends a message to the channel");
+    if (!/Who can take Marcus/.test(await page.locator("#cvMsgs").textContent())) fail("post not shown"); else ok("the message shows in the channel");
+    await page.screenshot({ path: path.join(OUT, "40-messages-channel.png") });
+    // applicant conversation: open, mark read, add Casey, reply
+    await page.locator('[data-chat="a:a2"]').click(); await wait(page, 500);
+    if (!/When is my interview/.test(await page.locator("#cvMsgs").textContent())) fail("applicant thread not shown"); else ok("applicant conversation opens in Messages");
+    const rd = await page.evaluate(() => window.__mock.docs.get("chatReads/dkota@pvrs.org"));
+    if (!rd || !rd["a:a2"]) fail("not marked read: " + JSON.stringify(rd)); else ok("opening a conversation marks it read for you");
+    await page.locator("[data-cvedit]").click(); await wait(page, 300);
+    await page.locator('.cv-pick input[value="admin@pvrs.org"]').check(); await page.locator("#cvSave").click(); await wait(page, 500);
+    const cv = await page.evaluate(() => window.__mock.docs.get("convos/a2"));
+    if (!cv || cv.members.join() !== "admin@pvrs.org") fail("convo members: " + JSON.stringify(cv)); else ok("owner adds a squad member to an applicant's conversation");
+    await page.locator('#cvMsgs').waitFor(); await page.locator("#cvText").fill("Thursday at 7 works!"); await page.locator("[data-chsend]").click(); await wait(page, 500);
+    const rep = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/a2/messages/")).map(([, v]) => v).find(m => m.from === "staff"));
+    if (!rep || rep.by !== "dkota@pvrs.org" || rep.text !== "Thursday at 7 works!") fail("reply: " + JSON.stringify(rep)); else ok("replying from Messages reaches the applicant's portal");
+    await page.screenshot({ path: path.join(OUT, "41-messages-applicant.png") });
+    const seed = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => /^(channels|convos|portal\/a2\/messages)\//.test(k)));
+    await ctx.close();
+    // Casey (admin): sees only what she's in, and can reply to Marcus
+    { const { ctx, page } = await open(browser, { user: { email: "admin@pvrs.org", displayName: "Casey" }, seed }); await wait(page, 800);
+      await page.locator("#msgsBtn").click(); await wait(page, 500);
+      const rows = await page.locator("#cvRows").textContent();
+      if (!/interview-team/.test(rows) || !/Marcus Bell/.test(rows) || /Georgia/.test(rows)) fail("admin's list: " + rows); else ok("an admin sees only the channels and conversations she's in");
+      await page.locator('[data-chat="a:a2"]').click(); await wait(page, 400);
+      if (!(await page.locator("#cvText").count())) fail("admin in convo can't reply"); else { await page.locator("#cvText").fill("Hi Marcus, I'm Casey."); await page.locator("#cvText").press("Enter"); await wait(page, 500);
+        const m = await page.evaluate(() => [...window.__mock.docs.values()].find(v => v.text === "Hi Marcus, I'm Casey."));
+        if (!m || m.from !== "staff" || m.by !== "admin@pvrs.org" || m.name !== "Casey") fail("admin reply: " + JSON.stringify(m)); else ok("a squad member added to a conversation can reply"); }
+      await ctx.close(); }
+    // Alex (member, in nothing): told how to get added
+    { const { ctx, page } = await open(browser, { user: { email: "alex@pvrs.org", displayName: "Alex" }, seed }); await wait(page, 800);
+      if (await page.locator("#msgsBtn").isHidden()) fail("members have no Messages"); else { await page.locator("#msgsBtn").click(); await wait(page, 400);
+        if (!/not in any channels/.test(await page.locator("#cvRows").textContent())) fail("member list: " + await page.locator("#cvRows").textContent()); else ok("a member who isn't in anything sees how to get added"); }
+      await ctx.close(); }
+    // phone: list → conversation → back; and a notification link opens the channel
+    { const { ctx, page } = await open(browser, { w: 390, h: 844, seed }); await wait(page, 800);
+      await page.locator('#mnav [data-m="msgs"]').click(); await wait(page, 400);
+      if (!(await page.locator(".cv-list").isVisible()) || await page.locator(".cv-thread").isVisible()) fail("phone: list first"); else ok("phone: Messages shows the conversation list first");
+      await page.locator('[data-chat="a:a2"]').click(); await wait(page, 400);
+      if (await page.locator(".cv-list").isVisible() || !(await page.locator("#cvText").isVisible())) fail("phone: thread"); else ok("phone: tapping a conversation opens it full screen");
+      await page.screenshot({ path: path.join(OUT, "42-messages-phone.png") });
+      await page.locator("[data-chback]").click(); await wait(page, 300);
+      if (!(await page.locator(".cv-list").isVisible())) fail("phone: back"); else ok("phone: back returns to the list");
+      await ctx.close(); }
+    { const cid = seed.find(([k]) => /^channels\/[^/]+$/.test(k))[0].split("/")[1];
+      const { ctx, page } = await open(browser, { url: "/?chat=c:" + cid, seed }); await wait(page, 900);
+      if (!/interview-team/.test(await page.locator(".cv-th").textContent().catch(() => ""))) fail("?chat= link"); else ok("a chat notification opens that channel");
+      await ctx.close(); }
+    // the applicant sees who replied
+    { const { ctx, page } = await open(browser, { w: 430, h: 844, user: { email: "marcus.bell@example.com", displayName: "Marcus" }, seed }); await wait(page, 900);
+      const t = await page.locator("#portal").textContent();
+      if (!/Dkota · PVRS Membership/.test(t) || /interview-team/.test(t)) fail("portal labels: " + t.replace(/\s+/g, " ").slice(0, 900)); else ok("applicants see the replier's first name with PVRS Membership, never squad channels");
+      await ctx.close(); }
+  }
   // ---- Med Control (AI): hidden until switched on; chat, brief and reply drafts go through the function
   {
     const { ctx, page } = await open(browser, { seed: [["portal/a2/messages/m1", { text: "Can I join if I'm only here in the school year?", from: "applicant", by: "marcus.bell@example.com", name: "Marcus", at: Date.now() - 6e4 }]] }); await wait(page, 600);
