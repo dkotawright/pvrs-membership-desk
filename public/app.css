@@ -1530,3 +1530,48 @@ body:not(:has(.gate:not([hidden]))){background:
 /* dark mode: keep white text on the gradient tiles and avatars (the older dark rules are more specific) */
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .stg .v,:root:not([data-theme="light"]) .stg .k,:root:not([data-theme="light"]) .av{color:#fff} }
 :root[data-theme="dark"] .stg .v,:root[data-theme="dark"] .stg .k,:root[data-theme="dark"] .av{color:#fff}
+
+/* ---- Aurora on the public pages: sign-in, home, apply, reference form ----
+   Same colour glow as the desk; the welcome side is a navy gradient card so its white text still reads. */
+body:has(.gate:not([hidden])){background:
+  radial-gradient(60vmax 45vmax at 8% 0%,var(--au-1),transparent 62%),
+  radial-gradient(55vmax 45vmax at 100% 6%,var(--au-2),transparent 60%),
+  radial-gradient(60vmax 50vmax at 85% 105%,var(--au-3),transparent 60%),
+  radial-gradient(50vmax 45vmax at 0% 100%,var(--au-4),transparent 60%),
+  var(--bg);background-attachment:fixed}
+.ems-bg{display:none}
+.gate .sheet,.applycard{background:var(--frost-2);border:1px solid var(--frost-edge);border-radius:30px;box-shadow:var(--soft);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%)}
+#loading .empty,#loading .empty h3{color:var(--fg2)}
+#loading .spin{border-color:var(--fill2);border-top-color:var(--coral-b)}
+
+.pubnav{background:var(--frost-2);border:1px solid var(--frost-edge);box-shadow:var(--soft)}
+.pubbrand{color:var(--fg)}
+.pubbrand svg g{fill:var(--navy)}
+.publinks a{color:var(--fg2)}
+.publinks a:hover{color:var(--fg);background:color-mix(in srgb,var(--navy) 7%,transparent)}
+.publinks a.on,.publinks a#navApply.on{color:#fff;background:linear-gradient(135deg,var(--side-b),var(--side-a));box-shadow:none}
+.publinks a#navApply{color:#fff;background:linear-gradient(135deg,var(--coral-a),var(--coral-b));box-shadow:0 8px 18px -10px rgba(232,67,43,.8)}
+
+.welcome,.hero{background:linear-gradient(150deg,var(--side-a),var(--side-b) 60%,#3B3F9E);border-radius:32px;padding:32px 32px 28px;
+  box-shadow:0 30px 60px -30px rgba(19,41,75,.75);position:relative;overflow:hidden}
+.welcome::after,.hero::after{content:"";position:absolute;right:-90px;top:-90px;width:260px;height:260px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,122,89,.45),transparent 70%);pointer-events:none}
+.welcome>*,.hero>*{position:relative;z-index:1}
+.hero{padding:48px 36px 40px}
+.eyebrow.light{color:#FFB39E}
+.welcome .greet,.hero h1{background:linear-gradient(100deg,#fff 30%,#FFC9B8);-webkit-background-clip:text;background-clip:text;color:transparent}
+.wx{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);box-shadow:none}
+.joincta{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);box-shadow:none;border-radius:24px}
+.joincta:hover{background:rgba(255,255,255,.15);box-shadow:none}
+.jc-ic{background:linear-gradient(135deg,var(--coral-a),var(--coral-b));border-radius:16px}
+.homecard{background:var(--pane);border:0;border-radius:26px;box-shadow:none}
+.homecard:hover{box-shadow:0 22px 44px -22px rgba(0,0,0,.5)}
+.homecard.featured{background:var(--pane);border:0}
+.hc-ic{background:linear-gradient(135deg,var(--side-b),var(--side-a));border-radius:16px}
+.homecard.featured .hc-ic{background:linear-gradient(135deg,var(--coral-a),var(--coral-b))}
+.homecard em{color:var(--coral-b)}
+.homecard.featured em{color:#fff;background:linear-gradient(135deg,var(--coral-a),var(--coral-b));border-radius:999px}
+.apsteps li.cur span{background:linear-gradient(135deg,var(--coral-a),var(--coral-b))}
+@media (max-width:880px){ .welcome,.hero{padding:24px 22px 22px;border-radius:26px} }
+@media (prefers-reduced-transparency: reduce){ .gate .sheet,.applycard,.homecard{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--pane)} }
