@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#F4F5F7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0F1319" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f3f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)">
 <meta name="robots" content="noindex">
 <title>PVRS Membership Desk</title>
 <link rel="icon" type="image/png" sizes="192x192" href="/img/icon-192.png">
@@ -15,14 +15,25 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
 
+<!-- Animated EMS backdrop behind every screen: emergency-light glows, a heart-monitor trace and a faint Star of Life -->
+<div class="ems-bg" aria-hidden="true">
+  <i class="light red"></i><i class="light blue"></i>
+  <svg class="sol" viewBox="-120 -120 240 240"><g fill="none" stroke="currentColor" stroke-width="3"><rect x="-22" y="-100" width="44" height="200" rx="6"/><rect x="-22" y="-100" width="44" height="200" rx="6" transform="rotate(60)"/><rect x="-22" y="-100" width="44" height="200" rx="6" transform="rotate(-60)"/></g></svg>
+  <svg class="ecg" viewBox="0 0 1200 200" preserveAspectRatio="none">
+    <path class="ecg-grid" d="M0 100H1200"/>
+    <path class="ecg-faint" d="M0 110 H150 l12 -8 l10 8 H230 l8 10 l14 -86 l14 110 l10 -40 l8 14 H340 l18 -14 l18 14 H560 l12 -8 l10 8 H640 l8 10 l14 -86 l14 110 l10 -40 l8 14 H750 l18 -14 l18 14 H970 l12 -8 l10 8 H1050 l8 10 l14 -86 l14 110 l10 -40 l8 14 H1160 l18 -14 l18 14"/>
+    <path class="ecg-line" pathLength="1000" d="M0 110 H150 l12 -8 l10 8 H230 l8 10 l14 -86 l14 110 l10 -40 l8 14 H340 l18 -14 l18 14 H560 l12 -8 l10 8 H640 l8 10 l14 -86 l14 110 l10 -40 l8 14 H750 l18 -14 l18 14 H970 l12 -8 l10 8 H1050 l8 10 l14 -86 l14 110 l10 -40 l8 14 H1160 l18 -14 l18 14"/>
+  </svg>
+</div>
+
 <!-- Public top bar: Apply / Sign in -->
 <nav class="pubnav" id="pubnav" aria-label="PVRS Membership" hidden>
-  <a class="pubbrand" href="/" data-nav="/"><svg viewBox="-120 -120 240 240" aria-hidden="true"><g fill="var(--navy-fill)"><rect x="-24" y="-100" width="48" height="200" rx="7"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(60)"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(-60)"/></g><rect x="-5" y="-78" width="10" height="156" rx="5" fill="#fff"/></svg><span>PVRS <b>Membership</b></span></a>
+  <a class="pubbrand" href="/" data-nav="/"><svg viewBox="-120 -120 240 240" aria-hidden="true"><g fill="#fff"><rect x="-24" y="-100" width="48" height="200" rx="7"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(60)"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(-60)"/></g><rect x="-5" y="-78" width="10" height="156" rx="5" fill="#c8102e"/></svg><span>PVRS <b>Membership</b></span></a>
   <span class="publinks"><a href="/apply" data-nav="/apply" id="navApply">Apply</a><a href="/signin" data-nav="/signin" id="navSignin">Sign in</a></span>
 </nav>
 
