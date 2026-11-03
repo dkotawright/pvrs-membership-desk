@@ -764,7 +764,11 @@ try {
     await page.locator('.hacts [data-act="printapp"]').click(); await wait(page, 400);
     const ph = await page.evaluate(() => window.__printHTML || "");
     if (!/submitted online/.test(ph) || !/Coach Dan Price/.test(ph) || !/B-1/.test(ph)) fail("header Application didn't print the form: " + ph.slice(0, 120)); else ok("header Application button prints the original online form");
+    if (!(await page.locator('#formGroup [data-act="uploadapp"]').count())) fail("no Upload original for an online applicant"); else ok("online applicants can also get an uploaded paper original");
     await page.screenshot({ path: path.join(OUT, "20-original-online.png") });
+    await page.evaluate(h => { let el = document.querySelector("#print"); if (!el) { el = document.createElement("div"); el.id = "print"; document.body.appendChild(el); } el.innerHTML = h; document.body.classList.add("printing"); }, ph);
+    await page.emulateMedia({ media: "print" }); await page.pdf({ path: path.join(OUT, "23-printed-application.pdf"), format: "Letter" }).catch(() => {});
+    await page.emulateMedia({ media: "screen" }); await page.evaluate(() => { document.body.classList.remove("printing"); const el = document.querySelector("#print"); if (el) el.innerHTML = ""; });
     await pickApplicant(page, "Georgia Thurmond"); await wait(page, 300);
     const gp = (await page.locator("#formGroup").textContent()).replace(/\s+/g, " ");
     if (!/Paper copy/.test(gp) || !/Georgia-paper-application\.pdf/.test(gp)) fail("paper original: " + gp); else ok("an uploaded paper application shows as the original");
@@ -773,10 +777,10 @@ try {
     if (!(await page.evaluate(() => window.__opened)) || !/Press ⌘P/.test(await page.locator(".toast, #toast").last().textContent())) fail("paper copy didn't open"); else ok("header Application opens the paper copy to print");
     await page.evaluate(() => { window.__mock.docs.delete("applicants/a1/records/rp1"); window.__mock.emit(); }); await wait(page, 400);
     const ng = (await page.locator("#formGroup").textContent()).replace(/\s+/g, " ");
-    if (!/No original on file/.test(ng) || !(await page.locator('#formGroup [data-act="uploadapp"]').count())) fail("no-original state: " + ng); else ok("files with no original offer Upload paper copy");
+    if (!/No original on file/.test(ng) || !(await page.locator('#formGroup [data-act="uploadapp"]').count())) fail("no-original state: " + ng); else ok("files with no original offer Upload original");
     await page.screenshot({ path: path.join(OUT, "22-original-none.png") });
     await page.locator('#formGroup [data-act="uploadapp"]').click(); await wait(page, 300);
-    if ((await page.locator("#recLabel").inputValue()) !== "Application") fail("upload didn't pre-pick Application"); else ok("Upload paper copy opens the uploader set to Application");
+    if ((await page.locator("#recLabel").inputValue()) !== "Application") fail("upload didn't pre-pick Application"); else ok("Upload original opens the uploader set to Application");
     await page.keyboard.press("Escape"); await wait(page, 200);
     await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 300); await page.locator("#palQ").fill("marcus"); await wait(page, 300);
     if (!/Print application/.test(await page.locator("#palList").textContent())) fail("⌘K has no Print application"); else ok("⌘K offers Print application for the person found");

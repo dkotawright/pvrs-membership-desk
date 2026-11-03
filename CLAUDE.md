@@ -94,7 +94,7 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - Tests: 174 browser checks.
 
 ## Print the original application (Nov 3, branch feature/print-application, not yet in a PR)
-- Application tab group **Original application** (`renderOriginal`, called from `renderRecords`) replaces the old hidden "Online application" row and shows for every file (admins): online form → View / Print; records labelled "Application" → "Paper copy · Open to print"; neither → "No original on file" + owner-only **Upload paper copy** (`openUploadRecords(id, "Application")` pre-picks the label).
+- Application tab group **Original application** (`renderOriginal`, called from `renderRecords`) replaces the old hidden "Online application" row and shows for every file (admins): online form → View / Print; records labelled "Application" → "Paper copy · Open to print"; neither → "No original on file". Owner-only **Upload original** button on the group header for every file (online applicants can have a paper copy too; `openUploadRecords(id, "Application")` pre-picks the label).
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 

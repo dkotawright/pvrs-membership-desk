@@ -56,7 +56,7 @@ function tabHTML(tab){
       F.seg("type","Membership type",TYPES.map(t=>[t,t]),true),`<div class="note" id="typeNote"></div>`,F.seg("location","Location",[["Potsdam","Potsdam"],["other","Other"]]),`<div data-show="locOther">${F.text("locationOther","Where?","Town")}</div>`])}
     ${group("Application",[F.date("app.received","Date received"),F.init("app.receivedInit"),F.yn("app.complete","Complete?",true),
       F.select("app.heard","Heard about PVRS",[["","—"],...HEARD.map(h => [h,h])]),F.text("app.heardDetail","Details","Which member, event…")])}
-    ${admin ? `<section class="group" id="formGroup"><h3><span>Original application</span></h3><div class="ios" id="origList"></div></section>` : ""}
+    ${admin ? `<section class="group" id="formGroup"><h3><span>Original application</span><span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" type="button" data-act="uploadapp">Upload original</button></span></h3><div class="ios" id="origList"></div></section>` : ""}
     ${group("Incomplete application",[F.date("app.notified","Date notified"),F.date("app.returned","Date app returned"),F.date("app.reReceived","Date re-received")],"incomplete")}
     ${admin ? group("Applicant portal",[
       `<div class="row"><span class="lbl">Portal access<small id="portalStatus">—</small></span><button class="btn small primary" type="button" data-act="invite" id="inviteBtn">Welcome</button></div>`,
@@ -536,7 +536,7 @@ function renderOverview(){
 // mark the interview completed and sign off the Interview page. Firestore rules enforce the same thing.
 const INTERVIEW_FIELDS = new Set(["sched.completed", "sched.completedInit", "signoff.iv.init", "signoff.iv.done"]);
 const canEditPath = path => S.canEdit || path.startsWith("iv.") || INTERVIEW_FIELDS.has(path);
-const OWNER_ONLY = '[data-act="records"],[data-recrm],[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],[data-refrep],[data-refmail],[data-refremind],[data-refcopy],[data-act="refsall"],#delBtn,#rqAdd';
+const OWNER_ONLY = '[data-act="records"],[data-act="uploadapp"],[data-recrm],[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],[data-refrep],[data-refmail],[data-refremind],[data-refcopy],[data-act="refsall"],#delBtn,#rqAdd';
 const ownerOnlyToast = () => toast("View only. You can fill in the Interview tab; everything else is changed by the owner.");
 
 /* ---------- page sign-off ---------- */
@@ -752,8 +752,7 @@ function renderOriginal(){
       <button class="btn small" type="button" data-act="viewform">View</button><button class="btn small" type="button" data-act="printform">Print</button></div>` : "")
     + papers.map(r => `<div class="row"><span class="lbl">Paper copy<small>${esc(r.name)} · uploaded ${esc(new Date(r.uploadedAt).toLocaleDateString())}</small></span>
       <button class="btn small" type="button" data-rec="${esc(r.id)}" title="Opens in a new tab; press ⌘P there to print">Open to print</button></div>`).join("")
-    + (!f && !papers.length ? `<div class="row"><span class="lbl" style="color:var(--fg2)">No original on file<small>${S.canEdit ? "Scan the paper application and upload it here so it can be printed later." : "The owner can upload a scan of the paper application."}</small></span>
-      ${S.canEdit ? `<button class="btn small" type="button" data-act="uploadapp">Upload paper copy</button>` : ""}</div>` : "");
+    + (!f && !papers.length ? `<div class="row"><span class="lbl" style="color:var(--fg2)">No original on file<small>${S.canEdit ? "Scan the signed paper application and click Upload original." : "The owner can upload a scan of the paper application."}</small></span></div>` : "");
 }
 const printForm = f => printHTML(`<section class="pk">${formHTML(f, true)}</section>`);
 // Header / ⌘K "Application": prints the online form, or opens the newest paper copy (PDFs can't be printed from here).
@@ -764,7 +763,7 @@ async function printOriginal(id){
   let recs = S.sel === id ? S.records : [];
   if (!recs.length) { try { recs = (await getDocs(collection(db, "applicants", id, "records"))).docs.map(d => ({ id: d.id, ...d.data() })); } catch { recs = []; } }
   const r = recs.filter(isAppRec).sort((x, y) => (y.uploadedAt || 0) - (x.uploadedAt || 0))[0];
-  if (!r) { if (w) w.close(); return toast(S.canEdit ? "No original application on file. Upload the paper copy on the Application tab (Original application → Upload paper copy)." : "No original application on file yet."); }
+  if (!r) { if (w) w.close(); return toast(S.canEdit ? "No original application on file. Upload the paper copy on the Application tab (Original application → Upload original)." : "No original application on file yet."); }
   try { const url = await getDownloadURL(ref(storage, r.path)); if (w) w.location = url; else location.href = url; toast("Opened the paper application. Press ⌘P in that tab to print."); }
   catch { if (w) w.close(); toast("Couldn't open the paper application."); }
 }
