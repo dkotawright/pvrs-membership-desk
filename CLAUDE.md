@@ -78,6 +78,12 @@ Also fixed Oct 31: sign-in weather showed sunrise/sunset shifted for browsers ou
 ## Clean & calm redesign: rejected (Nov 2)
 A flat grey/white/navy restyle (PR #10) went live and was reverted the same evening: Dkota found it plain, boring, boxy, ugly colours. Next design must be picked from mockups BEFORE any code changes. The Friendly Modern look is back. The test local-date fix from that branch stays.
 
+## Aurora look + funnel + Email the board (Nov 3)
+- **Aurora** (Dkota approved from screenshots): last section of app.css on top of Friendly Modern. Colour-glow background (`--au-*`), navy gradient sidebar (`--side-a/b`), frosted cards (`--frost*`, `--soft`), gradient stage tiles (`--g-*`), gradient headline, coral gradient primary buttons. Public pages (sign-in/home/apply) use the same glow and a navy gradient welcome card; `.ems-bg` hidden.
+- **Funnel** in Year at a glance (`funnelHTML`, `statsData().funnel`): this year's applications reaching Applied → References in → Interviewed → Board approved → Active (milestones 0/4/6/8/all), plus declined/withdrew counts.
+- **Email the board** (Board meeting toolbar, `emailBoard`): mailto to `settings.boardEmails` (Settings → Emails) with the meeting's agenda (`agendaText(list)`); the packet PDF is attached by hand (Print packet → Save as PDF) until server email exists.
+- Dkota's wish list still open: Med Control (needs the IAM grant), Slack/email alerts (Slack webhook or pvrs.org email service), text reminders (Twilio, needs his OK on cost), duty schedule (needs who/which shifts).
+
 ## Status Nov 2
 - The Oct 31 batch, Friendly Modern look and Med Control are merged into `main` (PRs #7, #8). The auto-deploys of both failed at the functions step: the `github-deploy` account lacks **Service Account User** on `pvrs-membership@appspot.gserviceaccount.com` (`iam.serviceAccounts.ActAs`). PR #9 deploys hosting + rules before the function so the site goes live regardless; the fix for Med Control is in docs/auto-deploy.md (Dkota grants the role in the Cloud console, then re-runs the job).
 - Old open PRs #1–#6 (Oct 19–26: isolated testing, UI polish, Homey redesign, duty schedule, Slack, sign-in wallpaper) predate the Friendly Modern look and conflict with `main`. Left open, not merged, pending Dkota's decision on which features to rebuild on the current design.

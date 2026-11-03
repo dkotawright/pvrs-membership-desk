@@ -1409,3 +1409,184 @@ body:not(:has(.gate:not([hidden]))) .ems-bg{display:none}
 .aib-sec ul{margin:0;padding-left:18px;line-height:1.5}
 .aib-ref{display:grid;grid-template-columns:auto auto 1fr;gap:4px 8px;align-items:center;padding:6px 0;border-top:1px solid var(--sep)}
 .aib-ref small{grid-column:1/-1;color:var(--fg2)}
+
+/* ======================================================================
+   Aurora (Nov 3): Friendly Modern, made more modern and less boxy. Soft colour glow behind everything,
+   a navy sidebar, frosted cards with no hard edges, vivid gradient stage tiles, gradient headline.
+   ====================================================================== */
+:root{
+  --au-1:rgba(255,138,101,.38); --au-2:rgba(122,134,255,.32); --au-3:rgba(64,201,178,.26); --au-4:rgba(255,196,92,.26);
+  --frost:rgba(255,255,255,.66); --frost-2:rgba(255,255,255,.82); --frost-edge:rgba(255,255,255,.7);
+  --soft:0 1px 2px rgba(22,58,107,.05),0 18px 44px -22px rgba(22,58,107,.28);
+  --side-a:#13294B; --side-b:#24407A; --coral-a:#FF7A59; --coral-b:#E8432B;
+  --g-screen:linear-gradient(135deg,#4F8BFF,#2F5BE0); --g-int:linear-gradient(135deg,#A07BFF,#6E48E0);
+  --g-appr:linear-gradient(135deg,#FFB547,#F07A1A); --g-onb:linear-gradient(135deg,#2FD3BF,#0B9A8C); --g-act:linear-gradient(135deg,#5BD67D,#1F9A45);
+  --headline:linear-gradient(100deg,#163A6B 10%,#4B47C9 55%,#E8432B 95%);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --au-1:rgba(232,67,43,.24); --au-2:rgba(96,104,255,.26); --au-3:rgba(32,170,150,.18); --au-4:rgba(255,170,60,.12);
+  --frost:rgba(36,30,26,.62); --frost-2:rgba(44,37,32,.8); --frost-edge:rgba(255,236,214,.08);
+  --soft:0 1px 2px rgba(0,0,0,.3),0 18px 44px -20px rgba(0,0,0,.6);
+  --side-a:#0E1A30; --side-b:#1B2F57; --headline:linear-gradient(100deg,#A9C4F0 10%,#B3A8FF 55%,#FF8A6E 95%) }}
+:root[data-theme="dark"]{
+  --au-1:rgba(232,67,43,.24); --au-2:rgba(96,104,255,.26); --au-3:rgba(32,170,150,.18); --au-4:rgba(255,170,60,.12);
+  --frost:rgba(36,30,26,.62); --frost-2:rgba(44,37,32,.8); --frost-edge:rgba(255,236,214,.08);
+  --soft:0 1px 2px rgba(0,0,0,.3),0 18px 44px -20px rgba(0,0,0,.6);
+  --side-a:#0E1A30; --side-b:#1B2F57; --headline:linear-gradient(100deg,#A9C4F0 10%,#B3A8FF 55%,#FF8A6E 95%) }
+
+/* the glow behind the signed-in screens */
+body:not(:has(.gate:not([hidden]))){background:
+  radial-gradient(60vmax 45vmax at 8% 0%,var(--au-1),transparent 62%),
+  radial-gradient(55vmax 45vmax at 100% 6%,var(--au-2),transparent 60%),
+  radial-gradient(60vmax 50vmax at 85% 105%,var(--au-3),transparent 60%),
+  radial-gradient(50vmax 45vmax at 0% 100%,var(--au-4),transparent 60%),
+  var(--bg);background-attachment:fixed}
+
+/* sidebar: a navy panel with white text */
+.side{background:linear-gradient(180deg,var(--side-a),var(--side-b));border-radius:28px;padding:16px 12px 12px;box-shadow:0 24px 50px -24px rgba(19,41,75,.7);color:#fff}
+.side .navh{color:rgba(255,255,255,.5)}
+.side .nav-i{color:rgba(255,255,255,.78);font-weight:600;border-radius:14px}
+.side .nav-i:hover{background:rgba(255,255,255,.08);color:#fff}
+.side .nav-i.on,.side .nav-i[aria-current="true"]{background:rgba(255,255,255,.14);color:#fff;box-shadow:inset 3px 0 0 var(--coral-a)}
+.side .nav-i svg,.side .nav-i .ic{color:inherit;stroke:currentColor}
+.side .nav-i .n,.side .nav-i .cnt,.side .nav-i .count{color:rgba(255,255,255,.6)}
+.side .brand{border:0;border-radius:18px;box-shadow:none}
+.side .me{border-top-color:rgba(255,255,255,.12);color:#fff}
+.side .me small,.side .me .sub,.side .me .role{color:rgba(255,255,255,.6)}
+.side .me .iconbtn,.side .me button{color:rgba(255,255,255,.8)}
+.side .me .av{background:rgba(255,255,255,.16);color:#fff}
+.btn.primary,.newbtn{background:linear-gradient(135deg,var(--coral-a),var(--coral-b));border:0;color:#fff;
+  box-shadow:0 10px 22px -10px rgba(232,67,43,.75)}
+.btn.primary:hover,.newbtn:hover{filter:brightness(1.06)}
+.newbtn{border-radius:16px;height:44px}
+
+/* panels: frosted glass over the glow, no hard edges */
+.detail,.roster{background:var(--frost);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid var(--frost-edge);box-shadow:var(--soft);border-radius:30px}
+.roster .top,.dhead{background:var(--frost-2);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);box-shadow:none;border-bottom:0}
+.ios,.ovcard,.tile{background:var(--frost-2);border:0;border-radius:24px;box-shadow:var(--soft)}
+.ovcard>h3{border-bottom:0;padding:18px 20px 6px;font-size:17px;font-weight:800}
+.olist{padding:4px 8px 10px}
+.todoitem{border-radius:18px;padding-top:4px;padding-bottom:4px}
+.todoitem:hover{background:color-mix(in srgb,var(--navy) 6%,transparent)}
+.olist>*+*{border-top:0}
+.row{border-bottom-color:color-mix(in srgb,var(--sep) 70%,transparent)}
+.group>h3{font-size:13px;font-weight:800;color:var(--fg);letter-spacing:-.005em}
+.arow{border-radius:18px}
+
+/* overview: gradient headline, no banner box */
+.ovhead{background:transparent;box-shadow:none;padding:6px 4px 2px;color:var(--fg)}
+.ovhead::after{display:none}
+.ovhead .eyebrow{color:var(--coral-b);font-weight:800;letter-spacing:.1em}
+.ovhead h2{font-size:38px;font-weight:800;letter-spacing:-.03em;background:var(--headline);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ovhead p{color:var(--fg2);font-size:15px}
+.ovhead .btn{background:var(--frost-2);border:0;color:var(--fg);box-shadow:var(--soft);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.ovhead .btn:hover{background:var(--pane)}
+.ovhead kbd{background:var(--fill);border-color:transparent;color:var(--fg2)}
+
+/* stage tiles: vivid gradients, white text, soft coloured glow */
+.stg{border:0;border-radius:24px;color:#fff;background:var(--g-screen);box-shadow:0 16px 30px -18px color-mix(in srgb,var(--stage-c) 90%,transparent);transition:transform .2s,box-shadow .2s}
+.stg[data-filter="int"],.stg[data-filter="interview"]{background:var(--g-int)}
+.stg[data-filter="appr"],.stg[data-filter="approval"]{background:var(--g-appr)}
+.stg[data-filter="onb"],.stg[data-filter="onboarding"]{background:var(--g-onb)}
+.stg[data-filter="act"],.stg[data-filter="active"]{background:var(--g-act)}
+.stg .v{color:#fff;font-size:34px;font-weight:800}
+.stg .k{color:rgba(255,255,255,.92);font-weight:700}
+.stg .s{color:#fff;opacity:.9}
+.stg:hover{transform:translateY(-3px);box-shadow:0 22px 36px -18px color-mix(in srgb,var(--stage-c) 95%,transparent)}
+.stg::after{content:"";position:absolute;right:-26px;top:-26px;width:96px;height:96px;border-radius:50%;background:rgba(255,255,255,.14);pointer-events:none}
+
+/* avatars: gradient circles */
+.av{background:linear-gradient(135deg,color-mix(in srgb,var(--stage-c,var(--navy)) 70%,#fff),var(--stage-c,var(--navy)));color:#fff}
+
+/* applicant file */
+.hacts .btn{background:var(--frost-2);border:0;box-shadow:0 1px 2px rgba(22,58,107,.08)}
+.hacts .btn:hover{background:var(--pane)}
+.tabdock{background:var(--frost-2);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);border:1px solid var(--frost-edge);box-shadow:var(--soft)}
+.tabdock .tabs button[aria-selected="true"]{background:linear-gradient(135deg,var(--side-b),var(--side-a));color:#fff}
+.seg{background:color-mix(in srgb,var(--fill) 80%,transparent)}
+.chip{border-radius:999px}
+.modal .sheet{border:0;border-radius:30px;background:var(--frost-2);-webkit-backdrop-filter:blur(30px) saturate(160%);backdrop-filter:blur(30px) saturate(160%)}
+.portal .card{background:var(--frost-2);border:0;border-radius:28px;box-shadow:var(--soft);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)}
+.toast{border-radius:999px}
+@media (prefers-reduced-transparency: reduce){ .detail,.roster,.roster .top,.dhead,.tabdock,.modal .sheet,.portal .card{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--pane)} }
+.side .nav-i[aria-pressed="true"]{background:rgba(255,255,255,.14);color:#fff;box-shadow:inset 3px 0 0 var(--coral-a)}
+.side .nav-i b,.side .nav-i[aria-pressed="true"] b{color:rgba(255,255,255,.62)}
+.side .me .who b{color:#fff}
+.side .me #conn{color:rgba(255,255,255,.62)}
+.side .me .av,.me .av{background:linear-gradient(135deg,var(--coral-a),var(--coral-b));color:#fff}
+@media (max-width:1180px){ .side{border-radius:24px} }
+@media (max-width:860px){ .side{border-radius:999px} }
+/* softer details: summary tiles, chart, progress */
+.kpi{border-radius:18px;background:linear-gradient(135deg,color-mix(in srgb,var(--au-2) 55%,var(--pane)),color-mix(in srgb,var(--au-1) 45%,var(--pane)))}
+.kpi b{font-weight:800}
+.bcol i{background:linear-gradient(180deg,#6F7CFF,#163A6B);border-radius:8px 8px 3px 3px}
+.hrow i{background:linear-gradient(90deg,#6F7CFF,var(--coral-b))}
+.steps{gap:4px}
+.steps button{height:8px;border-radius:99px;background:color-mix(in srgb,var(--fill2) 80%,transparent)}
+.steps button.done{background:linear-gradient(90deg,color-mix(in srgb,var(--stage-c) 70%,#fff),var(--stage-c))}
+.steps button.cur{background:transparent;box-shadow:inset 0 0 0 2px var(--coral-b)}
+.note{border-radius:16px}
+/* dark mode: keep white text on the gradient tiles and avatars (the older dark rules are more specific) */
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .stg .v,:root:not([data-theme="light"]) .stg .k,:root:not([data-theme="light"]) .av{color:#fff} }
+:root[data-theme="dark"] .stg .v,:root[data-theme="dark"] .stg .k,:root[data-theme="dark"] .av{color:#fff}
+
+/* ---- Aurora on the public pages: sign-in, home, apply, reference form ----
+   Same colour glow as the desk; the welcome side is a navy gradient card so its white text still reads. */
+body:has(.gate:not([hidden])){background:
+  radial-gradient(60vmax 45vmax at 8% 0%,var(--au-1),transparent 62%),
+  radial-gradient(55vmax 45vmax at 100% 6%,var(--au-2),transparent 60%),
+  radial-gradient(60vmax 50vmax at 85% 105%,var(--au-3),transparent 60%),
+  radial-gradient(50vmax 45vmax at 0% 100%,var(--au-4),transparent 60%),
+  var(--bg);background-attachment:fixed}
+.ems-bg{display:none}
+.gate .sheet,.applycard{background:var(--frost-2);border:1px solid var(--frost-edge);border-radius:30px;box-shadow:var(--soft);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%)}
+#loading .empty,#loading .empty h3{color:var(--fg2)}
+#loading .spin{border-color:var(--fill2);border-top-color:var(--coral-b)}
+
+.pubnav{background:var(--frost-2);border:1px solid var(--frost-edge);box-shadow:var(--soft)}
+.pubbrand{color:var(--fg)}
+.pubbrand svg g{fill:var(--navy)}
+.publinks a{color:var(--fg2)}
+.publinks a:hover{color:var(--fg);background:color-mix(in srgb,var(--navy) 7%,transparent)}
+.publinks a.on,.publinks a#navApply.on{color:#fff;background:linear-gradient(135deg,var(--side-b),var(--side-a));box-shadow:none}
+.publinks a#navApply{color:#fff;background:linear-gradient(135deg,var(--coral-a),var(--coral-b));box-shadow:0 8px 18px -10px rgba(232,67,43,.8)}
+
+.welcome,.hero{background:linear-gradient(150deg,var(--side-a),var(--side-b) 60%,#3B3F9E);border-radius:32px;padding:32px 32px 28px;
+  box-shadow:0 30px 60px -30px rgba(19,41,75,.75);position:relative;overflow:hidden}
+.welcome::after,.hero::after{content:"";position:absolute;right:-90px;top:-90px;width:260px;height:260px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,122,89,.45),transparent 70%);pointer-events:none}
+.welcome>*,.hero>*{position:relative;z-index:1}
+.hero{padding:48px 36px 40px}
+.eyebrow.light{color:#FFB39E}
+.welcome .greet,.hero h1{background:linear-gradient(100deg,#fff 30%,#FFC9B8);-webkit-background-clip:text;background-clip:text;color:transparent}
+.wx{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);box-shadow:none}
+.joincta{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);box-shadow:none;border-radius:24px}
+.joincta:hover{background:rgba(255,255,255,.15);box-shadow:none}
+.jc-ic{background:linear-gradient(135deg,var(--coral-a),var(--coral-b));border-radius:16px}
+.homecard{background:var(--pane);border:0;border-radius:26px;box-shadow:none}
+.homecard:hover{box-shadow:0 22px 44px -22px rgba(0,0,0,.5)}
+.homecard.featured{background:var(--pane);border:0}
+.hc-ic{background:linear-gradient(135deg,var(--side-b),var(--side-a));border-radius:16px}
+.homecard.featured .hc-ic{background:linear-gradient(135deg,var(--coral-a),var(--coral-b))}
+.homecard em{color:var(--coral-b)}
+.homecard.featured em{color:#fff;background:linear-gradient(135deg,var(--coral-a),var(--coral-b));border-radius:999px}
+.apsteps li.cur span{background:linear-gradient(135deg,var(--coral-a),var(--coral-b))}
+@media (max-width:880px){ .welcome,.hero{padding:24px 22px 22px;border-radius:26px} }
+@media (prefers-reduced-transparency: reduce){ .gate .sheet,.applycard,.homecard{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--pane)} }
+/* funnel: how far this year's applicants get (Year at a glance) */
+.funnel{padding:6px 16px 4px}
+.funnel h4{display:flex;justify-content:space-between;align-items:baseline;margin:8px 0 8px;font-size:13px;font-weight:700;color:var(--fg)}
+.funnel h4 small{font-weight:500;color:var(--fg3);font-size:12px}
+.frow{display:grid;grid-template-columns:7.5em 1fr 2em 2.8em;align-items:center;gap:8px;font-size:12.5px;padding:3px 0}
+.frow .fl{color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frow .fbar{height:10px;border-radius:99px;background:color-mix(in srgb,var(--fill2) 70%,transparent);overflow:hidden}
+.frow .fbar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#4F8BFF,#6E48E0)}
+.frow:nth-child(3) .fbar i{background:linear-gradient(90deg,#A07BFF,#6E48E0)}
+.frow:nth-child(4) .fbar i{background:linear-gradient(90deg,#FFB547,#F07A1A)}
+.frow:nth-child(5) .fbar i{background:linear-gradient(90deg,#2FD3BF,#0B9A8C)}
+.frow:nth-child(6) .fbar i{background:linear-gradient(90deg,#5BD67D,#1F9A45)}
+.frow b{text-align:right;font-variant-numeric:tabular-nums;color:var(--fg)}
+.frow small{text-align:right;color:var(--fg3);font-variant-numeric:tabular-nums}
+.flost{margin:6px 0 2px;font-size:12px;color:var(--fg3)}
