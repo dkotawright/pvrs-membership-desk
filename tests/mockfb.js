@@ -116,6 +116,12 @@ export const ref = (_s, path) => ({ path });
 export const uploadBytes = async () => ({});
 export const getDownloadURL = async () => "about:blank";
 export const deleteObject = async () => {};
+// Push notifications: the browser bits are faked; a test sets M.pushOk = true to pretend the browser supports them.
+export const getMessaging = () => ({});
+export const isSupported = async () => !!M.pushOk;
+export const getToken = async () => { if (M.pushDenied) throw Object.assign(new Error("denied"), { code: "messaging/permission-blocked" }); return "tok-" + (M.pushN = (M.pushN || 0) + 1); };
+export const deleteToken = async () => true;
+export const onMessage = () => () => {};
 // Cloud Functions (Med Control): a test sets M.ai = (data) => result, or M.aiError = {code, message}; calls are logged in M.aiCalls.
 export const getFunctions = () => ({});
 export const httpsCallable = (_f, name) => async data => { (M.aiCalls = M.aiCalls || []).push({ name, data }); await tick();
