@@ -778,7 +778,7 @@ try {
     await page.locator('#formGroup [data-act="uploadapp"]').click(); await wait(page, 300);
     if ((await page.locator("#recLabel").inputValue()) !== "Application") fail("upload didn't pre-pick Application"); else ok("Upload paper copy opens the uploader set to Application");
     await page.keyboard.press("Escape"); await wait(page, 200);
-    await page.keyboard.press("Meta+k"); await wait(page, 300); await page.locator("#palQ").fill("marcus"); await wait(page, 300);
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 300); await page.locator("#palQ").fill("marcus"); await wait(page, 300);
     if (!/Print application/.test(await page.locator("#palList").textContent())) fail("⌘K has no Print application"); else ok("⌘K offers Print application for the person found");
     await ctx.close();
   }
