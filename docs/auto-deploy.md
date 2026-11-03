@@ -1,6 +1,6 @@
 # Auto-deploy from GitHub (no computer setup needed)
 
-After this one-time setup, every change merged into `main` on GitHub is tested and goes live by itself: the website, Firestore and Storage rules, notifications and Med Control. If the tests fail, nothing deploys. Everything below happens in a web browser.
+After this one-time setup, every change merged into `main` on GitHub is tested and goes live by itself: the website, Firestore and Storage rules, and Med Control. If the tests fail, nothing deploys. The website and rules go out first, so a problem with the Med Control step can't hold them back. Everything below happens in a web browser.
 
 Watch it run: https://github.com/dkotawright/pvrs-membership-desk/actions
 
@@ -38,6 +38,13 @@ Never paste the key into a chat or an email.
 
 ## 5. Go live
 Merge the pull request with the changes into `main` (GitHub app → Pull requests → open it → **Merge**). GitHub runs the tests and deploys. The first deploy of the server functions takes about 5–10 minutes.
+
+## If the Med Control step fails with "iam.serviceAccounts.ActAs"
+The deploy account can't run functions as the project's built-in account yet. The website and rules still went live; only Med Control didn't update.
+1. Open https://console.cloud.google.com/iam-admin/serviceaccounts?project=pvrs-membership
+2. Click **pvrs-membership@appspot.gserviceaccount.com** → **Principals with access** tab → **Grant access**.
+3. **New principals**: start typing `github-deploy` and pick it. **Role**: **Service Account User**. Click **Save**.
+4. Rerun: GitHub → Actions → the failed run → **Re-run all jobs**.
 
 ## What it doesn't deploy
 The paperwork email function (`notifyPaperwork`) waits until an email password exists (see CLAUDE.md, Server-side email).

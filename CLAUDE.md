@@ -75,7 +75,11 @@ Desktop applicant list (Oct 22): tucks into a thin "Applicants" strip on the lef
 The first portal invite is now a one-step **Welcome** (`inviteToPortal`): portal access + sign-in link, a welcome message posted in `portal/{id}/messages` (`welcomeText`), `private/main.portal.welcomed` = date, and the welcome email (TEMPLATES.portal) opened for that applicant. To do shows "Welcome {first}" at the top as soon as an application with an email lands (any step up to scheduling), replacing the old late "Send the portal invite" item. Later clicks just resend the link (no second message). `openEmail(kind, extra, id)` now takes the applicant id (the To do button used to open the email for whichever file was selected). Not yet deployed: needs `firebase deploy --only hosting`.
 Also fixed Oct 31: sign-in weather showed sunrise/sunset shifted for browsers outside Eastern time (Open-Meteo already returns Potsdam local time).
 
-## Oct 31 batch (branch claude/pensive-carson-bu3ox4, NOT deployed yet)
+## Status Nov 2
+- The Oct 31 batch, Friendly Modern look and Med Control are merged into `main` (PRs #7, #8). The auto-deploys of both failed at the functions step: the `github-deploy` account lacks **Service Account User** on `pvrs-membership@appspot.gserviceaccount.com` (`iam.serviceAccounts.ActAs`). PR #9 deploys hosting + rules before the function so the site goes live regardless; the fix for Med Control is in docs/auto-deploy.md (Dkota grants the role in the Cloud console, then re-runs the job).
+- Old open PRs #1–#6 (Oct 19–26: isolated testing, UI polish, Homey redesign, duty schedule, Slack, sign-in wallpaper) predate the Friendly Modern look and conflict with `main`. Left open, not merged, pending Dkota's decision on which features to rebuild on the current design.
+
+## Oct 31 batch (merged to main Nov 1–2; see Status Nov 2)
 Dkota asked for everything from the suggestion list except the monthly board report. Each is its own commit:
 - **How did you hear about PVRS?** optional on /apply step 1 (`HEARD` in shared.js) → submission `heard{source,detail}` (rules updated) → `app.heard/heardDetail` (Application tab select) → bar chart in Year at a glance (`.hchart`).
 - **Interview prep** in the portal under the Interview card (`ivPrepHTML`, portal.js), hidden once the interview is done.
@@ -90,7 +94,7 @@ Dkota asked for everything from the suggestion list except the monthly board rep
 - Tests: 153 browser checks; rules 49 pass / 2 known fails. In cloud containers run browser tests with `PW_CHROME=/opt/pw-browsers/chromium`.
 - Dkota said (Oct 31) the design "is good but throws me off" — wants fun but professional, plus more features and AI. Pending his pick of direction.
 
-## Oct 31 (later): Friendly Modern look + Med Control AI (same branch, NOT deployed)
+## Oct 31 (later): Friendly Modern look + Med Control AI (merged to main Nov 1)
 - **Look:** Dkota picked mockup "C · Friendly Modern" (design canvas https://claude.ai/artifact/8aocYnGxuELmb4sR2eQj8B). Implemented as the last layer of app.css (token overrides + navy greeting banner `.ovhead`, pastel `.stg` tiles, tinted `.av`). Plus Jakarta Sans from Google Fonts (index.html). Sign-in/home/apply (`.gate`) keep the dark EMS backdrop for now. Light + dark both done.
 - **Med Control** = the AI's name (Dkota's pick; EMS "medical control"). `functions/medcontrol.js` callable `ai-medControl` (export group `ai`; deploy `firebase deploy --only functions:ai`; secret ANTHROPIC_API_KEY). Jobs: chat (claude-haiku-5-5, effort low, roster in a cached system block + desk hints), brief (claude-sonnet-5-5, json_schema output, `fallbacks: "default"`; saved to private/main.ai.brief, owner only), reply (claude-haiku-5-5). Owner + admins only; 150 calls/person/day (`aiUsage/{email}_{day}`, no client rule = no client access). `safeApplicant()` is the privacy filter; `tests/medcontrol-privacy.test.cjs` guards it.
 - Desk: hidden unless `settings.ai === true` (Settings → Med Control). Sidebar `#aiBtn` → `openMedControl` (chat modal, answers linkify applicant names, Copy / Open in Mail for "Subject:" drafts); Board tab "Med Control brief" (`briefHTML`, `[data-aibrief]`); Messages chip `[data-aireply]` → `aiDraftReply` fills the box only. Functions SDK is lazy-imported (`FN_URL`).
@@ -122,7 +126,7 @@ Full check: 118 browser checks, 49 rules tests, live public pages clean, live ru
 - [ ] Server-side email: Google app passwords are NOT available on Dkota's pvrs.org account, so functions/ (paperwork notices) can't use Gmail SMTP. Options: Workspace admin enables app passwords, or an email API (needs DNS on pvrs.org).
 - [ ] Email alerts for uploads/bookings: the function + SMTP setup now exists for confidential paperwork; other alerts not built.
 - Testing: see `tests/README.md`. Tests live in the repo (`tests/`) since Oct 19 — the old scratchpad copies were wiped by macOS. `node tests/browser.test.mjs` (Playwright + `tests/mockfb.js`) and `tests/run-rules.sh` (emulators; Java in ~/.local/jdk21).
-- [ ] Optional: GitHub Actions auto-deploy (repo exists) with a service-account key, so Claude can update the app on demand.
+- [x] GitHub Actions auto-deploy: set up Nov 1 (docs/auto-deploy.md). Functions step still needs the Service Account User grant (see Status Nov 2).
 - [ ] After deploy: sign in at https://pvrs-membership.web.app as dkota@pvrs.org (Google), Settings → Import records → `migration/artifact-export.json`; set signature + default interview location; add team members.
 - [ ] Test end to end with a personal email as a fake applicant (invite, upload, book), then delete it.
 - [ ] Later: add dkota@pvrs.org as project Owner (Project settings → Users and permissions); get board/chief OK before real applicant data.
