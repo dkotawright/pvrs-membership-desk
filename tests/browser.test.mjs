@@ -749,6 +749,39 @@ try {
     if (!new RegExp(`${new Date().getFullYear()} membership report`).test(yr) || !/How far applicants got/.test(yr)) fail("year report: " + yr.slice(0, 120)); else ok("Year-end report prints the year's numbers and funnel");
     await ctx.close();
   }
+  // ---- Original application: print the online form, open the paper copy, or upload one
+  {
+    const form = { v: 1, submittedAt: Date.now() - 864e5, person: { first: "Marcus", last: "Bell", email: "marcus.bell@example.com", phone: "315-555-0188", type: "Associate", dlState: "NY", dlNumber: "B-1", permAddr: { street: "2 Elm", city: "Potsdam", state: "NY", zip: "13676" } },
+      references: [{ name: "Coach Dan Price", email: "dan@example.com" }], signature: { confirmed: true, name: "Marcus Bell" } };
+    const { ctx, page } = await open(browser, { seed: [["applicants/a1/records/rp1", { name: "Georgia-paper-application.pdf", label: "Application", path: "records/a1/1-Georgia-paper-application.pdf", size: 120000, contentType: "application/pdf", uploadedAt: Date.now() - 2 * 864e5, uploadedBy: "dkota@pvrs.org" }]] });
+    await wait(page, 600);
+    await page.evaluate(f => { window.__mock.docs.get("applicants/a2/private/main").form = f; window.__mock.emit(); }, form); await wait(page, 300);
+    await page.evaluate(() => { window.print = () => { window.__printed = (window.__printed || 0) + 1; window.__printHTML = document.querySelector("#print")?.innerHTML || ""; };
+      window.open = () => { window.__opened = (window.__opened || 0) + 1; return { close(){}, set location(u){ window.__openedURL = u; } }; }; });
+    await pickApplicant(page, "Marcus Bell");
+    const og = (await page.locator("#formGroup").textContent()).replace(/\s+/g, " ");
+    if (!/Original application/.test(og) || !/Submitted online/.test(og) || !/signed “Marcus Bell”/.test(og)) fail("online original: " + og); else ok("Application tab shows the original online application");
+    await page.locator('.hacts [data-act="printapp"]').click(); await wait(page, 400);
+    const ph = await page.evaluate(() => window.__printHTML || "");
+    if (!/submitted online/.test(ph) || !/Coach Dan Price/.test(ph) || !/B-1/.test(ph)) fail("header Application didn't print the form: " + ph.slice(0, 120)); else ok("header Application button prints the original online form");
+    await page.screenshot({ path: path.join(OUT, "20-original-online.png") });
+    await pickApplicant(page, "Georgia Thurmond"); await wait(page, 300);
+    const gp = (await page.locator("#formGroup").textContent()).replace(/\s+/g, " ");
+    if (!/Paper copy/.test(gp) || !/Georgia-paper-application\.pdf/.test(gp)) fail("paper original: " + gp); else ok("an uploaded paper application shows as the original");
+    await page.screenshot({ path: path.join(OUT, "21-original-paper.png") });
+    await page.locator('.hacts [data-act="printapp"]').click(); await wait(page, 400);
+    if (!(await page.evaluate(() => window.__opened)) || !/Press ⌘P/.test(await page.locator(".toast, #toast").last().textContent())) fail("paper copy didn't open"); else ok("header Application opens the paper copy to print");
+    await page.evaluate(() => { window.__mock.docs.delete("applicants/a1/records/rp1"); window.__mock.emit(); }); await wait(page, 400);
+    const ng = (await page.locator("#formGroup").textContent()).replace(/\s+/g, " ");
+    if (!/No original on file/.test(ng) || !(await page.locator('#formGroup [data-act="uploadapp"]').count())) fail("no-original state: " + ng); else ok("files with no original offer Upload paper copy");
+    await page.screenshot({ path: path.join(OUT, "22-original-none.png") });
+    await page.locator('#formGroup [data-act="uploadapp"]').click(); await wait(page, 300);
+    if ((await page.locator("#recLabel").inputValue()) !== "Application") fail("upload didn't pre-pick Application"); else ok("Upload paper copy opens the uploader set to Application");
+    await page.keyboard.press("Escape"); await wait(page, 200);
+    await page.keyboard.press("Meta+k"); await wait(page, 300); await page.locator("#palQ").fill("marcus"); await wait(page, 300);
+    if (!/Print application/.test(await page.locator("#palList").textContent())) fail("⌘K has no Print application"); else ok("⌘K offers Print application for the person found");
+    await ctx.close();
+  }
   // ---- applicant portal: "Step 2 of 3" tracker and the interview-tomorrow reminder
   {
     const soon = Date.now() + 20 * 36e5;

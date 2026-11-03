@@ -56,8 +56,7 @@ function tabHTML(tab){
       F.seg("type","Membership type",TYPES.map(t=>[t,t]),true),`<div class="note" id="typeNote"></div>`,F.seg("location","Location",[["Potsdam","Potsdam"],["other","Other"]]),`<div data-show="locOther">${F.text("locationOther","Where?","Town")}</div>`])}
     ${group("Application",[F.date("app.received","Date received"),F.init("app.receivedInit"),F.yn("app.complete","Complete?",true),
       F.select("app.heard","Heard about PVRS",[["","—"],...HEARD.map(h => [h,h])]),F.text("app.heardDetail","Details","Which member, event…")])}
-    ${admin ? `<section class="group" id="formGroup" hidden><h3><span>Online application</span></h3><div class="ios"><div class="row"><span class="lbl">Submitted online<small id="formNote">—</small></span>
-      <button class="btn small" type="button" data-act="viewform">View</button><button class="btn small" type="button" data-act="printform">Print</button></div></div></section>` : ""}
+    ${admin ? `<section class="group" id="formGroup"><h3><span>Original application</span></h3><div class="ios" id="origList"></div></section>` : ""}
     ${group("Incomplete application",[F.date("app.notified","Date notified"),F.date("app.returned","Date app returned"),F.date("app.reReceived","Date re-received")],"incomplete")}
     ${admin ? group("Applicant portal",[
       `<div class="row"><span class="lbl">Portal access<small id="portalStatus">—</small></span><button class="btn small primary" type="button" data-act="invite" id="inviteBtn">Welcome</button></div>`,
@@ -590,6 +589,7 @@ function goNextStep(){
   inp?.focus({ preventScroll: true });
 }
 const ICON = {
+  print:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6V1.5h7V6M4.5 11.5h-2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1h-2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><rect x="4.5" y="9.5" width="7" height="5" rx=".5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`,
   trash:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   mail:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 4l6 4.5L14 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>`,
   cal:`<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M1.5 6.5h13M5 1v3M11 1v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
@@ -631,6 +631,7 @@ function paintDetail(){
           <button class="btn small" type="button" data-act="book" title="Book an interview time">${ICON.cal}<span class="tl">Book</span></button>
           <button class="btn small" type="button" data-act="docs" title="Request documents">${ICON.doc}<span class="tl">Request docs</span></button>
           <button class="btn small" type="button" data-act="preview" title="See their applicant portal">${ICON.eye}<span class="tl">Portal</span></button>
+          <button class="btn small" type="button" data-act="printapp" title="Print the original application">${ICON.print}<span class="tl">Application</span></button>
           ${S.canEdit ? `<button class="btn small hdel" type="button" data-act="delete" title="Delete this applicant">${ICON.trash}<span class="tl">Delete</span></button>` : ""}
           <button class="btn small hmore" type="button" data-act="actions" aria-haspopup="dialog"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.5" cy="8" r="1.4" fill="currentColor"/></svg>Actions</button>
         </div>` : ""}</div>
@@ -672,7 +673,6 @@ function syncDetail(){
     $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
   renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges();
-  const fg = $("#formGroup"); if (fg) { const f = a.form; fg.hidden = !f; if (f) $("#formNote").textContent = `${new Date(f.submittedAt).toLocaleString(undefined,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})} · signed “${f.signature?.name || ""}”`; }
   if (S.tab === "msgs" && !$("#dThread")?.childElementCount) renderMessages();
   syncSignoff(a);
   const dlr = $("#dlFromApp"); if (dlr) { const n = get(a, "form.person.dlNumber"); dlr.hidden = !n; if (n) { $("#dlNum").textContent = n; $("#dlFromAppNote").textContent = `Issued in ${get(a, "form.person.dlState") || "—"} · admins only`; } }
@@ -742,7 +742,34 @@ function renderDocs(a){
     + (!files.length && other.length ? "" : "");
   renderRecords();
 }
+// Original application: the online form as submitted, and/or paper copies uploaded as "Application" records.
+const isAppRec = r => r.label === "Application" && !r.confidential && r.path;
+function renderOriginal(){
+  const el = $("#origList"), a = S.apps.get(S.sel); if (!el || !a) return;
+  const f = a.form, papers = S.records.filter(isAppRec);
+  const when = ms => new Date(ms).toLocaleString(undefined,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"});
+  el.innerHTML = (f ? `<div class="row"><span class="lbl">Submitted online<small>${esc(when(f.submittedAt))} · signed “${esc(f.signature?.name || "")}”</small></span>
+      <button class="btn small" type="button" data-act="viewform">View</button><button class="btn small" type="button" data-act="printform">Print</button></div>` : "")
+    + papers.map(r => `<div class="row"><span class="lbl">Paper copy<small>${esc(r.name)} · uploaded ${esc(new Date(r.uploadedAt).toLocaleDateString())}</small></span>
+      <button class="btn small" type="button" data-rec="${esc(r.id)}" title="Opens in a new tab; press ⌘P there to print">Open to print</button></div>`).join("")
+    + (!f && !papers.length ? `<div class="row"><span class="lbl" style="color:var(--fg2)">No original on file<small>${S.canEdit ? "Scan the paper application and upload it here so it can be printed later." : "The owner can upload a scan of the paper application."}</small></span>
+      ${S.canEdit ? `<button class="btn small" type="button" data-act="uploadapp">Upload paper copy</button>` : ""}</div>` : "");
+}
+const printForm = f => printHTML(`<section class="pk">${formHTML(f, true)}</section>`);
+// Header / ⌘K "Application": prints the online form, or opens the newest paper copy (PDFs can't be printed from here).
+async function printOriginal(id){
+  const a = S.apps.get(id); if (!a) return;
+  if (a.form) return printForm(a.form);
+  const w = window.open("", "_blank");   // open the tab during the click so Safari doesn't block it
+  let recs = S.sel === id ? S.records : [];
+  if (!recs.length) { try { recs = (await getDocs(collection(db, "applicants", id, "records"))).docs.map(d => ({ id: d.id, ...d.data() })); } catch { recs = []; } }
+  const r = recs.filter(isAppRec).sort((x, y) => (y.uploadedAt || 0) - (x.uploadedAt || 0))[0];
+  if (!r) { if (w) w.close(); return toast(S.canEdit ? "No original application on file. Upload the paper copy on the Application tab (Original application → Upload paper copy)." : "No original application on file yet."); }
+  try { const url = await getDownloadURL(ref(storage, r.path)); if (w) w.location = url; else location.href = url; toast("Opened the paper application. Press ⌘P in that tab to print."); }
+  catch { if (w) w.close(); toast("Couldn't open the paper application."); }
+}
 function renderRecords(){
+  renderOriginal();
   const el = $("#recList"); if (!el) return;
   const recs = S.records;
   el.innerHTML = `<div class="note">Squad records · staff only, never shown to the applicant${recs.length ? ` · ${recs.length} file${recs.length===1?"":"s"}` : ""}</div>`
@@ -1123,11 +1150,11 @@ async function openRecord(rid){
 }
 const RECORD_LABELS = ["Application","Interview intake","MVR (driving record)","Driver's license copy","Background check (Sterling)","Reference letter","EMT / CPR certification","Medical documentation","Social Security card","Board paperwork","Other"];
 const RECORD_MAX = 25 * 1024 * 1024;
-function openUploadRecords(id){
+function openUploadRecords(id, preset){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id); if (!a) return;
   const M = openModal(`<h3>Upload records</h3><p class="help">For ${esc(a.name || "this applicant")}. Staff only: admins can open and print these; the applicant never sees them. PDFs or photos, up to 25 MB each.</p>
-    <div class="field"><label for="recLabel">What is it?</label><select id="recLabel">${RECORD_LABELS.map(l => `<option>${esc(l)}${isConfidential(l) ? " 🔒" : ""}</option>`).join("")}</select></div>
+    <div class="field"><label for="recLabel">What is it?</label><select id="recLabel">${RECORD_LABELS.map(l => `<option${l === preset ? " selected" : ""}>${esc(l)}${isConfidential(l) ? " 🔒" : ""}</option>`).join("")}</select></div>
     <p class="help lockline" id="recConf" hidden>🔒 Secure document: this goes only to ${esc(PAPERWORK_EMAIL)}. Once uploaded, you won't be able to open it.</p>
     <label class="dropzone" id="recDrop" for="recFiles"><input type="file" id="recFiles" accept="application/pdf,image/*" multiple hidden>
       <b>Drop files here</b><span>or click to choose from your Mac</span></label>
@@ -1527,6 +1554,7 @@ function openPalette(){
       const fn = top.name || "applicant", id = top._id;
       out.push({ label: `Interview mode`, sub: fn, icon: "▶", run: go(() => { select(id); enterIvMode(); }) });
       if (S.admin) out.push({ label: "Open Checks", sub: fn, icon: "✓", run: openFile(id, "checks") });
+      if (S.admin) out.push({ label: "Print application", sub: fn, icon: "⎙", run: go(() => printOriginal(id)) });
       if (S.canEdit && refList(top).length) out.push({ label: "Email reference forms", sub: fn, icon: "✉", run: go(() => openRefsAll(id)) });
       if (S.canEdit && !get(top, "portal.invited") && okEmail(top.email)) out.push({ label: `Welcome ${first(top.name)}`, sub: "Portal invite, welcome message and email", icon: "✉", run: go(() => inviteToPortal(id)) });
       if (S.canEdit && okEmail(top.email)) out.push({ label: `Email ${first(top.name)}`, sub: top.email, icon: "✉", run: go(() => { select(id); openEmailPicker(); }) });
@@ -1789,7 +1817,9 @@ function bindEvents(){
       if (k === "docs") return openRequestDocs(S.sel);
       if (k === "records") return openUploadRecords(S.sel);
       if (k === "viewform") return openForm(S.sel);
-      if (k === "printform") { const a = S.apps.get(S.sel); if (a && a.form) printHTML(`<section class="pk">${formHTML(a.form, true)}</section>`); return; }
+      if (k === "printform") { const a = S.apps.get(S.sel); if (a && a.form) printForm(a.form); return; }
+      if (k === "printapp") return printOriginal(S.sel);
+      if (k === "uploadapp") return openUploadRecords(S.sel, "Application");
       if (k === "book") return openBook(S.sel);
       if (k === "packet") { flushAll(); return printPacket([S.apps.get(S.sel)]); }
       if (k === "ics") { const a = S.apps.get(S.sel); if (a && a._booked) { download(`PVRS-interview-${(a.name||"applicant").replace(/\W+/g,"-")}.ics`, icsFile([icsEvent(a, a._booked)]), "text/calendar"); toast("Calendar file downloaded. Open it to add the interview."); } return; }
@@ -2061,7 +2091,7 @@ function openForm(id){
   const a = S.apps.get(id); if (!a || !a.form) return;
   const M = openModal(`<h3>Online application · ${esc(a.name || "")}</h3><div class="formmodal">${formHTML(a.form, false)}</div>
     <div class="acts"><button class="btn" type="button" data-x>Close</button><button class="btn primary" type="button" data-printform>Print</button></div>`, true);
-  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("[data-printform]")) { closeModal(); printHTML(`<section class="pk">${formHTML(a.form, true)}</section>`); } };
+  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("[data-printform]")) { closeModal(); printForm(a.form); } };
 }
 const isoDay = ms => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 const importing = new Set();

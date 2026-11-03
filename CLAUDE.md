@@ -93,6 +93,11 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - **Year-end report** (`printYearReport`): KPIs, funnel, months, sources, printable.
 - Tests: 174 browser checks.
 
+## Print the original application (Nov 3, branch feature/print-application, not yet in a PR)
+- Application tab group **Original application** (`renderOriginal`, called from `renderRecords`) replaces the old hidden "Online application" row and shows for every file (admins): online form → View / Print; records labelled "Application" → "Paper copy · Open to print"; neither → "No original on file" + owner-only **Upload paper copy** (`openUploadRecords(id, "Application")` pre-picks the label).
+- File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
+- Tests: 181 browser checks.
+
 ## Status Nov 2
 - The Oct 31 batch, Friendly Modern look and Med Control are merged into `main` (PRs #7, #8). The auto-deploys of both failed at the functions step: the `github-deploy` account lacks **Service Account User** on `pvrs-membership@appspot.gserviceaccount.com` (`iam.serviceAccounts.ActAs`). PR #9 deploys hosting + rules before the function so the site goes live regardless; the fix for Med Control is in docs/auto-deploy.md (Dkota grants the role in the Cloud console, then re-runs the job).
 - Old open PRs #1–#6 (Oct 19–26: isolated testing, UI polish, Homey redesign, duty schedule, Slack, sign-in wallpaper) predate the Friendly Modern look and conflict with `main`. Left open, not merged, pending Dkota's decision on which features to rebuild on the current design.
