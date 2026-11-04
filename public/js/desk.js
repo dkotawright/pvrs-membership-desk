@@ -51,7 +51,7 @@ const TABS_MEMBER = [["app","Application"],["iv","Interview"]];
 function tabHTML(tab){
   const admin = S.admin;
   if (tab === "checks") return `<h2 class="tabsec">Driving record and license</h2>${tabHTML("screen")}<h2 class="tabsec">References</h2>${tabHTML("refs")}`;
-  if (tab === "app") return `<div class="cols">
+  if (tab === "app") return `${admin ? `<div class="note warn dupenote" id="dupeNote" hidden></div>` : ""}<div class="cols">
     ${group("Applicant",[F.text("name","Full name","First Last"),F.text("phone","Phone","(315) 555-0100","tel"),F.text("email","Email","name@example.com","email"),
       F.seg("type","Membership type",TYPES.map(t=>[t,t]),true),`<div class="note" id="typeNote"></div>`,F.seg("location","Location",[["Potsdam","Potsdam"],["other","Other"]]),`<div data-show="locOther">${F.text("locationOther","Where?","Town")}</div>`])}
     ${group("Application",[F.date("app.received","Date received"),F.init("app.receivedInit"),F.yn("app.complete","Complete?",true),
@@ -270,8 +270,8 @@ function paintList(){
       ? (p.next ? `Next: <strong>${esc(p.next)}</strong>` : "All steps complete")
       : (get(a,"sched.completed") ? "Interview completed" : iv ? `Interview: <strong>${esc(iv)}</strong>` : "Interview not scheduled yet");
     const inProc = d != null && IN_PROCESS.includes(p.stage);
-    return `<button class="arow" type="button" data-id="${esc(a._id)}" aria-current="${S.sel===a._id}" style="--stage-c:${stageVar(p.stage)}">
-      <span class="av" aria-hidden="true">${esc(initials(a.name))}</span>
+    return `<button class="arow${S.bulk?.has(a._id) ? " picked" : ""}" type="button" data-id="${esc(a._id)}" aria-current="${S.sel===a._id}"${S.bulk ? ` aria-pressed="${S.bulk.has(a._id)}"` : ""} style="--stage-c:${stageVar(p.stage)}">
+      ${S.bulk ? `<span class="bulkck" aria-hidden="true">${S.bulk.has(a._id) ? "✓" : ""}</span>` : ""}<span class="av" aria-hidden="true">${esc(initials(a.name))}</span>
       <span class="ab">
         <span class="r1"><span class="nm">${hl(a.name||"Unnamed applicant", q)}</span><span class="pill">${STAGES[p.stage].label}</span></span>
         <span class="meta">${milestoneChip(a)}${get(a,"app.source") === "online" ? `<span class="srctag" title="Applied online">Online</span>` : ""}${[a.type,loc(a),inProc?`${d} day${d===1?"":"s"}`:null].filter(Boolean).map(esc).join(" · ")||"Details not entered"}</span>
@@ -336,6 +336,8 @@ function openRetention(){
 }
 function todoItems(){
   const out = [];
+  if (S.owner) { const seen = new Set(); for (const a of S.apps.values()) for (const b of dupesOf(a)) { const key = [a._id, b._id].sort().join("|"); if (seen.has(key)) continue; seen.add(key);
+    out.push({ id: a._id, a, pri: 0, text: `Possible duplicate: ${a.name || "Unnamed"}`, sub: `Also on file as ${b.name || "Unnamed"} (${dupeWhy(a, b)})`, tab: "app", act: "dupe", btn: "Review", age: 0 }); } }
   const old = pastRetention();
   if (old.length) out.push({ id: old[0]._id, a: old[0], pri: 3, text: `Review ${old.length === 1 ? "an old file" : old.length + " old files"} past the ${retentionYears()}-year retention`, sub: old.map(a => a.name).slice(0, 3).join(", ") + (old.length > 3 ? "…" : ""), tab: "notes", act: "retention", btn: "Review", age: 0 });
   for (const a of S.apps.values()) {
@@ -503,6 +505,7 @@ function renderOverview(){
   $("#overviewBtn").classList.add("on");
   const keepScroll = D.querySelector(".ov")?.scrollTop || 0;
   if (!S.ready) { D._ovHTML = ""; D.innerHTML = `<div class="empty"><span class="spin" aria-hidden="true"></span><h3>Loading…</h3></div>`; return; }
+  if (S.role === "interviewer") return renderMyInterviews(D);
   const rows = sorted(), now = Date.now(), wk = now + 7*864e5;
   const c = S.counts || {};
   const inProc = rows.filter(r => IN_PROCESS.includes(r.p.stage));
@@ -675,7 +678,7 @@ function syncDetail(){
     const cal = a._booked ? `<button class="btn small" type="button" data-act="ics" title="Add to Calendar">${ICON.cal}<span class="tl">Calendar</span></button>` : "";
     $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
-  renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges(); renderInterviewers(a);
+  renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges(); renderInterviewers(a); renderDupeNote(a);
   if (S.tab === "msgs" && !$("#dThread")?.childElementCount) renderMessages();
   syncSignoff(a);
   const dlr = $("#dlFromApp"); if (dlr) { const n = get(a, "form.person.dlNumber"); dlr.hidden = !n; if (n) { $("#dlNum").textContent = n; $("#dlFromAppNote").textContent = `Issued in ${get(a, "form.person.dlState") || "—"} · admins only`; } }
@@ -753,6 +756,7 @@ function renderOriginal(){
   const when = ms => new Date(ms).toLocaleString(undefined,{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"});
   el.innerHTML = (f ? `<div class="row"><span class="lbl">Submitted online<small>${esc(when(f.submittedAt))} · signed “${esc(f.signature?.name || "")}”</small></span>
       <button class="btn small" type="button" data-act="viewform">View</button><button class="btn small" type="button" data-act="printform">Print</button></div>` : "")
+    + (a.otherForms || []).map((x, i) => `<div class="row"><span class="lbl">Also submitted online<small>${esc(when(x.submittedAt))} · from a combined file</small></span><button class="btn small" type="button" data-printother="${i}">Print</button></div>`).join("")
     + papers.map(r => `<div class="row"><span class="lbl">Paper copy<small>${esc(r.name)} · uploaded ${esc(new Date(r.uploadedAt).toLocaleDateString())}</small></span>
       <button class="btn small" type="button" data-rec="${esc(r.id)}" title="Opens in a new tab; press ⌘P there to print">Open to print</button></div>`).join("")
     + (!f && !papers.length ? `<div class="row"><span class="lbl" style="color:var(--fg2)">No original on file<small>${S.canEdit ? "Scan the signed paper application and click Upload original." : "The owner can upload a scan of the paper application."}</small></span></div>` : "");
@@ -963,28 +967,31 @@ function openBook(id){
     try { await bookFor(id, s); closeModal(); toast(`Booked ${slotLong(s.start)}`); } catch (err) { console.error(err); toast("Couldn't book that time. It may have just been taken."); }
   };
 }
+const canHostSlots = () => S.owner || S.admin || S.role === "interviewer";
 function openSlots(){
-  if (!S.canEdit) return ownerOnlyToast();
+  if (!canHostSlots()) return ownerOnlyToast();
   const def = S.settings.defaultLocation || "";
+  const hosts = S.canEdit ? [...S.staff.entries()].filter(([, s]) => s.role === "interviewer" || s.role === "admin") : [];
   const d0 = new Date(Date.now() + 3*864e5), dStr = `${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,"0")}-${String(d0.getDate()).padStart(2,"0")}`;
-  const M = openModal(`<h3>Interview times</h3><p class="help">Applicants with booking turned on can pick any open time at least 24 hours out.</p>
+  const M = openModal(`<h3>${S.canEdit ? "Interview times" : "My interview times"}</h3><p class="help">${S.canEdit ? "Applicants with booking turned on can pick any open time at least 24 hours out." : "Add the times you're free to interview. When an applicant books one, they're assigned to you automatically."}</p>
     <form id="slotForm" class="ios" style="padding:14px"><div class="addslot">
       <div class="field"><label for="slDate">Date</label><input id="slDate" type="date" value="${dStr}" required></div>
       <div class="field"><label for="slTime">First start time</label><input id="slTime" type="time" value="18:00" required></div>
       <div class="field"><label for="slDur">Length</label><select id="slDur"><option>20</option><option selected>30</option><option>45</option><option>60</option></select></div>
       <div class="field"><label for="slCount">Back-to-back slots</label><select id="slCount">${[1,2,3,4,5,6,8,10].map(n=>`<option>${n}</option>`).join("")}</select></div>
+      ${hosts.length ? `<div class="field full"><label for="slHost">Interviewer</label><select id="slHost"><option value="">Membership Committee (no one assigned)</option>${hosts.map(([e, s]) => `<option value="${esc(e)}">${esc(s.name || e)}</option>`).join("")}</select></div>` : ""}
       <div class="field full"><label for="slLoc">Location</label><input id="slLoc" type="text" placeholder="PVRS building, room…" value="${esc(def)}"></div>
       <div class="full" style="display:flex;justify-content:flex-end"><button class="btn primary" type="submit">Add times</button></div></div></form>
     <div id="slotList"></div>
     <div class="acts"><button class="btn" type="button" id="slIcs" title="Every booked interview as one calendar file">Add booked interviews to Calendar</button><button class="btn" type="button" data-x>Done</button></div>`, true);
   const paint = () => {
     if (!$("#slotList")) return;
-    const up = [...S.slots.values()].filter(s => s.start > Date.now() - 864e5).sort((x,y) => x.start - y.start);
+    const up = [...S.slots.values()].filter(s => s.start > Date.now() - 864e5 && (S.canEdit || s.host === S.me)).sort((x,y) => x.start - y.start);
     const days = {}; up.forEach(s => { const k = slotDay(s.start); (days[k] = days[k] || []).push(s); });
     $("#slotList").innerHTML = up.length ? Object.entries(days).map(([day, list]) => `<div class="group"><h3><span>${esc(day)}</span></h3><div class="ios slotlist">${list.map(s => {
       const who = s.bookedBy ? (S.apps.get(s.bookedBy)?.name || "Applicant") : "";
-      return `<div class="row"><span class="lbl"><span class="when">${esc(slotTime(s.start))}</span><small>${esc([s.duration?s.duration+" min":"", s.location].filter(Boolean).join(" · "))}</small></span>
-        ${who ? `<span class="badge ok">${esc(who)}</span><button class="btn small" type="button" data-rel="${esc(s.id)}">Release</button>` : `<span class="badge wait">Open</span><button class="btn small danger" type="button" data-del="${esc(s.id)}">Delete</button>`}</div>`; }).join("")}</div></div>`).join("")
+      return `<div class="row"><span class="lbl"><span class="when">${esc(slotTime(s.start))}</span><small>${esc([s.duration?s.duration+" min":"", s.location, S.canEdit && s.hostName ? "with " + s.hostName : ""].filter(Boolean).join(" · "))}</small></span>
+        ${who ? `<span class="badge ok">${esc(who)}</span>${S.canEdit ? `<button class="btn small" type="button" data-rel="${esc(s.id)}">Release</button>` : ""}` : `<span class="badge wait">Open</span><button class="btn small danger" type="button" data-del="${esc(s.id)}">Delete</button>`}</div>`; }).join("")}</div></div>`).join("")
       : `<p class="help">No upcoming interview times yet.</p>`;
   };
   paint(); S._slotPaint = paint;
@@ -995,8 +1002,10 @@ function openSlots(){
     if (!y || isNaN(h)) return toast("Pick a date and time.");
     const dur = +$("#slDur").value, n = +$("#slCount").value, where = $("#slLoc").value.trim();
     try {
-      for (let i = 0; i < n; i++) { const start = new Date(y, mo-1, d, h, mi + i*dur).getTime(); await addDoc(collection(db, "slots"), { start, duration: dur, location: where, bookedBy: null, createdAt: Date.now() }); }
-      if (where && where !== S.settings.defaultLocation && S.admin) { S.settings.defaultLocation = where; setDoc(doc(db, "settings", "main"), { defaultLocation: where }, { merge: true }).catch(() => {}); }
+      const hostEmail = S.canEdit ? ($("#slHost")?.value || "") : S.me;
+      const host = hostEmail ? { host: hostEmail, hostName: first(hostEmail === S.me ? S.name : S.staff.get(hostEmail)?.name) || hostEmail.split("@")[0] } : {};
+      for (let i = 0; i < n; i++) { const start = new Date(y, mo-1, d, h, mi + i*dur).getTime(); await addDoc(collection(db, "slots"), { start, duration: dur, location: where, bookedBy: null, createdAt: Date.now(), ...host }); }
+      if (where && where !== S.settings.defaultLocation && S.canEdit) { S.settings.defaultLocation = where; setDoc(doc(db, "settings", "main"), { defaultLocation: where }, { merge: true }).catch(() => {}); }
       toast(`Added ${n} time${n>1?"s":""}`);
     } catch (err) { console.error(err); toast("Couldn't add those times."); }
   };
@@ -1464,7 +1473,7 @@ function confirmDelete(id){
     if (e.target.closest("#delGo")) { e.target.closest("#delGo").disabled = true; await deleteApplicant(id); closeModal(); }
   };
 }
-async function deleteApplicant(id, quiet = false){
+async function deleteApplicant(id, quiet = false, { keepRecordFiles = false } = {}){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id);
   try {
@@ -1477,15 +1486,18 @@ async function deleteApplicant(id, quiet = false){
     const ms = await getDocs(collection(db, "portal", id, "messages")).catch(() => null);
     if (ms) for (const m of ms.docs) await deleteDoc(m.ref).catch(() => {});
     const links = await getDocs(query(collection(db, "refLinks"), where("appId", "==", id))).catch(() => null);
-    if (links) for (const l of links.docs) { await deleteDoc(doc(db, "refResponses", l.id)).catch(() => {}); await deleteDoc(l.ref).catch(() => {}); }
+    if (links) for (const l of links.docs) { if (S._keepLinks?.has(l.id)) continue; await deleteDoc(doc(db, "refResponses", l.id)).catch(() => {}); await deleteDoc(l.ref).catch(() => {}); }
     const rus = await getDocs(collection(db, "portal", id, "refUpdates")).catch(() => null);
     if (rus) for (const u of rus.docs) await deleteDoc(u.ref).catch(() => {});
     const recs = await getDocs(collection(db, "applicants", id, "records")).catch(() => null);
-    if (recs) for (const r0 of recs.docs) { if (r0.data().path) await deleteObject(ref(storage, r0.data().path)).catch(() => {}); await deleteDoc(r0.ref).catch(() => {}); }
+    if (recs) for (const r0 of recs.docs) { if (r0.data().path && !keepRecordFiles) await deleteObject(ref(storage, r0.data().path)).catch(() => {}); await deleteDoc(r0.ref).catch(() => {}); }
     const hist = await getDocs(collection(db, "applicants", id, "history")).catch(() => null);
     if (hist) for (const h of hist.docs) await deleteDoc(h.ref).catch(() => {});
     const subs = await getDocs(query(collection(db, "submissions"), where("applicantId", "==", id))).catch(() => null);
     if (subs) for (const sd of subs.docs) await deleteDoc(sd.ref).catch(() => {});
+    await deleteDoc(doc(db, "convos", id)).catch(() => {});
+    const toks = await getDocs(query(collection(db, "applicantTokens"), where("appId", "==", id))).catch(() => null);
+    if (toks) for (const t of toks.docs) await deleteDoc(t.ref).catch(() => {});
     await deleteDoc(doc(db, "applicants", id, "private", "main"));
     await deleteDoc(doc(db, "applicants", id));
     if (S.sel === id) S.sel = null;
@@ -1536,7 +1548,7 @@ function openPalette(){
     { label: "Board meeting", show: S.admin, words: "board meeting agenda packet vote", run: go(openBoardMtg) },
     { label: "Recruiting flyer (print)", show: S.admin, words: "flyer poster qr recruit print", run: go(printFlyer) },
     { label: "Year-end report (print)", show: S.admin, words: "year end annual report stats print", run: go(printYearReport) },
-    { label: "Interview times", show: S.canEdit, words: "interview times slots schedule calendar", run: go(openSlots) },
+    { label: S.canEdit ? "Interview times" : "My interview times", show: canHostSlots(), words: "interview times slots schedule calendar", run: go(openSlots) },
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(() => openChat()) },
     { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
     { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
@@ -1565,6 +1577,7 @@ function openPalette(){
       if (S.canEdit && !get(top, "portal.invited") && okEmail(top.email)) out.push({ label: `Welcome ${first(top.name)}`, sub: "Portal invite, welcome message and email", icon: "✉", run: go(() => inviteToPortal(id)) });
       if (S.canEdit && okEmail(top.email)) out.push({ label: `Email ${first(top.name)}`, sub: top.email, icon: "✉", run: go(() => { select(id); openEmailPicker(); }) });
     }
+    if (q) searchAll(q).forEach(h => out.push({ label: h.label, sub: h.sub, icon: h.icon, run: go(h.open) }));
     commands.filter(c => !q || has(`${c.label.toLowerCase()} ${c.words}`, q))
       .sort((x, y) => (q && !x.label.toLowerCase().startsWith(q)) - (q && !y.label.toLowerCase().startsWith(q)))
       .forEach(c => out.push({ ...c, cmd: true }));
@@ -1758,7 +1771,13 @@ function onKeys(e){
   else if (S.sel && S.canEdit && (e.key === "e" || e.key === "E")) { e.preventDefault(); openEmailPicker(); }
 }
 function bindEvents(){
-  $("#list").addEventListener("click", e => { const c = e.target.closest(".arow"); if (c) select(c.dataset.id); });
+  $("#list").addEventListener("click", e => { const c = e.target.closest(".arow"); if (!c) return;
+    if (S.bulk) { const id = c.dataset.id; S.bulk.has(id) ? S.bulk.delete(id) : S.bulk.add(id); renderList(); paintBulk(); return; }
+    select(c.dataset.id); });
+  if (S.owner) { $("#bulkBtn").hidden = false; $("#bulkBtn").addEventListener("click", () => bulkToggle(!S.bulk));
+    $("#bulkBar").addEventListener("click", e => { const b = e.target.closest("[data-bulk]"); if (!b) return; const k = b.dataset.bulk;
+      if (k === "all") { const all = S.vis || []; S.bulk = S.bulk.size === all.length ? new Set() : new Set(all); renderList(); paintBulk(); return; }
+      if (k === "assign") return bulkAssign(); if (k === "msg") return bulkMessage(); if (k === "refs") return bulkRefs(); }); }
   const onFilter = e => { const c = e.target.closest("[data-f]"); if (!c) return; if (innerWidth <= 860 && S.sel) deselect(); setFilter(c.dataset.f); };
   $("#chips").addEventListener("click", onFilter);
   $("#chipsMini").addEventListener("click", onFilter);
@@ -1792,12 +1811,16 @@ function bindEvents(){
     const ivb = t.closest("[data-iv]"); if (ivb) { const k = ivb.dataset.iv; if (k === "exit") exitIvMode(); else ivGo(k === "next" ? 1 : -1); return; }
     const tab = t.closest("[data-tab]");
     if (tab) { switchTab(tab.dataset.tab); return; }
+    const po = t.closest("[data-printother]"); if (po) { const x = S.apps.get(S.sel)?.otherForms?.[+po.dataset.printother]; if (x) printForm(x); return; }
+    const si = t.closest("[data-startiv]"); if (si) { select(si.dataset.startiv); switchTab("iv"); enterIvMode(); return; }
+    const dp = t.closest("[data-dupe]"); if (dp) return openDupe(S.sel, dp.dataset.dupe);
     const op = t.closest("[data-open]"); if (op) return select(op.dataset.open);
     const fl0 = t.closest("[data-filter]"); if (fl0) return setFilter(fl0.dataset.filter, true);
     const td = t.closest("[data-todo]"); if (td) { const tab = td.dataset.totab; select(td.dataset.todo); if (tab && tab !== S.tab) switchTab(tab); return; }
     const ta = t.closest("[data-todoact]");
     if (ta) { const id = ta.dataset.id, k = ta.dataset.todoact;
       if (k === "refsall") return openRefsAll(id);
+      if (k === "dupe") return openDupe(id);
       if (k === "retention") return openRetention();
       if (k === "nextgo") { select(id); setTimeout(goNextStep, 60); return; }
       if (k === "invite") return inviteToPortal(id);
@@ -2565,6 +2588,15 @@ function renderInterviewers(a){
   el.innerHTML = list.length ? list.map(e => `<div class="row"><span class="av sm" style="--stage-c:${personColor(e)}" aria-hidden="true">${esc(initials(memberName(e)))}</span><span class="lbl">${esc(memberName(e))}<small>${esc(e)} · ${esc(roleLabel(S.staff.get(e)?.role))}</small></span></div>`).join("")
     : `<div class="row"><span class="lbl" style="color:var(--fg2)">Nobody assigned yet${S.canEdit ? ". Click <b>Assign</b> to pick who interviews " + esc(first(a.name) || "them") + "." : "."}</span></div>`;
 }
+async function saveInterviewers(id, next){
+  const a = S.apps.get(id), cur = Array.isArray(a?.interviewers) ? a.interviewers : [];
+  const added = next.filter(x => !cur.includes(x)), removed = cur.filter(x => !next.includes(x));
+  await updateDoc(doc(db, "applicants", id), { interviewers: next, updatedAt: Date.now(), updatedBy: S.me });
+  const cv = C.convos.get(id) || {}, members = [...new Set([...(cv.members || []).filter(m => !removed.includes(m)), ...added])].filter(m => m !== OWNER_EMAIL);
+  if (members.length) await setDoc(doc(db, "convos", id), { members, names: Object.fromEntries(members.map(m => [m, S.staff.get(m)?.name || m.split("@")[0]])), updatedAt: Date.now() });
+  else if (C.convos.has(id)) await deleteDoc(doc(db, "convos", id));
+  addDoc(collection(db, "applicants", id, "history"), { at: Date.now(), by: S.me, changes: [{ path: "interviewers", from: cur.join(", "), to: next.join(", ") }] }).catch(() => {});
+}
 function openAssignInterviewers(id){
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id); if (!a) return;
@@ -2579,13 +2611,8 @@ function openAssignInterviewers(id){
     if (e.target.closest("[data-x]")) return closeModal();
     if (!e.target.closest("#ivaSave")) return;
     const next = [...M.querySelectorAll(".cv-pick input:checked")].map(i => i.value);
-    const added = next.filter(x => !cur.includes(x)), removed = cur.filter(x => !next.includes(x));
     try {
-      await updateDoc(doc(db, "applicants", id), { interviewers: next, updatedAt: Date.now(), updatedBy: S.me });
-      const cv = C.convos.get(id) || {}, members = [...new Set([...(cv.members || []).filter(m => !removed.includes(m)), ...added])].filter(m => m !== OWNER_EMAIL);
-      if (members.length) await setDoc(doc(db, "convos", id), { members, names: Object.fromEntries(members.map(m => [m, S.staff.get(m)?.name || m.split("@")[0]])), updatedAt: Date.now() });
-      else if (C.convos.has(id)) await deleteDoc(doc(db, "convos", id));
-      addDoc(collection(db, "applicants", id, "history"), { at: Date.now(), by: S.me, changes: [{ path: "interviewers", from: cur.join(", "), to: next.join(", ") }] }).catch(() => {});
+      await saveInterviewers(id, next);
       closeModal(); toast(next.length ? `Saved. ${next.map(m => first(memberName(m))).join(", ")} can now see ${first(a.name)}'s interview.` : "No interviewers assigned.");
     } catch (err) { console.error(err); toast("Couldn't save. Try again."); }
   };
@@ -2690,12 +2717,12 @@ const chIcon = (it, big) => it.kind === "c"
   : `<span class="av${big ? " big" : ""}" style="--stage-c:${stageVar(view(S.apps.get(it.id)).stage)}" aria-hidden="true">${esc(initials(it.name))}</span>`;
 function chatListHTML(){
   const { chans, apps } = chatItems(), q = C.q.trim().toLowerCase();
-  const hit = it => !q || it.name.toLowerCase().includes(q);
+  const hit = it => !q || it.name.toLowerCase().includes(q) || (it.kind === "c" ? channelPosts(it.id) : threadOf(it.id)).some(m => String(m.text || "").toLowerCase().includes(q));
   // Owner's search also offers invited applicants with no messages yet, so a conversation can be started.
   const extra = S.owner && q ? [...S.apps.values()].filter(a => get(a, "portal.invited") && !apps.some(x => x.id === a._id) && (a.name || "").toLowerCase().includes(q)).slice(0, 5)
     .map(a => ({ key: chatKeyOf("a", a._id), kind: "a", id: a._id, name: a.name || "Applicant", last: null })) : [];
   const row = it => { const n = unreadIn(it.key), st = it.kind === "a" ? STAGES[view(S.apps.get(it.id)).stage] : null;
-    const prev = it.last ? (it.last.by === S.me ? "You: " : it.kind === "c" || it.last.from === "staff" ? (first(it.last.name) || "Squad") + ": " : "") + it.last.text : it.kind === "c" ? "No messages yet" : "Start the conversation";
+    const prev = it.last ? (it.last.by === S.me ? "You: " : it.kind === "c" || it.last.from === "staff" ? (first(it.last.name) || "Squad") + ": " : "") + postPreview(it.last) : it.kind === "c" ? "No messages yet" : "Start the conversation";
     return `<button class="cv-row${C.key === it.key ? " on" : ""}" type="button" data-chat="${esc(it.key)}">${chIcon(it)}
       <span class="cv-rt"><b>${it.kind === "c" ? "#" : ""}${esc(it.name)}${st ? ` <span class="cv-tag">${esc(st.label)}</span>` : ""}</b><small>${esc(prev.slice(0, 80))}</small></span>
       <span class="cv-meta">${it.last ? esc(ago(it.last.at)) : ""}${n ? `<span class="cv-un">${n}</span>` : ""}</span></button>`; };
@@ -2714,7 +2741,10 @@ function chatThreadHTML(k){
   return items.map(m => { const dl = dayLabel(m.at || 0), sep = dl !== day ? `<div class="cv-day">${esc(dl)}</div>` : ""; day = dl;
     const me = m.by === S.me, who = me ? "You" : (m.name || personName(m.by) || "Squad");
     return `${sep}<div class="cv-m${m.mine ? " mine" : ""}"><span class="av sm" style="--stage-c:${m.from === "applicant" ? stageVar(view(S.apps.get(k.id)).stage) : personColor(m.by)}" aria-hidden="true">${esc(initials(me ? (S.name || S.me) : who))}</span>
-      <div><div class="cv-who">${me ? "" : `<b>${esc(who)}</b> · `}${esc(slotTime(m.at || 0))}${me ? " · You" : ""}${m.from === "staff" && m.seenAt ? " · Seen" : ""}</div><div class="cv-bub">${esc(m.text)}</div></div></div>`; }).join("");
+      <div><div class="cv-who">${me ? "" : `<b>${esc(who)}</b> · `}${esc(slotTime(m.at || 0))}${me ? " · You" : ""}${m.from === "staff" && m.seenAt ? " · Seen" : ""}</div>${m.text ? `<div class="cv-bub">${esc(m.text)}</div>` : ""}
+      ${m.file ? `<button class="cv-att" type="button" data-chfile="${esc(m.id)}"><i aria-hidden="true"></i><span><b>${esc(m.file.name)}</b><small>${m.file.type === "application/pdf" ? "PDF" : "Photo"} · ${Math.max(1, Math.round((m.file.size || 0) / 1024))} KB</small></span></button>` : ""}
+      ${k.kind === "c" ? `<div class="cv-react">${Object.entries(m.reactions || {}).filter(([, who]) => who.length).map(([e, who]) => `<button type="button" class="${who.includes(S.me) ? "on" : ""}" data-react="${esc(e)}" data-pid="${esc(m.id)}" aria-label="${esc(e)}, ${who.length}">${esc(e)} ${who.length}</button>`).join("")}
+        <span class="cv-pickr">${REACTIONS.filter(e => !(m.reactions || {})[e]?.length).map(e => `<button type="button" data-react="${esc(e)}" data-pid="${esc(m.id)}" aria-label="React ${esc(e)}">${esc(e)}</button>`).join("")}${S.owner && m.text ? `<button type="button" data-pinpost="${esc(m.id)}" aria-label="Pin this message">📌</button>` : ""}</span></div>` : ""}</div></div>`; }).join("");
 }
 // Each squad member gets their own avatar colour (same everywhere).
 const PERSON_COLORS = ["#2F5BE0", "#6E48E0", "#F07A1A", "#0B9A8C", "#1F9A45", "#E8432B", "#C2338A"];
@@ -2727,7 +2757,7 @@ function chatMembers(k){
 }
 function chatInfoHTML(k){
   const mem = chatMembers(k), roleOf = e => e === OWNER_EMAIL ? "Owner" : !S.staff.has(e) ? "Squad" : roleLabel(S.staff.get(e).role);
-  const row = m => `<div class="cv-mem"><span class="av sm" style="--stage-c:${personColor(m.email)}" aria-hidden="true">${esc(initials(m.name))}</span><span><b>${esc(m.name)}</b><small>${esc(roleOf(m.email))}</small></span></div>`;
+  const row = m => `<div class="cv-mem"><span class="av sm" style="--stage-c:${personColor(m.email)}" aria-hidden="true">${esc(initials(m.name))}</span><span><b>${esc(m.name)}</b><small>${esc(roleOf(m.email))}</small></span><span class="cv-dot" data-online="${esc(m.email)}" title="Online"></span></div>`;
   if (k.kind === "c") return `<h3>Members · ${mem.length}</h3>${mem.map(row).join("")}
     ${S.owner ? `<button class="btn small" type="button" data-chedit="${esc(k.id)}">Edit channel</button>` : ""}
     <p class="cv-note">Only the people listed here can see this channel. Applicants never see squad channels.</p>`;
@@ -2749,14 +2779,16 @@ function paintChat(){
     const canSend = kk && (kk.kind === "c" || canReplyApp(kk.id));
     D.innerHTML = `<div class="cv${kk ? " has" : ""}${C.info ? " info" : ""}">
       <section class="cv-list glass" aria-label="Conversations"><div class="cv-lh"><h1>Messages</h1>${S.owner ? `<button class="btn small primary" type="button" data-chnew>+ Channel</button>` : ""}</div>
-        <label class="search cv-search"><input id="cvQ" type="search" placeholder="${S.owner ? "Search, or find an applicant" : "Search"}" autocomplete="off" value="${esc(C.q)}" aria-label="Search conversations"></label>
+        <label class="search cv-search"><input id="cvQ" type="search" placeholder="${S.owner ? "Search or find an applicant" : "Search messages"}" autocomplete="off" value="${esc(C.q)}" aria-label="Search conversations"></label>
         <div class="cv-rows" id="cvRows"></div></section>
       <section class="cv-thread glass" aria-label="Conversation">${it ? `<header class="cv-th"><button class="btn small cv-back" type="button" data-chback aria-label="Back to conversations">‹</button>${chIcon(it, true)}
           <div class="cv-tt"><h2>${it.kind === "c" ? "#" : ""}${esc(it.name)}</h2><small id="cvSub"></small></div>
           <button class="btn small cv-infob" type="button" data-chinfo aria-pressed="${C.info}">${it.kind === "c" ? "Members" : "People"}</button></header>
-        <div class="cv-msgs" id="cvMsgs" aria-live="polite"></div>
+        <div class="cv-pinbar" id="cvPin" hidden></div>
+        <div class="cv-msgs" id="cvMsgs" aria-live="polite"></div><div class="cv-typing" id="cvTyping" aria-live="polite"></div>
         ${canSend ? `<div class="cv-compose">${it.kind === "a" && S.owner ? `<div class="chips cv-chips">${savedReplies().map((r, i) => `<button class="chip" type="button" data-qr="${i}">${esc(r.title)}</button>`).join("")}</div>` : ""}
           <div class="cv-crow"><textarea id="cvText" rows="1" maxlength="${it.kind === "c" ? 4000 : 2000}" placeholder="${it.kind === "c" ? `Message #${esc(it.name)}` : `Reply to ${esc(first(it.name))}…`}" aria-label="Message"></textarea>
+          ${it.kind === "c" ? `<label class="btn cv-attach" title="Post a PDF or photo (up to 15 MB). Nothing medical or Social Security."><input type="file" id="cvFile" accept="application/pdf,image/*" hidden>📎<span class="sr">Attach a file</span></label>` : ""}
           <button class="btn primary" type="button" data-chsend>Send</button></div><small class="cv-hint">Enter to send · Shift+Enter for a new line</small></div>`
         : `<p class="cv-note cv-ro">You can read this conversation but not reply.</p>`}`
       : `<div class="cv-empty big"><h3>Pick a conversation</h3><p>${S.owner ? "Or make a channel for a team: interviewers, the board, orientation…" : "Your channels and the applicant conversations you're added to show up here."}</p></div>`}</section>
@@ -2765,14 +2797,17 @@ function paintChat(){
     const q = $("#cvQ"); q.addEventListener("input", () => { C.q = q.value; $("#cvRows").innerHTML = chatListHTML(); });
     const ta = $("#cvText");
     if (ta) { ta.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendChat(); } });
-      ta.addEventListener("input", () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 160) + "px"; });
+      ta.addEventListener("input", () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 160) + "px"; noteTyping(!!ta.value.trim()); });
+      $("#cvFile")?.addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) postFile(f); });
       if (!narrow) ta.focus(); }
   }
   $("#cvRows").innerHTML = chatListHTML();
   if (kk) {
     const box = $("#cvMsgs"), atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 80 || !box.childElementCount;
     box.innerHTML = chatThreadHTML(kk); if (atEnd) box.scrollTop = box.scrollHeight;
-    $("#cvInfo").innerHTML = chatInfoHTML(kk);
+    $("#cvInfo").innerHTML = chatInfoHTML(kk); paintPresence();
+    const pinEl = $("#cvPin"), pin = kk.kind === "c" ? C.channels.get(kk.id)?.pin : null;
+    if (pinEl) { pinEl.hidden = !pin; pinEl.innerHTML = pin ? `<span>📌 ${esc(pin.text)}</span>${S.owner ? `<button class="copy" type="button" data-unpin>Unpin</button>` : ""}` : ""; }
     const n = chatMembers(kk).length;
     $("#cvSub").textContent = kk.kind === "c" ? `${n} member${n === 1 ? "" : "s"} · squad only` : `Applicant · ${STAGES[view(S.apps.get(kk.id)).stage]?.label || ""} · sees this in their portal`;
     if (document.visibilityState === "visible" && unreadIn(C.key)) markChatRead(C.key);
@@ -2787,7 +2822,7 @@ async function sendChat(){
     else { if (!canReplyApp(k.id)) return toast("You can read this conversation but not reply.");
       if (text.length > 2000) return toast("Replies to applicants can be up to 2,000 characters.");
       await addDoc(collection(db, "portal", k.id, "messages"), { text, from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() }); }
-    ta.value = ""; ta.style.height = ""; markChatRead(C.key); ta.focus();
+    ta.value = ""; ta.style.height = ""; noteTyping(false); markChatRead(C.key); ta.focus();
   } catch (e) { console.error(e); toast("Couldn't send. Try again."); }
   finally { if (btn) btn.disabled = false; }
 }
@@ -2810,7 +2845,7 @@ function openChannelEditor(cid){
     const cb = e.target.closest("[data-chcolor]"); if (cb) { color = cb.dataset.chcolor; M.querySelectorAll("[data-chcolor]").forEach(b => { b.classList.toggle("pick", b === cb); b.setAttribute("aria-pressed", b === cb); }); return; }
     const del = e.target.closest("#chDel");
     if (del) { if (del.dataset.confirm !== "1") { del.dataset.confirm = "1"; del.textContent = "Delete channel and its messages?"; return; }
-      try { const ps = await getDocs(collection(db, "channels", cid, "posts")); const b = writeBatch(db); ps.docs.forEach(d => b.delete(d.ref)); b.delete(doc(db, "channels", cid)); await b.commit();
+      try { const ps = await getDocs(collection(db, "channels", cid, "posts")); const b = writeBatch(db); ps.docs.forEach(d => { if (d.data().file?.path) deleteObject(ref(storage, d.data().file.path)).catch(() => {}); b.delete(d.ref); }); b.delete(doc(db, "channels", cid)); await b.commit();
         closeModal(); if (C.key === "c:" + cid) C.key = null; toast("Channel deleted"); paintChat(); } catch (err) { console.error(err); toast("Couldn't delete the channel."); }
       return; }
     if (e.target.closest("#chSave")) {
@@ -2819,7 +2854,7 @@ function openChannelEditor(cid){
       const names = Object.fromEntries([[OWNER_EMAIL, S.name || "Owner"], ...members.map(m => [m, S.staff.get(m)?.name || m.split("@")[0]])]);
       try {
         const id = cid || doc(collection(db, "channels")).id;
-        await setDoc(doc(db, "channels", id), { name, color, members: [OWNER_EMAIL, ...members], names, createdAt: c.createdAt || Date.now(), createdBy: c.createdBy || S.me, updatedAt: Date.now() });
+        await setDoc(doc(db, "channels", id), { name, color, members: [OWNER_EMAIL, ...members], names, createdAt: c.createdAt || Date.now(), createdBy: c.createdBy || S.me, updatedAt: Date.now(), pin: c.pin || null });
         closeModal(); toast(cid ? "Channel saved" : `#${name} created`); C.key = "c:" + id; if (S.chatOn) { $("#detail")._chatKey = undefined; paintChat(); } else openChat(C.key);
       } catch (err) { console.error(err); toast("Couldn't save the channel."); }
     }
@@ -2851,6 +2886,13 @@ function bindChat(){
     if (!S.chatOn) return;
     const t = e.target;
     const row = t.closest("[data-chat]"); if (row) { C.key = row.dataset.chat; paintChat(); return; }
+    const ck = parseKey(C.key);
+    if (ck?.kind === "c") {
+      const rc = t.closest("[data-react]"); if (rc) return toggleReact(ck.id, rc.dataset.pid, rc.dataset.react);
+      const cf = t.closest("[data-chfile]"); if (cf) return openChatFile(ck.id, cf.dataset.chfile);
+      const pp = t.closest("[data-pinpost]"); if (pp) { const p = (C.posts.get(ck.id) || []).find(x => x.id === pp.dataset.pinpost); if (p) setPin(ck.id, p.text); return; }
+      if (t.closest("[data-unpin]")) return setPin(ck.id, "");
+    }
     if (t.closest("[data-chback]")) { C.key = null; paintChat(); return; }
     if (t.closest("[data-chsend]")) return sendChat();
     if (t.closest("[data-chnew]")) return openChannelEditor(null);
@@ -2862,6 +2904,238 @@ function bindChat(){
       const text = r.text.replace(/\{first\}/g, first(a.name)); ta.value = ta.value.trim() ? ta.value.trimEnd() + "\n\n" + text : text; ta.focus(); return; }
   }, true);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && S.chatOn && C.key && unreadIn(C.key)) markChatRead(C.key); });
+}
+
+/* ---------- interviewers: their own home screen ---------- */
+// "My interviews" replaces the Overview for the interviewer role: what's coming, what still needs a time, what's done.
+function renderMyInterviews(D){
+  const mine = [...S.apps.values()], now = Date.now();
+  const whenOf = a => a._booked ? a._booked.start : get(a, "sched.scheduled") ? new Date(get(a, "sched.scheduled") + "T12:00").getTime() : 0;
+  const done = mine.filter(a => get(a, "sched.completed"));
+  const up = mine.filter(a => !get(a, "sched.completed") && whenOf(a)).sort((x, y) => whenOf(x) - whenOf(y));
+  const toSet = mine.filter(a => !get(a, "sched.completed") && !whenOf(a));
+  const openTimes = [...S.slots.values()].filter(s => s.host === S.me && !s.bookedBy && s.start > now).length;
+  const av = a => `<span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span>`;
+  const whenText = a => a._booked ? `${slotLong(a._booked.start)}${a._booked.location ? " · " + a._booked.location : ""}` : `${longDate(get(a, "sched.scheduled"))}${get(a, "sched.time") ? " at " + get(a, "sched.time") : ""}`;
+  const row = (a, sub, btn) => `<div class="oitem" style="cursor:default">${av(a)}<span class="ot"><b>${esc(a.name || "Applicant")}</b><small>${esc(sub)}</small></span>
+    <span class="mi-acts">${btn ? `<button class="btn small primary" type="button" data-startiv="${esc(a._id)}">Start interview</button>` : ""}<button class="btn small" type="button" data-open="${esc(a._id)}">Open</button></span></div>`;
+  const name = first(S.name) || "";
+  const html = `<div class="ov"><div class="ovin"><div class="ovhead"><div><div class="eyebrow">${esc(new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }))}</div><h2>My interviews</h2>
+      <p>${name ? esc(name) + ", you" : "You"} have ${up.length ? `${up.length} interview${up.length === 1 ? "" : "s"} coming up` : "no interviews coming up"}${toSet.length ? ` and ${toSet.length} waiting on a time` : ""}.</p></div>
+      <button class="btn" type="button" data-cmd="slots">My interview times${openTimes ? ` · ${openTimes} open` : ""}</button></div>
+    <section class="ovcard"><h3>Coming up</h3><div class="olist">${up.map(a => row(a, whenText(a), true)).join("") || `<div class="oempty">Nothing booked yet.</div>`}</div></section>
+    ${toSet.length ? `<section class="ovcard"><h3>Waiting on a time</h3><div class="olist">${toSet.map(a => row(a, a.phone || a.email || "Not booked yet", true)).join("")}</div></section>` : ""}
+    ${!mine.length ? `<section class="ovcard"><div class="oempty">When the membership coordinator assigns you an applicant, or an applicant books a time you offered, they'll show up here.</div></section>` : ""}
+    ${done.length ? `<section class="ovcard"><h3>Done</h3><div class="olist">${done.map(a => row(a, "Completed " + longDate(get(a, "sched.completed")), false)).join("")}</div></section>` : ""}</div></div>`;
+  if (D.querySelector(".ov") && D._ovHTML === html) return;
+  D._ovHTML = html; D.innerHTML = html;
+}
+
+/* ---------- duplicates: same email, phone or name ---------- */
+const normName = n => String(n || "").toLowerCase().replace(/[^a-z ]/g, "").trim().replace(/\s+/g, " ");
+const lastTen = p => String(p || "").replace(/\D/g, "").slice(-10);
+function dupeWhy(a, b){
+  if (a.email && lower(a.email) === lower(b.email)) return "same email";
+  if (lastTen(a.phone).length === 10 && lastTen(a.phone) === lastTen(b.phone)) return "same phone";
+  if (normName(a.name).includes(" ") && normName(a.name) === normName(b.name)) return "same name";
+  return "";
+}
+const dupesOf = a => !S.owner ? [] : [...S.apps.values()].filter(b => b._id !== a._id && !get(a, `notDupes.${b._id}`) && !get(b, `notDupes.${a._id}`) && dupeWhy(a, b));
+function renderDupeNote(a){
+  const el = $("#dupeNote"); if (!el) return;
+  const list = dupesOf(a); el.hidden = !list.length;
+  el.innerHTML = list.map(b => `<b>Possible duplicate:</b> ${esc(b.name || "Unnamed")} (${esc(dupeWhy(a, b))}). <button class="btn small" type="button" data-dupe="${esc(b._id)}">Review</button>`).join("<br>");
+}
+function openDupe(id, otherId){
+  const a = S.apps.get(id), b = S.apps.get(otherId || (a && dupesOf(a)[0]?._id)); if (!a || !b) return;
+  const inv = x => !!get(x, "portal.invited") || S.portal.has(x._id);
+  const both = inv(a) && inv(b);
+  const row = (l, f) => `<tr><th>${esc(l)}</th><td>${esc(f(a) || "—")}</td><td>${esc(f(b) || "—")}</td></tr>`;
+  let keep = inv(b) && !inv(a) ? b._id : a._id;
+  const M = openModal(`<h3>Are these the same person?</h3><p class="help">They have the ${esc(dupeWhy(a, b))}.</p>
+    <div class="cv-dupe"><table><tr><th></th><th>${esc(a.name || "Unnamed")}</th><th>${esc(b.name || "Unnamed")}</th></tr>
+      ${row("Email", x => x.email)}${row("Phone", x => x.phone)}${row("Received", x => get(x, "app.received"))}${row("Stage", x => STAGES[view(x).stage]?.label)}
+      ${row("Applied online", x => x.form ? "Yes" : "No")}${row("Portal", x => inv(x) ? "Invited" : "Not invited")}${row("Interview booked", x => x._booked ? slotLong(x._booked.start) : "")}</table></div>
+    ${both ? `<p class="help"><b>Both people have portal access,</b> so these can't be combined automatically: each may have messages and uploads of their own. Delete the extra file by hand if you're sure.</p>` : `
+      <div class="field"><label>Keep which file?</label><div class="seg" role="group" aria-label="Keep which file" id="dupKeep">${[a, b].map(x => `<button type="button" class="${keep === x._id ? "on" : ""}" data-keep="${esc(x._id)}" ${inv(a) !== inv(b) && !inv(x) ? "disabled" : ""}>${esc(x.name || "Unnamed")}, ${esc(x.email || x.phone || "no contact")}</button>`).join("")}</div></div>
+      <p class="help">The kept file keeps everything it has and picks up whatever it's missing from the other: answers, references, notes, uploaded records and any second online application. The other file is then deleted, and any interview time it held is released. This can't be undone from the desk.</p>`}
+    <div class="acts"><button class="btn" type="button" id="dupNo">Not the same person</button><span style="flex:1"></span><button class="btn" type="button" data-x>Cancel</button>${both ? "" : `<button class="btn primary" type="button" id="dupYes">Combine files</button>`}</div>`);
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    const k = e.target.closest("[data-keep]"); if (k && !k.disabled) { keep = k.dataset.keep; M.querySelectorAll("[data-keep]").forEach(x => x.classList.toggle("on", x === k)); return; }
+    if (e.target.closest("#dupNo")) { edit(a._id, `notDupes.${b._id}`, true); closeModal(); toast("Got it. They won't be flagged again."); renderOverview(); renderDupeNote(a); return; }
+    const go = e.target.closest("#dupYes"); if (!go) return;
+    go.disabled = true; go.textContent = "Combining…";
+    try { await mergeFiles(keep, keep === a._id ? b._id : a._id); closeModal(); }
+    catch (err) { console.error(err); go.disabled = false; go.textContent = "Combine files"; toast("Couldn't combine them. Nothing was deleted. Try again."); }
+  };
+}
+// Keep one file, fill its blanks from the other, then delete the other. Everything is written to the kept file BEFORE anything is deleted.
+async function mergeFiles(keepId, dropId){
+  const fill = (base, extra) => { for (const k of Object.keys(extra || {})) { const v = extra[k], cur = base[k];
+    if (isObj(v) && isObj(cur)) fill(cur, v); else if (cur === undefined || cur === null || cur === "") base[k] = clone(v); } return base; };
+  const ks = clone(S.shared.get(keepId) || {}), ds = clone(S.shared.get(dropId) || {}), kp = clone(S.secure.get(keepId) || {}), dp = clone(S.secure.get(dropId) || {});
+  const dropName = ds.name || "the other file", moved = new Set();
+  // references: skip people already on the kept file, then keep the slot if it's free or take the first free one
+  const krefs = kp.refs = kp.refs || {}, keptNames = new Set(Object.values(krefs).map(r => normName(r.name)));
+  for (const [slot, r] of Object.entries(dp.refs || {})) { if (!String(r.name || "").trim() || keptNames.has(normName(r.name))) continue;
+    const free = !String(krefs[slot]?.name || "").trim() ? slot : ["r1", "r2", "r3", "r4"].find(s => !String(krefs[s]?.name || "").trim()); if (!free) continue;
+    krefs[free] = clone(r); keptNames.add(normName(r.name)); if (free === slot && r.link) moved.add(r.link); else { delete krefs[free].link; delete krefs[free].linkAt; delete krefs[free].linkExp; } }
+  delete dp.refs;
+  if (kp.notes && dp.notes && kp.notes !== dp.notes) { kp.notes = `${kp.notes}\n\nFrom the combined file (${dropName}):\n${dp.notes}`; delete dp.notes; }
+  const forms = [...(kp.otherForms || []), ...(dp.otherForms || [])];
+  if (kp.form && dp.form) { if (kp.form.submittedAt !== dp.form.submittedAt) forms.push(dp.form); delete dp.form; }
+  if (forms.length) kp.otherForms = forms; delete dp.otherForms; delete dp.notDupes; if (kp.notDupes) delete kp.notDupes[dropId];
+  fill(ks, ds); fill(kp, dp);
+  ks.interviewers = [...new Set([...(S.shared.get(keepId)?.interviewers || []), ...(ds.interviewers || [])])];
+  ks.updatedAt = Date.now(); ks.updatedBy = S.me; kp.secUpdatedAt = Date.now(); kp.secUpdatedBy = S.me;
+  await setDoc(doc(db, "applicants", keepId), ks, { merge: true });
+  await setDoc(doc(db, "applicants", keepId, "private", "main"), kp, { merge: true });
+  for (const r0 of (await getDocs(collection(db, "applicants", dropId, "records"))).docs) await addDoc(collection(db, "applicants", keepId, "records"), r0.data());
+  for (const t of moved) await updateDoc(doc(db, "refLinks", t), { appId: keepId, applicant: ks.name || "" }).catch(() => {});
+  moved.forEach(t => S._keepLinks = (S._keepLinks || new Set()).add(t));
+  const cvK = C.convos.get(keepId)?.members || [], cvD = C.convos.get(dropId)?.members || [];
+  if (cvD.length) { const members = [...new Set([...cvK, ...cvD])]; await setDoc(doc(db, "convos", keepId), { members, names: { ...(C.convos.get(keepId)?.names || {}), ...(C.convos.get(dropId)?.names || {}) }, updatedAt: Date.now() }); }
+  await addDoc(collection(db, "applicants", keepId, "history"), { at: Date.now(), by: S.me, changes: [{ path: "_merged", from: dropName, to: ks.name || "" }] }).catch(() => {});
+  await deleteApplicant(dropId, true, { keepRecordFiles: true });
+  select(keepId); toast("Files combined.");
+}
+
+/* ---------- bulk actions on the applicant list (owner) ---------- */
+function bulkToggle(on){
+  S.bulk = on ? new Set() : null;
+  const app = $("#app");
+  if (on) { S._bulkPinned = app.classList.contains("pinned"); app.classList.add("pinned"); } else if (!S._bulkPinned) app.classList.remove("pinned");
+  $("#bulkBtn").setAttribute("aria-pressed", String(!!on)); $("#bulkBtn").textContent = on ? "Cancel" : "Select";
+  renderList(); paintBulk();
+}
+function paintBulk(){
+  const bar = $("#bulkBar"); if (!bar) return;
+  bar.hidden = !S.bulk; if (!S.bulk) return;
+  const n = S.bulk.size;
+  bar.innerHTML = `<b>${n} selected</b><button class="btn small" type="button" data-bulk="all">${S.vis && n === S.vis.length && n ? "Clear" : "All"}</button>
+    <span class="bk-acts"><button class="btn small primary" type="button" data-bulk="assign" ${n ? "" : "disabled"}>Assign interviewer</button>
+    <button class="btn small primary" type="button" data-bulk="msg" ${n ? "" : "disabled"}>Message</button>
+    <button class="btn small primary" type="button" data-bulk="refs" ${n ? "" : "disabled"}>Email references</button></span>`;
+}
+const bulkApps = () => [...(S.bulk || [])].map(id => S.apps.get(id)).filter(Boolean);
+function bulkAssign(){
+  const list = bulkApps();
+  const team = [...S.staff.entries()].filter(([, s]) => s.role === "interviewer" || s.role === "admin").sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
+  const M = openModal(`<h3>Assign to ${list.length} applicant${list.length === 1 ? "" : "s"}</h3><p class="help">Adds them alongside anyone already assigned. To take someone off, use that applicant's Interview tab.</p>
+    <div class="ios cv-pick">${team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${roleLabel(s.role)}</small></span></label>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">No interviewers yet. In Settings → Team, set someone's role to <b>Interviewer</b>.</span></div>`}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="bkaSave">Assign</button></div>`);
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    if (!e.target.closest("#bkaSave")) return;
+    const add = [...M.querySelectorAll(".cv-pick input:checked")].map(i => i.value); if (!add.length) return toast("Tick at least one person.");
+    try { for (const a of list) await saveInterviewers(a._id, [...new Set([...(a.interviewers || []), ...add])]);
+      closeModal(); toast(`Assigned to ${list.length} applicant${list.length === 1 ? "" : "s"}.`); bulkToggle(false);
+    } catch (err) { console.error(err); toast("Couldn't finish. Check who was assigned and try again."); }
+  };
+}
+function bulkMessage(){
+  const list = bulkApps(), ok = list.filter(a => get(a, "portal.invited")), skip = list.filter(a => !get(a, "portal.invited"));
+  const M = openModal(`<h3>Message ${ok.length} applicant${ok.length === 1 ? "" : "s"}</h3>
+    <p class="help">Each one gets it in their own private conversation, so they don't see each other. {first} becomes their first name.</p>
+    ${skip.length ? `<p class="help"><b>Skipped, not invited to the portal yet:</b> ${esc(skip.map(a => a.name).join(", "))}</p>` : ""}
+    <textarea id="bkText" rows="5" maxlength="2000" class="cv-bktext" placeholder="Hi {first}, …" aria-label="Message"></textarea>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="bkSend" ${ok.length ? "" : "disabled"}>Send to ${ok.length}</button></div>`);
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    const go = e.target.closest("#bkSend"); if (!go) return;
+    const text = $("#bkText").value.trim(); if (!text) return $("#bkText").focus();
+    go.disabled = true; let sent = 0;
+    try { for (const a of ok) { await addDoc(collection(db, "portal", a._id, "messages"), { text: text.replace(/\{first\}/g, first(a.name) || "there"), from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() }); sent++; }
+      closeModal(); toast(`Sent to ${sent} applicant${sent === 1 ? "" : "s"}.`); bulkToggle(false);
+    } catch (err) { console.error(err); go.disabled = false; toast(`Sent to ${sent} of ${ok.length}. Try the rest again.`); }
+  };
+}
+function bulkRefs(){
+  const okEmail = x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x || "");
+  const rows = bulkApps().flatMap(a => [1, 2, 3, 4].map(i => ({ a, i, r: get(a, `refs.r${i}`) || {} })).filter(({ a, i, r }) => String(r.name || "").trim() && !r.form && !(r.returned && !r.replace) && okEmail(r.email) && (!r.contacted || refNudge(a, i))));
+  const sent = new Set();
+  const M = openModal(`<h3>Email references</h3><p class="help">References who haven't answered and are due an email. Each gets their own private link, so it's one email each: click a button, then press Send in Mail.</p>
+    <div class="ios">${rows.map((x, n) => `<div class="row"><span class="lbl">${esc(x.r.name)}<small>For ${esc(x.a.name)} · ${esc(x.r.email)}${x.r.contacted ? ` · emailed ${esc(fmtDate(x.r.contacted))}, no answer yet` : ""}</small></span><button class="btn small primary" type="button" data-bkr="${n}">${x.r.contacted ? "Send reminder" : "Open email"}</button></div>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">Nobody here needs an email right now.</span></div>`}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Done</button></div>`);
+  M.onclick = e => {
+    if (e.target.closest("[data-x]")) { closeModal(); if (sent.size) bulkToggle(false); return; }
+    const b = e.target.closest("[data-bkr]"); if (!b) return; const x = rows[+b.dataset.bkr];
+    x.r.contacted ? remindRefLink(x.a._id, x.i) : emailRefLink(x.a._id, x.i);
+    sent.add(+b.dataset.bkr); b.textContent = "Opened ✓"; b.classList.remove("primary");
+  };
+}
+
+/* ---------- search everything (⌘K) ---------- */
+// Only ever searches what this person's desk already loaded, so nobody can find anything they aren't allowed to see.
+// License numbers and the rest of the online form are left out on purpose.
+function searchAll(q){
+  q = q.toLowerCase(); if (q.length < 3) return [];
+  const snip = t => { const s = String(t), i = s.toLowerCase().indexOf(q), st = Math.max(0, i - 30); return (st ? "…" : "") + s.slice(st, st + 90); };
+  const out = [];
+  for (const a of S.apps.values()) {
+    if (typeof a.notes === "string" && a.notes.toLowerCase().includes(q)) out.push({ label: `Notes: ${a.name || "Applicant"}`, sub: snip(a.notes), icon: "✎", at: lastTouched(a) || 0, open: () => { select(a._id); switchTab("notes"); } });
+    const iv = a.iv || {}; for (const k of Object.keys(iv)) if (typeof iv[k] === "string" && iv[k].length > 3 && iv[k].toLowerCase().includes(q)) { out.push({ label: `Interview answer: ${a.name || "Applicant"}`, sub: snip(iv[k]), icon: "✓", at: lastTouched(a) || 0, open: () => { select(a._id); switchTab("iv"); } }); break; }
+  }
+  for (const m of S.msgs) if (S.apps.has(m.appId) && canSeeApp(m.appId) && String(m.text || "").toLowerCase().includes(q)) out.push({ label: `Message: ${S.apps.get(m.appId).name || "Applicant"}`, sub: snip(m.text), icon: "✉", at: m.at || 0, open: () => openChat("a:" + m.appId) });
+  for (const [cid, ps] of C.posts) { const c = C.channels.get(cid); if (c) for (const p of ps) { const hay = [p.text, p.file?.name].filter(Boolean).join(" "); if (hay.toLowerCase().includes(q)) out.push({ label: `#${c.name}: ${p.name || "Squad"}`, sub: snip(hay), icon: "#", at: p.at || 0, open: () => openChat("c:" + cid) }); } }
+  return out.sort((x, y) => y.at - x.at).slice(0, 8);
+}
+
+/* ---------- channel extras: reactions, files, pinned notes, who's online, who's typing ---------- */
+const REACTIONS = ["👍", "❤️", "🎉", "✅"];
+const postPreview = p => String(p.text || "").trim() || (p.file ? "📎 " + p.file.name : "");
+async function toggleReact(cid, pid, emoji){
+  const p = (C.posts.get(cid) || []).find(x => x.id === pid); if (!p) return;
+  const r = clone(p.reactions || {}), who = r[emoji] || [];
+  r[emoji] = who.includes(S.me) ? who.filter(x => x !== S.me) : [...who, S.me];
+  try { await updateDoc(doc(db, "channels", cid, "posts", pid), { reactions: r }); } catch (e) { console.error(e); toast("Couldn't save that."); }
+}
+async function postFile(file){
+  const k = parseKey(C.key); if (!k || k.kind !== "c" || !file) return;
+  if (!(file.type === "application/pdf" || /^image\//.test(file.type))) return toast("Only PDFs and photos can be posted.");
+  if (file.size > 15 * 1024 * 1024) return toast("That file is over 15 MB.");
+  if (isConfidential(file.name)) return toast("That looks medical or Social Security. Use the secure upload on the applicant's file instead.");
+  const ta = $("#cvText"), text = ta ? ta.value.trim() : "";
+  try {
+    toast("Uploading…");
+    const path = `chat/${k.id}/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
+    await uploadBytes(ref(storage, path), file, { contentType: file.type });
+    await addDoc(collection(db, "channels", k.id, "posts"), { text, by: S.me, name: S.name || S.me.split("@")[0], at: Date.now(), file: { name: file.name.slice(0, 200), path, size: file.size, type: file.type } });
+    if (ta) ta.value = ""; toast("Posted.");
+  } catch (e) { console.error(e); toast("Couldn't post that file. Try again."); }
+}
+async function openChatFile(cid, pid){
+  const p = (C.posts.get(cid) || []).find(x => x.id === pid); if (!p?.file) return;
+  const w = window.open("", "_blank");
+  try { const url = await getDownloadURL(ref(storage, p.file.path)); if (w) w.location = url; else location.href = url; }
+  catch { if (w) w.close(); toast("Couldn't open that file."); }
+}
+async function setPin(cid, text){
+  try { await setDoc(doc(db, "channels", cid), { pin: text ? { text: String(text).slice(0, 500), by: S.me, at: Date.now() } : null }, { merge: true }); toast(text ? "Pinned" : "Unpinned"); }
+  catch (e) { console.error(e); toast("Couldn't save the pin."); }
+}
+const ONLINE_MS = 150000, TYPING_MS = 6000;
+const isOnline = e => e === S.me || Date.now() - ((C.presence || new Map()).get(e)?.at || 0) < ONLINE_MS;
+function presenceBeat(){ if (document.visibilityState === "visible" && S.me) setDoc(doc(db, "presence", S.me), { at: Date.now(), typing: C.typing || "", typingAt: C.typingAt || 0 }, { merge: true }).catch(() => {}); }
+function noteTyping(on){
+  const key = on ? C.key : "", now = Date.now();
+  if (on && C.typing === key && now - (C.typingAt || 0) < 3000) return;
+  if (!on && !C.typing) return;
+  C.typing = key; C.typingAt = now; presenceBeat();
+}
+function paintPresence(){
+  if (!S.chatOn) return;
+  const el = $("#cvTyping");
+  if (el) { const who = [...(C.presence || new Map()).entries()].filter(([e, p]) => e !== S.me && p.typing === C.key && Date.now() - (p.typingAt || 0) < TYPING_MS).map(([e]) => first(memberName(e)));
+    const t = who.length ? `${who.join(", ")} ${who.length === 1 ? "is" : "are"} typing…` : ""; if (el.textContent !== t) el.textContent = t; }
+  document.querySelectorAll("#cvInfo [data-online]").forEach(d => d.classList.toggle("on", isOnline(d.dataset.online)));
+}
+function startPresence(){
+  C.presence = new Map();
+  presenceBeat(); setInterval(presenceBeat, 60000); document.addEventListener("visibilitychange", presenceBeat);
+  onSnapshot(collection(db, "presence"), s => { C.presence = new Map(s.docs.map(d => [d.id, d.data()])); paintPresence(); }, () => {});
+  setInterval(paintPresence, 2000);
 }
 
 /* ---------- push notifications on this device (functions/push.js sends them) ---------- */
@@ -2961,13 +3235,13 @@ export function startDesk({ email, role, owner, name }){
   $("#meName").title = email;
   $("#meAv").textContent = initials(S.name || email);
   if (S.owner) $("#settingsBtn").hidden = false;
-  if (S.canEdit) $("#slotsBtn").hidden = false;
+  if (canHostSlots()) $("#slotsBtn").hidden = false;
   $("#newBtn").hidden = !S.canEdit; paintMnav();
   if (!S.canEdit) document.body.classList.add("viewonly-user");
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
   startIdleLock();
   startPushToasts();
-  watchChat(); $("#msgsBtn").hidden = false; paintMnav();
+  watchChat(); startPresence(); $("#msgsBtn").hidden = false; paintMnav();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
 
   // Admins load every file, interviewers only the ones assigned to them, members none (Messages only).
@@ -2979,12 +3253,14 @@ export function startDesk({ email, role, owner, name }){
     S.shared = next; S.ready = true; rebuildAll();
     if (S.sel && !S.apps.has(S.sel)) { S.sel = null; renderDetail(); }
     renderList(); if (S.sel) syncDetail();
+    if (S.role === "interviewer" && !S.sel) renderOverview();
     openFromLink();
     if (S.canEdit) { syncAllPortals(); mirrorStages(); }
   }, lost);
   onSnapshot(collection(db, "slots"), snap => {
     S.slots = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
     rebuildAll(); renderList(); if (S.sel) syncDetail(); if (S._slotPaint && !$("#modal").hidden) S._slotPaint();
+    if (S.role === "interviewer" && !S.sel) renderOverview();
     if (S.canEdit) { syncAllPortals(); mirrorStages(); }
   }, () => {});
   if (S.admin) {

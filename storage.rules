@@ -43,6 +43,19 @@ service firebase.storage {
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
     }
 
+    // Files posted in a squad channel. Only that channel's members (and the owner) can add or open them.
+    match /chat/{cid}/{fileName} {
+      function inChannel() {
+        return verified() && (myEmail() == 'dkota@pvrs.org'
+          || (firestore.exists(/databases/(default)/documents/channels/$(cid))
+              && myEmail() in firestore.get(/databases/(default)/documents/channels/$(cid)).data.members));
+      }
+      allow read: if inChannel();
+      allow create: if inChannel() && request.resource.size <= 15 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow delete: if verified() && myEmail() == 'dkota@pvrs.org';
+    }
+
     match /{everythingElse=**} {
       allow read, write: if false;
     }

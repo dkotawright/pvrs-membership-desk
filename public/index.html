@@ -220,6 +220,7 @@
       <div class="top">
         <div class="titlebar">
           <div class="tt"><h1 id="rosterTitle">All applicants</h1><span class="count" id="rosterCount"></span></div>
+          <button class="btn small" type="button" id="bulkBtn" aria-pressed="false" hidden>Select</button>
           <button class="iconbtn pinbtn" type="button" id="pinBtn" title="Keep the list open while a file is open" aria-label="Keep the applicant list open" aria-pressed="false"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6 2.5v11" stroke="currentColor" stroke-width="1.5"/></svg></button>
           <label class="sortsel" title="Sort"><span class="sr">Sort:</span><select id="sort">
             <option value="stage">Stage</option><option value="name">Name</option><option value="newest">Newest</option><option value="waiting">Longest waiting</option><option value="updated">Recently updated</option>
@@ -229,6 +230,7 @@
         <div class="chips" id="chipsMini"></div>
       </div>
       <div class="list" id="list"></div>
+      <div class="bulkbar" id="bulkBar" hidden></div>
     </section>
     <section class="pane detail" id="detail"></section>
   </div>

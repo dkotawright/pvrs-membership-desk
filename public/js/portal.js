@@ -1,7 +1,7 @@
 // Applicant portal: status, document uploads, interview booking.
-import { db, storage, doc, collection, onSnapshot, writeBatch, addDoc, updateDoc, ref, uploadBytes } from "./fb.js";
+import { app, db, storage, doc, collection, onSnapshot, writeBatch, addDoc, updateDoc, setDoc, deleteDoc, ref, uploadBytes } from "./fb.js";
 import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download, isConfidential } from "./shared.js";
-import { CONTACT_EMAIL } from "./config.js";
+import { CONTACT_EMAIL, VAPID_KEY } from "./config.js";
 
 const DAY = 864e5, MAX = 15 * 1024 * 1024;
 const CONF_KEY = "_private";   // the "Secure document upload" button (not tied to a request)
@@ -13,7 +13,26 @@ export function threadHTML(msgs, mine){
   return msgs.map(m => `<div class="msg ${m.from === mine ? "me" : "them"}"><div class="bub">${esc(m.text)}</div>
     <small>${m.from === "staff" ? (mine === "staff" ? esc(m.name || "PVRS") : (m.name && m.name !== "PVRS" ? esc(m.name) + " · " : "") + "PVRS Membership") : (mine === "applicant" ? "You" : esc(m.name || "Applicant"))} · ${esc(msgTime(m.at))}${mine === "staff" && m.from === "staff" && m.seenAt ? " · Seen" : ""}</small></div>`).join("");
 }
-export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false }){
+// Alerts on the applicant's own device (functions/push.js sends them; generic wording, never decisions or results).
+const PUSH_KEY = "pvrsApplicantPush", FM_URL = "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
+const pushToken = () => { try { return localStorage.getItem(PUSH_KEY) || ""; } catch { return ""; } };
+const isIOS = () => /iPhone|iPad/.test(navigator.userAgent);
+const deviceName = () => { const u = navigator.userAgent; return /iPhone/.test(u) ? "iPhone" : /iPad/.test(u) ? "iPad" : /Android/.test(u) ? "Android" : /Mac/.test(u) ? "Mac" : /Windows/.test(u) ? "Windows" : "Computer"; };
+async function pushState(){
+  if (!VAPID_KEY) return "";
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return isIOS() ? "ios" : "";
+  try { const m = await import(FM_URL); if (!(await m.isSupported())) return isIOS() ? "ios" : ""; } catch { return ""; }
+  if (Notification.permission === "denied") return "blocked";
+  return pushToken() ? "on" : "off";
+}
+function pushHTML(st){
+  if (st === "on") return `<div class="pushrow"><span>🔔 Alerts are on for this device.</span><button class="btn small" type="button" data-pushoff>Turn off</button></div>`;
+  if (st === "off") return `<div class="pushrow"><span>Get an alert when we reply or your application moves forward.</span><button class="btn small primary" type="button" data-pushon>Turn on alerts</button></div>`;
+  if (st === "ios") return `<div class="pushrow"><span>Want alerts on your iPhone? In Safari tap Share → <b>Add to Home Screen</b>, then open PVRS from your Home Screen and sign in.</span></div>`;
+  if (st === "blocked") return `<div class="pushrow"><span>Alerts are blocked for this site. You can allow them in your browser's settings.</span></div>`;
+  return "";
+}
+export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "" }){
   const now = Date.now();
   const docs = pd.docs || [];
   const byKey = k => files.filter(f => f.docKey === k);
@@ -57,7 +76,7 @@ ${ivSoonHTML(iv, ivDone, now, dis)}
 
     <section class="card glass" id="msgCard"><div class="ptop"><h2>Messages</h2>${msgs.some(m => m.from === "staff" && !m.seenAt) ? `<span class="badge wait">New reply</span>` : ""}</div>
       <p class="info" style="margin:0">Questions about your application? Send them here. We'll reply in this space, usually within a few days.</p>
-      <div class="thread" id="thread">${threadHTML(msgs, "applicant")}</div>
+      ${pushHTML(push)}<div class="thread" id="thread">${threadHTML(msgs, "applicant")}</div>
       <div class="composer"><textarea id="msgText" rows="2" maxlength="2000" placeholder="Type your question…" aria-label="Your message" ${dis}></textarea>
         <button class="btn primary" type="button" data-send ${dis}>Send</button></div></section>
 
@@ -147,7 +166,7 @@ function refFormHTML(d, sending){
 }
 function slotPicker(days, pick, dis, busy){
   return `<p class="info" style="margin:0">Pick a time that works for you. Interviews are with the Membership Committee.</p><div class="slots">${Object.entries(days).map(([day, list]) => `<div class="slotday"><h4>${esc(day)}</h4><div class="slotrow">${list.map(s =>
-    `<button class="slotbtn" type="button" data-slot="${esc(s.id)}" aria-pressed="${pick===s.id}" ${dis}>${esc(slotTime(s.start))}</button>`).join("")}</div></div>`).join("")}</div>
+    `<button class="slotbtn" type="button" data-slot="${esc(s.id)}" aria-pressed="${pick===s.id}" ${dis}>${esc(slotTime(s.start))}${s.hostName ? `<small> with ${esc(s.hostName)}</small>` : ""}</button>`).join("")}</div></div>`).join("")}</div>
     ${pick ? `<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn" type="button" data-unpick>Back</button><button class="btn primary" type="button" data-book ${busy?"disabled":""}>Book ${esc(slotTime((Object.values(days).flat().find(s => s.id === pick) || {}).start || 0))}</button></div>` : ""}`;
 }
 
@@ -162,7 +181,7 @@ export function startPortal(id, email){
     const ta = $("#msgText"), focused = !!ta && document.activeElement === ta, caret = ta ? ta.selectionStart : 0, scroll = root.scrollTop;
     const rf = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.rf ? document.activeElement : null, rfCaret = rf ? rf.selectionStart : 0;
     if (ta) P.draft = ta.value;
-    root.innerHTML = portalHTML({ pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending });
+    root.innerHTML = portalHTML({ pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending, push: P.push });
     if (rf) { const back = root.querySelector(`[data-rf="${rf.dataset.rf}"]`); if (back) { back.focus({ preventScroll: true }); try { back.setSelectionRange(rfCaret, rfCaret); } catch {} } }
     const t2 = $("#msgText"); if (t2) { t2.value = P.draft; if (focused) { t2.focus({ preventScroll: true }); t2.setSelectionRange(caret, caret); } }
     const th = $("#thread"); if (th) th.scrollTop = th.scrollHeight;
@@ -172,6 +191,17 @@ export function startPortal(id, email){
     if (P.changing) $("#ivCard").insertAdjacentHTML("beforeend", `<div><button class="btn small" type="button" data-keep>Keep my current time</button></div>`);
   };
   render();
+  pushState().then(st => { P.push = st; render(); });
+  const pushOn = async () => { const m = await import(FM_URL), msg = m.getMessaging(app);
+    const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    const token = await m.getToken(msg, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg }); if (!token) throw new Error("no token");
+    await setDoc(doc(db, "applicantTokens", token), { appId: id, email, device: deviceName(), at: Date.now() });
+    try { localStorage.setItem(PUSH_KEY, token); } catch {}
+    P.push = "on"; render(); toast("Alerts are on for this device."); };
+  const pushOff = async () => { const t = pushToken(); if (t) await deleteDoc(doc(db, "applicantTokens", t)).catch(() => {});
+    try { const m = await import(FM_URL); await m.deleteToken(m.getMessaging(app)); } catch {}
+    try { localStorage.removeItem(PUSH_KEY); } catch {}
+    P.push = "off"; render(); toast("Alerts are off for this device."); };
   onSnapshot(doc(db, "portal", id), s => { P.pd = s.exists() ? s.data() : { steps: [] }; render(); }, () => toast("Couldn't load your application. Reload the page."));
   onSnapshot(collection(db, "portal", id, "messages"), s => { P.msgs = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x,y) => (x.at||0) - (y.at||0)); render(); }, () => {});
   const send = async () => {
@@ -238,6 +268,8 @@ export function startPortal(id, email){
   root.addEventListener("click", async e => {
     const t = e.target;
     if (t.closest("[data-send]")) return send();
+    if (t.closest("[data-pushon]")) { try { await pushOn(); } catch (err) { console.error(err); toast(Notification.permission === "denied" ? "Alerts were blocked. You can allow them in your browser's settings." : "Couldn't turn on alerts. Try again."); } return; }
+    if (t.closest("[data-pushoff]")) return pushOff();
     const rn = t.closest("[data-refnew]"); if (rn) { P.refForm = +rn.dataset.refnew; P.refDraft = {}; render(); $("#rf-name")?.focus(); return; }
     if (t.closest("[data-refcancel]")) { P.refForm = null; P.refDraft = {}; render(); return; }
     if (t.closest("[data-refsend]")) return sendRef();

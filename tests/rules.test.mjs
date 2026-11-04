@@ -176,6 +176,30 @@ await t("you keep your own read marks", setDoc(doc(admin, "chatReads/admin@pvrs.
 await t("not someone else's", setDoc(doc(admin, "chatReads/dkota@pvrs.org"), { "c:ch1": now() }), false);
 await t("applicants have no read marks", setDoc(doc(applicant, "chatReads/app@example.com"), { x: 1 }), false);
 
+console.log("Interviewer availability, applicant alerts, channel extras");
+const mySlot = (host, x = {}) => ({ start: now() + 5 * DAY, duration: 30, location: "Station", bookedBy: null, createdAt: now(), host, hostName: "Ivy", ...x });
+await t("an interviewer offers their own time", setDoc(doc(iv, "slots/ivs1"), mySlot("iv@pvrs.org")), true);
+await t("not a time for someone else", setDoc(doc(iv, "slots/ivs2"), mySlot("admin@pvrs.org")), false);
+await t("not one that's already booked", setDoc(doc(iv, "slots/ivs3"), mySlot("iv@pvrs.org", { bookedBy: "a2" })), false);
+await t("a member can't offer times", setDoc(doc(member, "slots/ms1"), mySlot("member@pvrs.org")), false);
+await t("an interviewer can't book for an applicant", updateDoc(doc(iv, "slots/ivs1"), { bookedBy: "a2" }), false);
+await t("nobody else deletes it", deleteDoc(doc(admin, "slots/ivs1")), false);
+await t("the interviewer deletes their open time", deleteDoc(doc(iv, "slots/ivs1")), true);
+const aTok = (x = {}) => ({ appId: "a1", email: "app@example.com", device: "iPhone", at: now(), ...x });
+await t("an applicant turns on alerts for their own file", setDoc(doc(applicant, "applicantTokens/t1"), aTok()), true);
+await t("not for someone else's file", setDoc(doc(stranger, "applicantTokens/t2"), aTok({ email: "x@example.com" })), false);
+await t("a stranger can't read applicant devices", getDoc(doc(stranger, "applicantTokens/t1")), false);
+const pFile = { name: "sheet.pdf", path: "chat/ch1/1-sheet.pdf", size: 10, type: "application/pdf" };
+await t("a channel member posts a file with no text", addDoc(collection(admin, "channels/ch1/posts"), post("admin@pvrs.org", { text: "", file: pFile })), true);
+await t("a file must live in that channel's folder", addDoc(collection(admin, "channels/ch1/posts"), post("admin@pvrs.org", { text: "", file: { ...pFile, path: "records/a1/x.pdf" } })), false);
+await t("an empty post with no file is rejected", addDoc(collection(admin, "channels/ch1/posts"), post("admin@pvrs.org", { text: "" })), false);
+await t("a channel member reacts", updateDoc(doc(admin, "channels/ch1/posts/p1"), { reactions: { "👍": ["admin@pvrs.org"] } }), true);
+await t("a reaction can't change the text", updateDoc(doc(admin, "channels/ch1/posts/p1"), { text: "changed" }), false);
+await t("someone not in the channel can't react", updateDoc(doc(member, "channels/ch1/posts/p1"), { reactions: {} }), false);
+await t("staff share online status", setDoc(doc(member, "presence/member@pvrs.org"), { at: now(), typing: "", typingAt: 0 }), true);
+await t("only their own", setDoc(doc(member, "presence/admin@pvrs.org"), { at: now() }), false);
+await t("applicants can't see who's online", getDoc(doc(applicant, "presence/member@pvrs.org")), false);
+
 // Storage rules look up portal/{id} in Firestore. firebase-tools sends that emulator-to-emulator call through
 // HTTPS_PROXY and ignores NO_PROXY, so behind a proxy (e.g. a cloud sandbox) the lookup fails and the upload test
 // below fails too. Run without a proxy (a Mac, GitHub Actions) or let localhost bypass it.
@@ -187,6 +211,11 @@ await t("the owner can add paperwork", uploadBytes(ref(st("dkota@pvrs.org"), "co
 await t("the applicant can't read it back", getBytes(ref(st("app@example.com"), "confidential/a1/1.pdf")), false);
 await t("the owner can't open it", getBytes(ref(st("dkota@pvrs.org"), "confidential/a1/1.pdf")), false);
 await t("the paperwork account can", getBytes(ref(st("orientationpaperwork@pvrs.org"), "confidential/a1/1.pdf")), true);
+
+await t("a channel member uploads to the channel", uploadBytes(ref(st("admin@pvrs.org"), "chat/ch1/1.pdf"), pdf, meta), true);
+await t("someone not in it can't", uploadBytes(ref(st("member@pvrs.org"), "chat/ch1/2.pdf"), pdf, meta), false);
+await t("or open its files", getBytes(ref(st("member@pvrs.org"), "chat/ch1/1.pdf")), false);
+await t("a channel member opens it", getBytes(ref(st("admin@pvrs.org"), "chat/ch1/1.pdf")), true);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();

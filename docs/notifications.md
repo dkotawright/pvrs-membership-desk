@@ -14,6 +14,16 @@ Alerts from the PVRS Membership Desk itself, on your Mac (corner of the screen) 
 
 Alerts say who and what ("Duke McCauley answered for Jack Gradzewicz"), never message text, reference answers, license numbers or documents.
 
+## Morning reminders (7:30 AM Eastern, `push.morning`)
+
+- **Owner:** one summary, only when there's something to say: interviews today and tomorrow, overdue references (7+ days), cards expiring within 30 days, files with no movement in 14+ days.
+- **Interviewers:** their own interview today or tomorrow.
+- **Applicants with alerts on:** the day before their interview.
+
+## Applicant alerts
+
+Applicants turn these on in their portal (Messages card). They get generic wording only: a new reply, interview times open, a document requested, their application moving forward, and the day-before reminder. A decline never triggers anything, so the portal's "never show a rejection" rule still holds.
+
 ## One-time setup (owner, in the browser)
 
 1. Firebase console → ⚙ **Project settings** → **Cloud Messaging** tab → *Web configuration* → **Web Push certificates** → **Generate key pair**.

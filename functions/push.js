@@ -4,7 +4,9 @@
 // Tapping one opens the desk at that applicant's file (/?open=<id>).
 // Deploy on its own: firebase deploy --only functions:push   (doesn't need the SMTP secret)
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
+const { buildMorning } = require("./morning");
 const { initializeApp, getApps } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
@@ -45,6 +47,38 @@ async function send({ title, body, id = "", chat = "", everyone = false, to = nu
   logger.info("push sent", { title, sent: res.successCount, failed: res.failureCount, removed: dead.length });
 }
 
+// Applicants who turned on alerts in their portal (applicantTokens/{token}). Generic wording only: nothing about checks,
+// votes or decisions, and a decline never triggers anything (see portalChanged).
+async function sendApplicant(appId, { title, body }){
+  const snap = await db.collection("applicantTokens").where("appId", "==", appId).get();
+  const tokens = snap.docs.map(d => d.id);
+  if (!tokens.length) return;
+  const res = await getMessaging().sendEachForMulticast({ tokens, notification: { title, body },
+    webpush: { notification: { icon: "/img/icon-192.png", badge: "/img/icon-192.png" }, fcmOptions: { link: DESK } } });
+  const dead = res.responses.map((r, i) => (!r.success && /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(r.error?.code || "") ? tokens[i] : null)).filter(Boolean);
+  await Promise.all(dead.map(t => db.doc(`applicantTokens/${t}`).delete().catch(() => {})));
+}
+const doneCount = pd => (pd.steps || []).filter(s => s.state === "done").length;
+exports.portalChanged = onDocumentUpdated({ document: "portal/{id}", ...OPTS }, async e => {
+  const b = e.data.before.data() || {}, a = e.data.after.data() || {}, id = e.params.id;
+  if (!b.bookingOpen && a.bookingOpen) await sendApplicant(id, { title: "Interview times are open", body: "You can pick your interview time in your PVRS portal." });
+  if (doneCount(a) > doneCount(b)) await sendApplicant(id, { title: "Your application moved forward", body: "Open your PVRS portal to see what's next." });
+  if ((a.docs || []).length > (b.docs || []).length) await sendApplicant(id, { title: "Document needed", body: "PVRS asked for a document. Details are in your portal." });
+});
+
+// 7:30 AM reminders: the owner's summary (only if there's something to say), each interviewer's interviews, and a
+// day-before reminder for applicants who turned on alerts.
+async function runMorning(now){
+  const appDocs = (await db.collection("applicants").get()).docs;
+  const apps = await Promise.all(appDocs.map(async d => { const sec = await db.doc(`applicants/${d.id}/private/main`).get(); return { id: d.id, ...(sec.exists ? sec.data() : {}), ...d.data() }; }));
+  const slots = (await db.collection("slots").get()).docs.map(d => d.data());
+  const m = buildMorning({ apps, slots, now });
+  if (m.owner) await send({ to: [OWNER_EMAIL], ...m.owner });
+  for (const [email, lines] of m.interviewers) for (const l of lines) await send({ to: [email], ...l });
+  for (const x of m.applicants) await sendApplicant(x.id, x);
+}
+exports.morning = onSchedule({ schedule: "30 7 * * *", timeZone: "America/New_York", maxInstances: 1 }, () => runMorning(Date.now()));
+
 exports.newApplication = onDocumentCreated({ document: "submissions/{id}", ...OPTS }, async e => {
   const p = e.data?.data()?.person || {};
   await send({ title: "New application", body: `${[p.first, p.last].filter(Boolean).join(" ") || "Someone"} applied online` });
@@ -57,7 +91,10 @@ exports.applicantMessage = onDocumentCreated({ document: "portal/{id}/messages/{
   const to = [OWNER_EMAIL, ...((cv.exists && cv.data().members) || [])];
   const name = await nameOf(id);
   if (m.from === "applicant") await send({ to, title: "New message", body: `${name} sent a message`, chat: `a:${id}` });
-  else if (m.from === "staff") await send({ to, skip: m.by, title: `Reply to ${name}`, body: `${m.name || "Someone"} replied to ${name}`, chat: `a:${id}` });
+  else if (m.from === "staff") {
+    await send({ to, skip: m.by, title: `Reply to ${name}`, body: `${m.name || "Someone"} replied to ${name}`, chat: `a:${id}` });
+    await sendApplicant(id, { title: "New message from PVRS", body: "You have a new message in your applicant portal." });
+  }
 });
 
 // Squad channels: everyone in the channel except the author. Says who posted where, not what.
@@ -74,8 +111,24 @@ const bookingCrew = async appId => {
   const a = appId ? await db.doc(`applicants/${appId}`).get() : null;
   return [OWNER_EMAIL, ...admins, ...((a && a.exists && a.data().interviewers) || [])];
 };
+// A time an interviewer offered (slots/{id}.host): booking it assigns them to that applicant and adds them to the
+// conversation. Cancelling takes them off again, but only if the booking is what put them there.
+async function setHost(appId, email, name, on){
+  const ref = db.doc(`applicants/${appId}`), a = await ref.get(); if (!a.exists) return;
+  const cur = a.data().interviewers || [], cvRef = db.doc(`convos/${appId}`), cv = await cvRef.get(), cvd = cv.exists ? cv.data() : { members: [], names: {} };
+  if (on) {
+    if (cur.includes(email)) return;
+    await ref.set({ interviewers: [...cur, email], hostFromBooking: email }, { merge: true });
+    await cvRef.set({ members: [...new Set([...(cvd.members || []), email])], names: { ...(cvd.names || {}), [email]: name || email.split("@")[0] }, updatedAt: Date.now() }, { merge: true });
+  } else if (a.data().hostFromBooking === email) {
+    await ref.set({ interviewers: cur.filter(x => x !== email), hostFromBooking: "" }, { merge: true });
+    if (cv.exists) await cvRef.set({ members: (cvd.members || []).filter(x => x !== email), updatedAt: Date.now() }, { merge: true });
+  }
+}
 exports.interviewBooking = onDocumentUpdated({ document: "slots/{id}", ...OPTS }, async e => {
   const b = e.data.before.data() || {}, a = e.data.after.data() || {};
+  if (!b.bookedBy && a.bookedBy && a.host) await setHost(a.bookedBy, a.host, a.hostName, true);
+  if (b.bookedBy && !a.bookedBy && b.host) await setHost(b.bookedBy, b.host, b.hostName, false);
   if (!b.bookedBy && a.bookedBy) await send({ to: await bookingCrew(a.bookedBy), title: "Interview booked", body: `${await nameOf(a.bookedBy)} · ${when(a.start)}`, id: a.bookedBy });
   else if (b.bookedBy && !a.bookedBy) await send({ to: await bookingCrew(b.bookedBy), title: "Interview cancelled", body: `${await nameOf(b.bookedBy)} · ${when(b.start)} is open again`, id: b.bookedBy });
 });

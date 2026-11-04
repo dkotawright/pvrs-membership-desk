@@ -1716,3 +1716,38 @@ body:has(.gate:not([hidden])){background:
 /* Interviewer assignment box: not part of interview mode's step-by-step view */
 .app.ivmode .group.noiv{display:none}
 #ivAssign .av.sm{width:28px;height:28px;font-size:11px;margin-right:10px}
+
+/* ---------- Nov 4 batch ---------- */
+/* My interviews (interviewer home) */
+.mi-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;flex:none}
+/* Duplicate check */
+.dupenote{margin:0 0 12px;line-height:1.7}
+.cv-dupe{overflow-x:auto}.cv-dupe table{width:100%;border-collapse:collapse;font-size:13px}.cv-dupe th,.cv-dupe td{padding:7px 8px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}.cv-dupe tr td:first-child,.cv-dupe tr th:first-child{color:var(--fg2);font-weight:600}
+#dupKeep{display:flex;flex-wrap:wrap}#dupKeep button{flex:1 1 160px;white-space:normal;height:auto;min-height:34px;padding:6px 10px}
+/* Bulk actions */
+.arow:has(.bulkck){position:relative;padding-left:40px}
+.arow .bulkck{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:7px;border:1.5px solid var(--border);display:grid;place-items:center;font-size:12px;font-weight:800;color:#fff;background:var(--box)}
+.arow.picked .bulkck{background:linear-gradient(135deg,var(--coral-a,#FF7A59),var(--coral-b,#E8432B));border-color:transparent}
+.bulkbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--border);background:var(--frost-2,var(--box));font-size:13px}
+.bulkbar[hidden]{display:none}.bk-acts{display:flex;flex-wrap:wrap;gap:6px;width:100%}
+.cv-bktext{width:100%;border:1px solid var(--border);border-radius:14px;padding:10px 12px;font:inherit;background:var(--box);color:var(--fg);resize:vertical}
+@media (max-width:860px){ .bulkbar{margin-bottom:calc(76px + env(safe-area-inset-bottom,0px))} }
+/* Channel extras */
+.cv-att{display:flex;align-items:center;gap:10px;margin-top:5px;padding:8px 12px;border-radius:14px;border:1px solid var(--border);background:var(--box);font:inherit;color:var(--fg);text-align:left;cursor:pointer;max-width:320px}
+.cv-att i{width:26px;height:32px;border-radius:6px;flex:none;background:linear-gradient(135deg,var(--coral-a,#FF7A59),var(--coral-b,#E8432B))}.cv-att b{display:block;font-size:13px;overflow-wrap:anywhere}.cv-att small{color:var(--fg2);font-size:11.5px}
+.cv-react{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px;min-height:22px}
+.cv-m.mine .cv-react{justify-content:flex-end}
+.cv-react button{border:1px solid var(--border);border-radius:10px;background:var(--box);font:inherit;font-size:12px;padding:1px 7px;cursor:pointer;color:var(--fg)}
+.cv-react button.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--box))}
+.cv-pickr{display:inline-flex;gap:3px;opacity:0;transition:opacity .12s}
+.cv-m:hover .cv-pickr,.cv-m:focus-within .cv-pickr{opacity:1}
+@media (hover:none){ .cv-pickr{opacity:.65} }
+.cv-pinbar{display:flex;align-items:center;gap:10px;padding:8px 18px;font-size:13px;line-height:1.4;background:color-mix(in srgb,#FFB547 16%,transparent);border-bottom:1px solid var(--border)}.cv-pinbar[hidden]{display:none}.cv-pinbar span{flex:1;overflow-wrap:anywhere}
+.cv-typing{min-height:16px;padding:0 22px 2px;font-size:11.5px;color:var(--fg3)}
+.cv-attach{padding:0 10px;cursor:pointer}
+.cv-mem .cv-dot{width:8px;height:8px;border-radius:50%;margin-left:auto;background:transparent;flex:none}.cv-mem .cv-dot.on{background:#1F9A45}.cv-mem>span:nth-child(2){min-width:0}
+/* Portal: alerts row, interviewer's name on a time */
+.pushrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;line-height:1.4;padding:9px 12px;border-radius:14px;background:color-mix(in srgb,var(--accent) 8%,transparent);margin-bottom:8px}.pushrow span{flex:1 1 180px}
+.slotbtn small{font-weight:500;opacity:.8}
+#bulkBtn{flex:none}
+.ovin>.ovcard+.ovcard,.ovin>.ovhead+.ovcard{margin-top:14px}

@@ -85,7 +85,7 @@ export const TYPE_INFO = {
   "Non-Resident":"24 hours · must already be an EMT · not required at meetings, must attend 50% of trainings · cannot vote or hold office"
 };
 // Fields under these roots live in applicants/{id}/private/main (admins only).
-export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","notes","status","docs","portal","pagesign","onb"]);
+export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","notes","status","docs","portal","pagesign","onb","notDupes","otherForms"]);
 export const DOC_ITEMS = ["Copy of driver's license (front and back)","EMT certification card","CPR card","Medical documentation for orientation","Social Security card","Missing pages of the application","Reference contact information"];
 // Medical and Social Security paperwork is confidential: it goes to the paperwork account only (see PAPERWORK_EMAIL).
 export const isConfidential = label => /medical|immuni[sz]|vaccin|physical|tuberc|\bTB\b|hepatitis|titer|health|social security|\bSSN\b/i.test(label || "");

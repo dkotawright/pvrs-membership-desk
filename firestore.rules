@@ -21,6 +21,7 @@ service cloud.firestore {
     function isAdmin()   { return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'admin'); }
     // Interviewers the owner assigned to this applicant (applicants/{id}.interviewers, a list of emails).
     function assignedTo(data)  { return verified() && exists(staffPath()) && myEmail() in data.get('interviewers', []); }
+    function canHost()         { return isAdmin() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'interviewer'); }
     function portalOf(id)      { return get(/databases/$(database)/documents/portal/$(id)); }
     // Team messaging: squad channels (channels/{id}) and the squad members the owner adds to an applicant's conversation (convos/{appId}).
     function inChannel(cid)    { return verified() && exists(/databases/$(database)/documents/channels/$(cid)) && myEmail() in get(/databases/$(database)/documents/channels/$(cid)).data.members; }
@@ -180,7 +181,7 @@ service cloud.firestore {
           && request.resource.data.uploadedBy == myEmail()
           && request.resource.data.size is int && request.resource.data.size <= 25 * 1024 * 1024
           && ((request.resource.data.keys().hasOnly(['name','label','path','size','contentType','uploadedAt','uploadedBy'])
-               && request.resource.data.path.matches('records/' + id + '/.*'))
+               && request.resource.data.path.matches('records/.*'))   // a combined file keeps the other file's folder
               || confidentialStub());
         allow update, delete: if isOwner();
       }
@@ -284,7 +285,15 @@ service cloud.firestore {
     // Interview times you post. Applicants can only claim or release a slot for themselves, 24h+ ahead.
     match /slots/{slotId} {
       allow read: if isStaff() || isInvitedApplicant();
-      allow create, delete: if isOwner();
+      // The owner manages every time. Admins and interviewers offer their own (host = themselves) and can delete their own
+      // while nobody has booked it; they can't change who booked what.
+      allow create: if isOwner() || (canHost()
+        && request.resource.data.keys().hasOnly(['start', 'duration', 'location', 'bookedBy', 'createdAt', 'host', 'hostName'])
+        && request.resource.data.host == myEmail() && request.resource.data.bookedBy == null
+        && request.resource.data.start is int && request.resource.data.duration is int
+        && request.resource.data.location is string && request.resource.data.location.size() <= 200
+        && request.resource.data.hostName is string && request.resource.data.hostName.size() <= 100);
+      allow delete: if isOwner() || (canHost() && resource.data.get('host', '') == myEmail() && resource.data.bookedBy == null);
       allow update: if isOwner() || (
         verified() && onlyChanged(['bookedBy']) && resource.data.start > nowMs() + DAY()
         && (
@@ -317,18 +326,21 @@ service cloud.firestore {
     match /channels/{cid} {
       allow read: if isOwner() || (verified() && myEmail() in resource.data.members);   // works for 'my channels' queries
       allow write: if isOwner()
-        && request.resource.data.keys().hasOnly(['name', 'color', 'members', 'names', 'createdAt', 'createdBy', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['name', 'color', 'members', 'names', 'createdAt', 'createdBy', 'updatedAt', 'pin'])
         && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60
         && request.resource.data.members is list && request.resource.data.members.size() <= 100;
       allow delete: if isOwner();
       match /posts/{pid} {
         allow read: if isOwner() || inChannel(cid);
         allow create: if (isOwner() || inChannel(cid))
-          && request.resource.data.keys().hasOnly(['text', 'by', 'name', 'at'])
+          && request.resource.data.keys().hasOnly(['text', 'by', 'name', 'at', 'file'])
           && request.resource.data.by == myEmail()
-          && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 4000
+          && request.resource.data.text is string && request.resource.data.text.size() <= 4000
+          && (request.resource.data.text.size() > 0 || request.resource.data.file is map)
+          && (!('file' in request.resource.data) || request.resource.data.file.path.matches('chat/' + cid + '/.*'))
           && request.resource.data.name is string && request.resource.data.name.size() <= 100
           && request.resource.data.at is int && request.resource.data.at > nowMs() - 300000 && request.resource.data.at < nowMs() + 300000;
+        allow update: if (isOwner() || inChannel(cid)) && onlyChanged(['reactions']) && request.resource.data.reactions is map;
         allow delete: if isOwner() || (inChannel(cid) && resource.data.by == myEmail());
       }
     }
@@ -339,6 +351,20 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['members', 'names', 'updatedAt'])
         && request.resource.data.members is list && request.resource.data.members.size() <= 50;
       allow delete: if isOwner();
+    }
+    // Who's online and typing (squad only). Everyone writes only their own.
+    match /presence/{email} {
+      allow read: if isStaff();
+      allow write: if isStaff() && email == myEmail() && request.resource.data.keys().hasOnly(['at', 'typing', 'typingAt']);
+    }
+    // Applicants who turned on alerts in their portal. Their own devices only; functions/push.js reads them.
+    match /applicantTokens/{token} {
+      allow read, delete: if isOwner() || (verified() && resource.data.email == myEmail());
+      allow create, update: if ownsPortal(request.resource.data.appId)
+        && request.resource.data.keys().hasOnly(['appId', 'email', 'device', 'at'])
+        && request.resource.data.email == myEmail()
+        && request.resource.data.device is string && request.resource.data.device.size() <= 100
+        && request.resource.data.at is int;
     }
     // Each person's "read up to" times for their channels and conversations (unread badges). Your own only.
     match /chatReads/{email} {
