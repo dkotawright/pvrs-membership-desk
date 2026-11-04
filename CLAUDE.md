@@ -98,6 +98,17 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## Nov 4 batch (Dkota: everything from the suggestion list except letters; PVRS keeps sending those itself)
+- **Morning reminders**: `functions/morning.js` (`buildMorning`, pure) + `push.morning` (`onSchedule` 7:30 AM ET): owner counts, each interviewer's interviews, applicants day-before. First function needing Cloud Scheduler: if github-deploy lacks permission, the deploy log says so.
+- **Interviewer availability**: `slots/{id}` gains `host`, `hostName`. Admins/interviewers add and delete their own unbooked times (`canHostSlots`, `canHost()` rule); owner can pick a host. Booking a hosted time assigns them via `setHost` in `interviewBooking` (`hostFromBooking` marks it so cancelling only removes auto-assignments). Portal shows "with Casey".
+- **My interviews**: `renderMyInterviews`, the interviewer's Overview; `[data-startiv]` starts interview mode.
+- **Applicant alerts**: `applicantTokens/{token}` {appId,email,device,at}; portal `pushState/pushOn/pushOff`, `sendApplicant`, `portalChanged` (booking opens, a step done count rises, a new doc request). Never decisions; a decline sends nothing (tested).
+- **Duplicates**: `dupesOf`/`dupeWhy` (same email, phone, or full name); To do pri 0, note on the Application tab, `openDupe`. `mergeFiles` writes the kept file first, then deletes the other (`deleteApplicant(.., {keepRecordFiles})`). Blocked when both files have portal access. `notDupes.{id}` dismisses; `otherForms[]` keeps a second online application; records rule now accepts any `records/.*` path.
+- **Bulk**: owner, `#bulkBtn`/`#bulkBar`, `S.bulk`: assign (`saveInterviewers`), message (private per applicant, `{first}`), email references.
+- **Channel extras** (channels only, not applicant conversations): reactions (`posts.reactions`), files (`posts.file`, Storage `chat/{cid}/`, ≤15 MB, `isConfidential` names refused), pinned note (`channels.pin`, owner), online dots + typing (`presence/{email}`, 60 s heartbeat, staff only).
+- **Search**: `searchAll` in ⌘K covers notes, interview answers, applicant messages, channel posts; only data that desk already loaded, never the online form. Messages search matches text too.
+- Tests: 248 browser, 26 push, 116 rules.
+
 ## Interviewer role (Nov 3, night; Dkota's choices)
 - Roles now: owner · **admin** (every file, view only + interview) · **interviewer** (only applicants assigned to them: Application + Interview tabs, fill in the interview) · **member** (NO applicant files; Messages only, lands on Messages, `body.member-user`). Settings → Team seg Member/Interviewer/Admin (`ROLE_LABEL`, `roleLabel`).
 - Assignment: `applicants/{id}.interviewers = [emails]` (shared doc), owner-only via Interview tab "Interviewers" box → Assign (`renderInterviewers`, `openAssignInterviewers`; picker lists interviewers + admins). Saving also adds/removes them in `convos/{id}` (Dkota: yes). Box has class `noiv` so interview mode skips it.
@@ -112,7 +123,6 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - **Applicant conversations** stay in `portal/{id}/messages`. `convos/{appId}` {members[], names{}} = squad members the owner added (`openConvoEditor`); they read + reply (rules `inConvo`). Applicants are never in groups with each other (Dkota's rule). Collection-group messages read is now OWNER ONLY (admins used to read all; now only conversations they're added to). Portal shows staff replies as "<first name> · PVRS Membership".
 - Unread per person: `chatReads/{email}` {key: ms} (own doc only). Owner's old `readAt` still counts until a marker exists.
 - Push (functions/push.js): `channelPost` (members minus author, "X posted in #name", no text), `applicantMessage` (owner + convo members, staff replies skip the author). `send({to, skip, chat})`.
-- Not built yet (Dkota OK'd later): reactions, attachments, typing, pinned notes, online dots.
 - Tests: 204 browser checks, 15 push checks, 77 rules tests (all pass on a Mac; Java can be fetched from Adoptium into the scratchpad when ~/.local/jdk21 is missing).
 
 ## Deploy fixes (Nov 3, later)

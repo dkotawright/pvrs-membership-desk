@@ -622,6 +622,126 @@ try {
       if (!(await page.locator(".cv").count())) fail("member didn't land on Messages"); else ok("members land on Messages");
       await ctx.close(); }
   }
+  // ---- Nov 4 batch: interviewer times + home, applicant alerts, duplicates, bulk, channel extras, search
+  {
+    const IVY = { email: "ivy@pvrs.org", displayName: "Ivy Lane" }, ivySeed = [["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Lane" }]];
+    // an interviewer offers times and has their own home
+    { const { ctx, page } = await open(browser, { user: IVY, seed: [...ivySeed, ["slots/other", { start: Date.now() + 5 * 864e5, duration: 30, location: "X", bookedBy: null, host: "admin@pvrs.org", hostName: "Casey" }]] }); await wait(page, 700);
+      if (!/My interviews/.test(await page.locator(".ov h2").textContent().catch(() => ""))) fail("no My interviews home"); else ok("interviewers land on My interviews");
+      await page.locator("#slotsBtn").click(); await wait(page, 300);
+      if (!/My interview times/.test(await page.locator("#modal h3").textContent())) fail("interviewer times title"); else ok("interviewers manage their own interview times");
+      if (await page.locator('#slotList [data-del="other"]').count()) fail("sees someone else's time"); else ok("they don't see other people's times");
+      await page.locator("#slotForm button[type=submit]").click(); await wait(page, 400);
+      const mine = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k, v]) => k.startsWith("slots/") && v.host === "ivy@pvrs.org").map(([, v]) => v));
+      if (mine.length !== 1 || mine[0].hostName !== "Ivy" || mine[0].bookedBy !== null) fail("slot: " + JSON.stringify(mine)); else ok("a new time is saved under the interviewer");
+      await page.keyboard.press("Escape"); await wait(page, 200);
+      await page.evaluate(() => { const d = window.__mock.docs, sl = [...d.entries()].find(([, v]) => v.host === "ivy@pvrs.org"); sl[1].bookedBy = "a1"; d.get("applicants/a1").interviewers = ["ivy@pvrs.org"]; window.__mock.emit(); }); await wait(page, 500);
+      const hm = await page.locator(".ov").textContent();
+      if (!/Georgia Thurmond/.test(hm) || !/1 interview coming up/.test(hm)) fail("home after booking: " + hm.slice(0, 200)); else ok("a booked applicant shows on My interviews");
+      await page.screenshot({ path: path.join(OUT, "60-my-interviews.png") });
+      await page.locator("[data-startiv]").first().click(); await wait(page, 500);
+      if (!(await page.locator("#ivBar").count())) fail("Start interview didn't start"); else ok("Start interview opens interview mode");
+      await ctx.close(); }
+    // the portal shows who a time is with, and an applicant can turn on alerts
+    { const { ctx, page } = await open(browser, { w: 430, h: 844, user: { email: "marcus.bell@example.com", displayName: "Marcus" }, seed: [["slots/h1", { start: Date.now() + 5 * 864e5, duration: 30, location: "Station", bookedBy: null, host: "ivy@pvrs.org", hostName: "Ivy" }]] }); await wait(page, 500);
+      await page.evaluate(() => { const p = window.__mock.docs.get("portal/a2"); p.bookingOpen = true; window.__mock.emit(); }); await wait(page, 500);
+      if (!/with Ivy/.test(await page.locator("#ivCard").textContent())) fail("slot host not shown"); else ok("applicants see who an interview time is with");
+      await ctx.close(); }
+    { const ctx = await browser.newContext({ viewport: { width: 430, height: 844 } });
+      await ctx.addInitScript(() => { window.__MOCK_USER = { email: "marcus.bell@example.com", displayName: "Marcus" }; window.__mock = { docs: new Map(), listeners: new Set(), seq: 0, pushOk: true };
+        Object.defineProperty(window, "Notification", { configurable: true, value: { permission: "default" } });
+        if (navigator.serviceWorker) navigator.serviceWorker.register = async () => ({}); else Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: { register: async () => ({}) } }); });
+      await ctx.route("**/*", route => { const u = new URL(route.request().url());
+        if (u.host === "www.gstatic.com") return route.fulfill({ body: MOCK, contentType: "text/javascript" });
+        if (u.host === "localhost:5999") { let f = path.join(PUB, u.pathname === "/" ? "index.html" : u.pathname); if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(PUB, "index.html"); return route.fulfill({ body: fs.readFileSync(f), contentType: TYPES[path.extname(f)] || "application/octet-stream" }); }
+        return route.abort(); });
+      const page = await ctx.newPage(); await page.goto("http://localhost:5999/"); await wait(page, 900);
+      if (!(await page.locator("[data-pushon]").count())) fail("no Turn on alerts in the portal: " + (await page.locator("#portal").textContent()).slice(0, 200)); else { await page.locator("[data-pushon]").click(); await wait(page, 500);
+        const tk = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("applicantTokens/")).map(([, v]) => v));
+        if (tk.length !== 1 || tk[0].appId !== "a2" || tk[0].email !== "marcus.bell@example.com") fail("applicant token: " + JSON.stringify(tk)); else ok("an applicant turns on alerts for their own device");
+        await page.screenshot({ path: path.join(OUT, "64-portal-alerts.png") });
+        await page.locator("[data-pushoff]").click(); await wait(page, 400);
+        if (await page.evaluate(() => [...window.__mock.docs.keys()].some(k => k.startsWith("applicantTokens/")))) fail("applicant token not removed"); else ok("and can turn them off"); }
+      await ctx.close(); }
+    // duplicates: flagged in To do, "not the same" sticks, combining keeps everything and deletes the other
+    { const now = Date.now();
+      const { ctx, page } = await open(browser, { seed: [
+        ["applicants/d1", { name: "Jack Gradzewicz", email: "jack@example.com", phone: "716-866-2459", app: { received: "2026-09-30" }, updatedAt: now }],
+        ["applicants/d1/private/main", { notes: "Paper copy on file", refs: { r1: { name: "Duke McCauley", email: "duke@example.com" } } }],
+        ["applicants/d2", { name: "Jack Gradzewicz", email: "JACK@example.com", phone: "", iv: { why: "Wants to help" }, updatedAt: now }],
+        ["applicants/d2/private/main", { notes: "Applied again online", form: { submittedAt: now, person: { first: "Jack", last: "G" }, signature: { name: "Jack" } }, refs: { r1: { name: "Duke McCauley" }, r2: { name: "Aidan Osborne", email: "aidan@example.com", link: "lnkAidan" } } }],
+        ["applicants/d2/records/rec1", { name: "scan.pdf", label: "Application", path: "records/d2/scan.pdf", size: 10, contentType: "application/pdf", uploadedAt: now, uploadedBy: "dkota@pvrs.org" }],
+        ["refLinks/lnkAidan", { appId: "d2", slot: 2, applicant: "Jack Gradzewicz", first: "Jack", refName: "Aidan Osborne", createdAt: now, expiresAt: now + 5e9 }]] }); await wait(page, 800);
+      const td = (await page.locator(".ov").textContent()).replace(/\s+/g, " ");
+      if (!/Possible duplicate: Jack Gradzewicz/.test(td)) fail("no duplicate to-do: " + td.slice(0, 500)); else ok("To do flags possible duplicates");
+      await page.locator('[data-todoact="dupe"]').first().click(); await wait(page, 300);
+      await page.screenshot({ path: path.join(OUT, "61-duplicate.png") });
+      await page.locator('[data-keep="d1"]').click(); await page.locator("#dupYes").click(); await wait(page, 1200);
+      const d = await page.evaluate(() => { const m = window.__mock.docs; return { a: m.get("applicants/d1"), p: m.get("applicants/d1/private/main"), gone: !m.has("applicants/d2") && !m.has("applicants/d2/private/main"), recs: [...m.entries()].filter(([k]) => k.startsWith("applicants/d1/records/")).map(([, v]) => v.path), link: m.get("refLinks/lnkAidan") }; });
+      if (!d.gone) fail("merged file not deleted"); else ok("combining deletes the other file");
+      if (d.a.iv?.why !== "Wants to help" || d.p.form?.submittedAt !== now || !d.p.refs.r2 || d.p.refs.r2.name !== "Aidan Osborne" || d.p.refs.r1.email !== "duke@example.com") fail("merge lost data: " + JSON.stringify(d)); else ok("combining keeps answers, references and the online application");
+      if (!/Paper copy on file/.test(d.p.notes) || !/Applied again online/.test(d.p.notes)) fail("notes: " + d.p.notes); else ok("combining keeps both sets of notes");
+      if (d.recs.join() !== "records/d2/scan.pdf") fail("records: " + d.recs); else ok("combining moves uploaded records without deleting the file");
+      if (!d.link || d.link.appId !== "d1") fail("ref link: " + JSON.stringify(d.link)); else ok("an unanswered reference link keeps working after combining");
+      await ctx.close(); }
+    { const { ctx, page } = await open(browser, { seed: [["applicants/n1", { name: "Pat Same", email: "pat1@example.com" }], ["applicants/n1/private/main", {}], ["applicants/n2", { name: "Pat Same", email: "pat2@example.com" }], ["applicants/n2/private/main", {}]] }); await wait(page, 700);
+      await page.locator('[data-todoact="dupe"]').first().click(); await wait(page, 300); await page.locator("#dupNo").click(); await wait(page, 1400);
+      await page.locator("#overviewBtn").click(); await wait(page, 400);
+      if (/Possible duplicate/.test(await page.locator(".ov").textContent())) fail("not-a-duplicate came back"); else ok("\"Not the same person\" stays dismissed");
+      await ctx.close(); }
+    // bulk: pick several, assign, message, email references
+    { const { ctx, page } = await open(browser, { seed: ivySeed }); await wait(page, 700);
+      await page.evaluate(() => { const pv = window.__mock.docs.get("applicants/a1/private/main"); pv.refs.r1.email = "ann.lee@example.com"; delete pv.portal; window.__mock.emit(); }); await wait(page, 300);
+      await page.evaluate(() => document.querySelector("#bulkBtn").click()); await wait(page, 300);
+      await page.evaluate(() => document.querySelector('.arow[data-id="a1"]').click()); await wait(page, 150);
+      await page.evaluate(() => document.querySelector('.arow[data-id="a2"]').click()); await wait(page, 200);
+      if (!/2 selected/.test(await page.locator("#bulkBar").textContent())) fail("bulk count: " + await page.locator("#bulkBar").textContent()); else ok("the applicant list lets you tick several");
+      await page.screenshot({ path: path.join(OUT, "62-bulk.png") });
+      await page.locator('[data-bulk="refs"]').click(); await wait(page, 300);
+      if (!/Ann Lee/.test(await page.locator("#modal").textContent())) fail("bulk refs: " + await page.locator("#modal").textContent()); else ok("Email references lists who's due across everyone ticked");
+      await page.locator("#modal [data-x]").click(); await wait(page, 200);
+      await page.locator('[data-bulk="msg"]').click(); await wait(page, 300);
+      if (!/Skipped, not invited/.test(await page.locator("#modal").textContent()) || !/Georgia/.test(await page.locator("#modal").textContent())) fail("bulk message skip note"); else ok("bulk message says who it can't reach");
+      await page.locator("#bkText").fill("Hi {first}, reminder!"); await page.locator("#bkSend").click(); await wait(page, 500);
+      const sent = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k, v]) => k.includes("/messages/") && /reminder!/.test(v.text || "")).map(([k, v]) => [k.split("/")[1], v.text]));
+      if (sent.length !== 1 || sent[0][0] !== "a2" || sent[0][1] !== "Hi Marcus, reminder!") fail("bulk message: " + JSON.stringify(sent)); else ok("bulk message goes privately to each, with their first name");
+      await page.evaluate(() => document.querySelector("#bulkBtn").click()); await wait(page, 200);
+      await page.evaluate(() => { document.querySelector('.arow[data-id="a1"]').click(); document.querySelector('.arow[data-id="a2"]').click(); }); await wait(page, 200);
+      await page.locator('[data-bulk="assign"]').click(); await wait(page, 300);
+      await page.locator('.cv-pick input[value="ivy@pvrs.org"]').check(); await page.locator("#bkaSave").click(); await wait(page, 700);
+      const both = await page.evaluate(() => ["a1", "a2"].map(i => [(window.__mock.docs.get("applicants/" + i).interviewers || []).join(), (window.__mock.docs.get("convos/" + i)?.members || []).join()]));
+      if (both.flat().some(x => x !== "ivy@pvrs.org")) fail("bulk assign: " + JSON.stringify(both)); else ok("bulk assign adds the interviewer and the conversation on every file");
+      await ctx.close(); }
+    // channel extras + search
+    { const now = Date.now();
+      const { ctx, page } = await open(browser, { seed: [["channels/c9", { name: "board", color: "appr", members: ["dkota@pvrs.org", "admin@pvrs.org"], names: { "admin@pvrs.org": "Casey Admin" }, createdAt: now }],
+        ["channels/c9/posts/p1", { text: "Packet for the zebra meeting is ready", by: "admin@pvrs.org", name: "Casey Admin", at: now - 6e4 }],
+        ["presence/admin@pvrs.org", { at: now, typing: "c:c9", typingAt: now + 6e4 }],
+        ["portal/a2/messages/q1", { text: "Do I need a walrus permit?", from: "applicant", by: "marcus.bell@example.com", name: "Marcus", at: now - 9e4 }]] }); await wait(page, 700);
+      await page.evaluate(() => { window.open = () => ({ close(){}, set location(u){ window.__opened = u; } }); window.__mock.docs.get("applicants/a1/private/main").notes = "Great with the marmot program"; window.__mock.emit(); }); await wait(page, 300);
+      for (const [q, re, label] of [["walrus", /Message: Marcus Bell/, "applicant messages"], ["zebra", /#board/, "channel posts"], ["marmot", /Notes: Georgia Thurmond/, "notes"]]) {
+        await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 200); await page.locator("#palQ").fill(q); await wait(page, 200);
+        if (!re.test(await page.locator("#palList").textContent())) fail(`search ${q}: ` + await page.locator("#palList").textContent()); else ok(`⌘K searches ${label}`);
+        await page.keyboard.press("Escape"); await wait(page, 100); await page.keyboard.press("Escape"); await wait(page, 200); }
+      await page.locator("#msgsBtn").click(); await wait(page, 300); await page.locator('[data-chat="c:c9"]').click(); await wait(page, 400);
+      if (!/Casey is typing/.test(await page.locator("#cvTyping").textContent())) fail("typing: " + await page.locator("#cvTyping").textContent()); else ok("the channel shows who's typing");
+      if (!(await page.locator('#cvInfo [data-online="admin@pvrs.org"].on').count())) fail("online dot"); else ok("people online get a green dot");
+      await page.locator('[data-react="👍"][data-pid="p1"]').click(); await wait(page, 300);
+      const rx = await page.evaluate(() => window.__mock.docs.get("channels/c9/posts/p1").reactions);
+      if (rx?.["👍"]?.join() !== "dkota@pvrs.org") fail("reaction: " + JSON.stringify(rx)); else ok("a reaction is saved");
+      await page.locator('.cv-react button.on[data-react="👍"]').click(); await wait(page, 300);
+      if (await page.evaluate(() => ((window.__mock.docs.get("channels/c9/posts/p1").reactions || {})["👍"] || []).length)) fail("reaction not removed"); else ok("clicking again removes the reaction");
+      await page.locator('[data-pinpost="p1"]').click({ force: true }); await wait(page, 300);
+      if (!/zebra meeting/.test(await page.locator("#cvPin").textContent())) fail("pin bar"); else ok("owner pins a message to the top of the channel");
+      await page.locator("#cvFile").setInputFiles({ name: "agenda.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF") }); await wait(page, 500);
+      const fp = await page.evaluate(() => [...window.__mock.docs.values()].find(v => v.file)?.file);
+      if (!fp || !/^chat\/c9\//.test(fp.path) || fp.name !== "agenda.pdf") fail("file post: " + JSON.stringify(fp)); else ok("a PDF can be posted in a channel");
+      if (!(await page.locator("[data-chfile]").count())) fail("file card"); else { await page.locator("[data-chfile]").click(); await wait(page, 200); if (!(await page.evaluate(() => window.__opened))) fail("file didn't open"); else ok("clicking a posted file opens it"); }
+      await page.locator("#cvFile").setInputFiles({ name: "Medical-records.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF") }); await wait(page, 300);
+      if (await page.evaluate(() => [...window.__mock.docs.values()].some(v => v.file?.name === "Medical-records.pdf"))) fail("medical file was posted"); else ok("medical or Social Security files are refused in channels");
+      await page.screenshot({ path: path.join(OUT, "63-channel-extras.png") });
+      await ctx.close(); }
+  }
   // ---- Med Control (AI): hidden until switched on; chat, brief and reply drafts go through the function
   {
     const { ctx, page } = await open(browser, { seed: [["portal/a2/messages/m1", { text: "Can I join if I'm only here in the school year?", from: "applicant", by: "marcus.bell@example.com", name: "Marcus", at: Date.now() - 6e4 }]] }); await wait(page, 600);

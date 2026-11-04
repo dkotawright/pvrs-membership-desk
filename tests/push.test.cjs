@@ -5,14 +5,16 @@ const Module = require("module");
 const FN = path.join(__dirname, "../functions");
 const docs = new Map(), sent = [];
 const snap = (p) => ({ exists: docs.has(p), data: () => docs.get(p), id: p.split("/").pop() });
-const fakeDb = { doc: p => ({ get: async () => snap(p), delete: async () => docs.delete(p) }),
-  collection: c => ({ get: async () => ({ docs: [...docs.keys()].filter(k => k.startsWith(c + "/") && k.split("/").length === 2).map(snap) }) }) };
+const fakeDb = { doc: p => ({ get: async () => snap(p), delete: async () => docs.delete(p), set: async (d, o) => docs.set(p, o && o.merge ? { ...(docs.get(p) || {}), ...d } : d) }),
+  collection: c => { const all = () => [...docs.keys()].filter(k => k.startsWith(c + "/") && k.split("/").length === 2).map(snap);
+    return { get: async () => ({ docs: all() }), where: (f, _op, v) => ({ get: async () => ({ docs: all().filter(x => x.data()[f] === v) }) }) }; } };
 const stubs = {
   "firebase-admin/app": { initializeApp(){}, getApps: () => [1] },
   "firebase-admin/firestore": { getFirestore: () => fakeDb },
   "firebase-admin/messaging": { getMessaging: () => ({ sendEachForMulticast: async m => { sent.push(m); return { successCount: m.tokens.length, failureCount: 0, responses: m.tokens.map(() => ({ success: true })) }; } }) },
   "firebase-functions/logger": { info(){} },
   "firebase-functions/v2/firestore": { onDocumentCreated: (o, h) => h, onDocumentUpdated: (o, h) => h },
+  "firebase-functions/v2/scheduler": { onSchedule: (o, h) => h },
 };
 const load = Module._load;
 Module._load = function(req, ...rest){ return stubs[req] || load.call(this, req, ...rest); };
@@ -77,6 +79,37 @@ const last = () => sent[sent.length - 1];
   check(last().tokens.sort().join() === "adminTok,ownerTok" && /Jack Gradzewicz sent a message/.test(last().notification.body), "applicant message to convo: " + JSON.stringify(last()));
   await P.applicantMessage(ev({ from: "staff", text: "hello", by: "dkota@pvrs.org", name: "Dkota" }, { id: "a1" }));
   check(last().tokens.join() === "adminTok" && /Dkota replied to Jack/.test(last().notification.body), "staff reply skips the author: " + JSON.stringify(last()));
+  // applicants who turned on alerts: generic wording, and a decline never buzzes them
+  docs.set("applicantTokens/appTok", { appId: "a1", email: "jack@example.com" });
+  await P.applicantMessage(ev({ from: "staff", text: "private reply text", by: "dkota@pvrs.org", name: "Dkota" }, { id: "a1" }));
+  check(last().tokens.join() === "appTok" && /new message/.test(last().notification.body) && !JSON.stringify(last()).includes("private reply text"), "applicant alert: " + JSON.stringify(last()));
+  await P.portalChanged(upd({ bookingOpen: false, steps: [] }, { bookingOpen: true, steps: [] }, { id: "a1" }));
+  check(last().notification.title === "Interview times are open" && last().tokens.join() === "appTok", "booking open alert");
+  k = sent.length;
+  const stepsA = [{ label: "Review", state: "done" }, { label: "Board review", state: "current", detail: "with the membership committee" }];
+  await P.portalChanged(upd({ bookingOpen: true, steps: stepsA, docs: [] }, { bookingOpen: false, steps: stepsA.map(x => ({ ...x, detail: "you'll receive a letter" })), docs: [] }, { id: "a1" }));
+  check(sent.length === k, "a decline must not send the applicant anything");
+  // a time an interviewer offered: booking assigns them, cancelling un-assigns
+  docs.set("applicants/a3", { name: "Sam Host", interviewers: [] }); docs.delete("convos/a3");
+  await P.interviewBooking(upd({ start: 2e12, host: "iv@pvrs.org", hostName: "Ivy" }, { start: 2e12, bookedBy: "a3", host: "iv@pvrs.org", hostName: "Ivy" }));
+  check((docs.get("applicants/a3").interviewers || []).join() === "iv@pvrs.org" && docs.get("convos/a3").members.join() === "iv@pvrs.org", "booking assigns the host: " + JSON.stringify(docs.get("applicants/a3")));
+  await P.interviewBooking(upd({ start: 2e12, bookedBy: "a3", host: "iv@pvrs.org", hostName: "Ivy" }, { start: 2e12, host: "iv@pvrs.org", hostName: "Ivy" }));
+  check((docs.get("applicants/a3").interviewers || []).length === 0 && docs.get("convos/a3").members.length === 0, "cancelling un-assigns the host");
+  docs.set("applicants/a3", { name: "Sam Host", interviewers: ["iv@pvrs.org"] });
+  await P.interviewBooking(upd({ start: 2e12, bookedBy: "a3", host: "iv@pvrs.org" }, { start: 2e12, host: "iv@pvrs.org" }));
+  check(docs.get("applicants/a3").interviewers.join() === "iv@pvrs.org", "cancelling keeps someone the owner assigned by hand");
+  // morning summary
+  const { buildMorning } = require(path.join(FN, "morning.js"));
+  const NOW = Date.parse("2026-11-04T12:30:00Z"), D = 864e5;
+  const mm = buildMorning({ now: NOW, apps: [
+    { id: "x1", name: "Jack G", interviewers: ["iv@pvrs.org"], refs: { r1: { name: "Late Ref", contacted: "2026-10-20" }, r2: { name: "Fresh Ref", contacted: "2026-11-02" }, r3: { name: "Done Ref", contacted: "2026-10-01", returned: "2026-10-05" } }, onb: { cprExpires: "2026-11-20" }, updatedAt: NOW },
+    { id: "x2", name: "Old File", updatedAt: NOW - 20 * D },
+    { id: "x3", name: "Declined", status: "declined", updatedAt: NOW - 20 * D, refs: { r1: { name: "R", contacted: "2026-10-01" } } } ],
+    slots: [{ start: NOW + D, bookedBy: "x1", location: "Station" }, { start: NOW + D, bookedBy: "x3" }, { start: NOW + 5 * D, bookedBy: "x2" }] });
+  check(mm.owner && mm.owner.body === "1 interview tomorrow · 1 reference overdue · 1 card expiring · 1 file with no movement", "morning owner: " + JSON.stringify(mm.owner));
+  check(mm.interviewers.get("iv@pvrs.org").length === 1 && /Jack G at 7:30 AM · Station/.test(mm.interviewers.get("iv@pvrs.org")[0].body), "morning interviewer: " + JSON.stringify([...mm.interviewers]));
+  check(mm.applicants.length === 1 && mm.applicants[0].id === "x1" && /tomorrow at 7:30 AM/.test(mm.applicants[0].body), "morning applicant: " + JSON.stringify(mm.applicants));
+  check(buildMorning({ now: NOW, apps: [], slots: [] }).owner === null, "nothing to say means no morning alert");
   console.log(errors.length ? "ERRORS:\n" + errors.join("\n") : `${n} notification checks, no errors`);
   process.exit(errors.length ? 1 : 0);
 })();
