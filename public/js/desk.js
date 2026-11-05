@@ -166,7 +166,7 @@ function tabHTML(tab){
     ${group("Mentor",[F.note("Pair each new member with an experienced member for their first year. You'll get a To do if a month goes by without a check-in."),
       F.text("onb.mentor","Mentor","Member's name"),F.date("onb.mentorSince","Paired on"),F.date("onb.mentorCheck","Last check-in"),F.area("onb.mentorNotes","Notes","How it's going")],"")}
     ${group("Expiration dates",[F.note("You'll get a To do 30 days before any of these expire."),`<div class="row"><span class="lbl">Driver's license<small>Entered on the Checks tab</small></span><b id="dlExpEcho">—</b></div>`,
-      F.date("onb.cprExpires","CPR / BLS card expires"),F.date("onb.emtExpires","EMS certification expires")])}
+      F.date("onb.cprExpires","CPR / BLS card expires"),F.text("onb.emtCard","EMT card number","Card #"),F.date("onb.emtExpires","EMT card expires")])}
   </div>
   <section class="group" style="margin-top:18px"><h3><span>Full checklist</span></h3><div class="ios" id="miles"></div></section>`;
   if (tab === "msgs") return `<div class="msgpane">
@@ -303,10 +303,14 @@ function restoreFocus(fk){
 // For each applicant in process: what needs doing next, most actionable first. "Waiting" states aren't listed.
 const okEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || "").trim());
 // New-member checklist (Onboard tab). The owner edits the list in Settings; each item's key comes from its label.
-const DEFAULT_ONB = ["ID badge issued", "Uniform and gear issued", "Building access set up", "Paging / dispatch app set up", "Orientation completed",
-  "CPR / BLS", "EVOC (drivers)", "ICS-100", "ICS-700", "HIPAA training", "Bloodborne pathogens training"];
+// PVRS's mandatory new-member sheet (Dkota's paper form, Nov 4), required before issuing equipment or running calls. Edit in Settings.
+const DEFAULT_ONB = ["Completed application", "Copy of driver's license", "Copy of training records (EMT, CPR, etc.)", "Insurance beneficiary card, completed",
+  "Copy of health physical, record of PPD, Hep B record or refusal", "Verification of completion of IS-100, IS-700", "Verification of Blood Borne Pathogen training",
+  "SOP/Constitution acceptance form", "Confidentiality statement", "Equipment request", "Orientation form completed, signed by member and orientation committee member"];
+// The starter list from before the real sheet: anyone still on it moves to the real list automatically.
+const OLD_ONB = ["ID badge issued", "Uniform and gear issued", "Building access set up", "Paging / dispatch app set up", "Orientation completed", "CPR / BLS", "EVOC (drivers)", "ICS-100", "ICS-700", "HIPAA training", "Bloodborne pathogens training"];
 const onbKey = l => String(l).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40) || "item";
-const onbRaw = () => Array.isArray(S.settings.onbItems) ? S.settings.onbItems : DEFAULT_ONB;
+const onbRaw = () => Array.isArray(S.settings.onbItems) && S.settings.onbItems.join("|") !== OLD_ONB.join("|") ? S.settings.onbItems : DEFAULT_ONB;
 const onbItems = () => onbRaw().map(l => { const label = String(l).split("|")[0].trim(); return [onbKey(label), label]; });
 const onbLink = key => { const hit = onbRaw().find(l => onbKey(String(l).split("|")[0].trim()) === key), u = hit && String(hit).split("|")[1]?.trim(); return u && /^https:\/\//.test(u) ? u : ""; };
 // Starter list for trainer sign-offs; edit it in Settings.
@@ -3190,11 +3194,13 @@ function orientDue(a){ const days = +S.settings.orientDays, st = get(a, "onb.ori
 const orientDaysLeft = a => { const d = orientDue(a); return d ? Math.round((new Date(d + "T12:00") - new Date(today() + "T12:00")) / 864e5) : null; };
 const orientSession = id => S.portal.get(id)?.orient || null;
 const orientItemKey = () => (onbItems().find(([, l]) => /orientation/i.test(l)) || [])[0] || "";
-const CERT_RE = /cpr|bls|evoc|ics-|hipaa|bloodborne|certif|training|card/i;
+// Items a new member can upload proof for; the application itself and the signed orientation form stay with you.
+const CERT_RE = /copy|card|verification|acceptance|statement|request|certif|training/i;
+const NOT_CERT_RE = /^completed application|^orientation/i;
 function orientPayload(a){
   if (!orientOpen(a)) return null;
   const c = orientCounts(a);
-  return { start: get(a, "onb.orientStarted"), due: orientDue(a), done: c.done, total: c.total, items: onbItems().map(([key, label]) => ({ key, label, date: get(a, `onb.items.${key}`) || "", link: onbLink(key), cert: CERT_RE.test(label) })) };
+  return { start: get(a, "onb.orientStarted"), due: orientDue(a), done: c.done, total: c.total, items: onbItems().map(([key, label]) => ({ key, label, date: get(a, `onb.items.${key}`) || "", link: onbLink(key), cert: CERT_RE.test(label) && !NOT_CERT_RE.test(label) })) };
 }
 function checkinDue(a){
   if (!orientOpen(a)) return null;
@@ -3234,10 +3240,12 @@ function orientToDo(){
   for (const f of certs) { const a = S.apps.get(f.appId); out.push({ id: a._id, a, pri: 1, text: `Review ${first(a.name) || a.name}'s certificate`, sub: f.label || "", tab: "onb", age: 0 }); }
   return out;
 }
+const SHORT_ONB = [[/completed application/i, "Application"], [/driver/i, "License"], [/training records/i, "Training records"], [/beneficiary/i, "Insurance card"], [/physical|hep b|ppd/i, "Health records"], [/is-100/i, "IS-100 / 700"], [/blood/i, "Blood borne"], [/sop|constitution/i, "SOP form"], [/confidential/i, "Confidentiality"], [/equipment/i, "Equipment"], [/orientation/i, "Orientation form"]];
+const shortOnb = l => (SHORT_ONB.find(([re]) => re.test(l)) || [])[1] || l;
 /* the board: everyone in orientation against every requirement */
 function openOrientBoard(){
   const cols = onbItems();
-  const M = openModal(`<div class="or-head"><h3>Orientation</h3><span style="flex:1"></span>${S.canEdit ? `<button class="btn small" type="button" data-otimes>Orientation times</button>` : ""}</div>
+  const M = openModal(`<div class="or-head"><h3>Orientation</h3><small class="help" style="margin:0">Required before issuing equipment or running calls</small><span style="flex:1"></span>${S.canEdit ? `<button class="btn small" type="button" data-otimes>Orientation times</button>` : ""}</div>
     <p class="help">${S.canEdit ? "Click a box to mark it done today; click again to undo." : "View only."} You move people in by hand once Sterling is complete and clear.</p><div id="orBoard"></div>
     <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`, true);
   M.classList.add("wide");
@@ -3250,7 +3258,7 @@ function openOrientBoard(){
           <small>${s ? esc(slotLong(s.start)) : "Not booked"}</small>
           <span class="or-acts">${S.canEdit ? `<button class="copy" type="button" data-obook="${esc(a._id)}">${s ? "Change" : "Book"}</button>` : ""}<button class="copy" type="button" data-orec="${esc(a._id)}">Record</button></span></th>
         ${cols.map(([k, l]) => { const d = get(a, `onb.items.${k}`); return `<td><button type="button" class="or-c${d ? " on" : ""}" ${S.canEdit ? "" : "disabled"} data-ocell="${esc(a._id)}" data-k="${esc(k)}" aria-pressed="${!!d}" title="${esc(l)}${d ? " · " + esc(fmtDate(d)) : ""}" aria-label="${esc(a.name || "")}: ${esc(l)}">${d ? "✓" : ""}</button></td>`; }).join("")}</tr>`; };
-    el.innerHTML = (now.length ? `<div class="or-scroll"><table class="or-grid"><thead><tr><th>New member</th>${cols.map(([, l]) => `<th><span>${esc(l)}</span></th>`).join("")}</tr></thead><tbody>${now.map(row).join("")}</tbody></table></div>` : `<div class="oempty">Nobody is in orientation right now.</div>`)
+    el.innerHTML = (now.length ? `<div class="or-scroll"><table class="or-grid"><thead><tr><th>New member</th>${cols.map(([, l]) => `<th title="${esc(l)}"><span>${esc(shortOnb(l))}</span></th>`).join("")}</tr></thead><tbody>${now.map(row).join("")}</tbody></table></div>` : `<div class="oempty">Nobody is in orientation right now.</div>`)
       + (ready.length ? `<div class="group"><h3><span>Ready to move to orientation</span></h3><div class="ios">${ready.map(a => `<div class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>Sterling complete ${esc(fmtDate(get(a, "bg.sterDone")))}</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-omove="${esc(a._id)}">Move to orientation</button>` : ""}</div>`).join("")}</div></div>` : "")
       + (wait.length ? `<div class="group"><h3><span>Waiting on Sterling</span></h3><div class="ios">${wait.map(a => `<div class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>${get(a, "bg.sterDone") ? "Sterling needs review" : get(a, "bg.sterReq") ? "Requested " + esc(fmtDate(get(a, "bg.sterReq"))) : "Not requested yet"}</small></span></div>`).join("")}</div></div>` : "")
       + (fin.length ? `<div class="group"><h3><span>Finished</span></h3><div class="ios">${fin.map(a => `<div class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>${get(a, "onb.memberSince") ? "Squad member since " + esc(fmtDate(get(a, "onb.memberSince"))) : "Not a squad member yet"}</small></span>${S.canEdit && !get(a, "onb.memberSince") ? `<button class="btn small primary" type="button" data-omember="${esc(a._id)}">Make squad member</button>` : ""}<button class="btn small" type="button" data-orec="${esc(a._id)}">Print record</button></div>`).join("")}</div></div>` : ""); };
@@ -3333,6 +3341,8 @@ function openMoveToOrientation(id){
     try {
       if (email !== lower(a.email)) edit(id, "email", email);
       edit(id, "onb.orientStarted", today());
+      const appKey = (onbItems().find(([, l]) => /^completed application/i.test(l)) || [])[0];   // already known from their file
+      if (appKey && get(a, "app.complete") === "yes" && !get(a, `onb.items.${appKey}`)) edit(id, `onb.items.${appKey}`, get(a, "app.received") || today());
       if (!get(a, "portal.invited")) await inviteToPortal(id, false);
       await addDoc(collection(db, "portal", id, "messages"), { text: `Hi ${first(a.name) || "there"}, your background check is complete, so you're moving on to orientation! Your dashboard now has your checklist. Please pick a time to come in and meet with me.`, from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() });
       closeModal(); toast(`${first(a.name) || "They"} moved to orientation.`);
@@ -3346,7 +3356,7 @@ function openMakeMember(id){
   const c = orientCounts(a), email = lower(a.email);
   if (!email) return toast("Add their email first.");
   const M = openModal(`<h3>Make ${esc(first(a.name) || "them")} a squad member?</h3>
-    ${orientAllDone(a) ? `<p class="help">Orientation is complete.</p>` : `<p class="help"><b>Orientation isn't finished: ${c.done} of ${c.total} done.</b> You can still go ahead.</p>`}
+    ${orientAllDone(a) ? `<p class="help">Orientation is complete.</p>` : `<p class="help"><b>Orientation isn't finished: ${c.done} of ${c.total} done.</b> These are required before issuing equipment or running calls. You can still go ahead.</p>`}
     <p class="help">${esc(email)} becomes a <b>Member</b>: their next sign-in opens the desk with Messages instead of the orientation dashboard. You can change their role in Settings → Team.</p>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="mmGo">Make squad member</button></div>`);
   M.onclick = async e => { if (e.target.closest("[data-x]")) return closeModal(); if (!e.target.closest("#mmGo")) return;
@@ -3363,8 +3373,8 @@ function printOrientRecord(id){
   const so = S.signoffs.get(id), s = orientSession(id), row = (k, v) => `<tr><th>${esc(k)}</th><td>${esc(v || "—")}</td></tr>`;
   printHTML(`<section class="pk"><header><img src="/img/logo.png" alt=""><div><div class="pk-k">Orientation record</div><h1>${esc(a.name || "New member")}</h1>
       <div class="pk-s">${esc([a.type ? a.type + " membership" : "", get(a, "board.date") ? "Board approved " + longDate(get(a, "board.date")) : "", get(a, "bg.sterDone") ? "Sterling complete " + longDate(get(a, "bg.sterDone")) : ""].filter(Boolean).join(" · "))}</div></div></header>
-    <h2>Orientation</h2><table>${row("Session", s ? slotLong(s.start) : "")}${row("Mentor", get(a, "onb.mentor"))}</table>
-    <h2>Checklist</h2><table>${onbItems().map(([k, l]) => row(l, get(a, `onb.items.${k}`) ? fmtDate(get(a, `onb.items.${k}`)) : "")).join("")}</table>
+    <h2>Orientation</h2><table>${row("Session", s ? slotLong(s.start) : "")}${row("Mentor", get(a, "onb.mentor"))}${row("EMT card number", get(a, "onb.emtCard"))}${row("EMT card expires", get(a, "onb.emtExpires") ? fmtDate(get(a, "onb.emtExpires")) : "")}</table>
+    <h2>Mandatory information, required before issuing any equipment and/or the ability to run calls</h2><table>${onbItems().map(([k, l]) => row(l, get(a, `onb.items.${k}`) ? fmtDate(get(a, `onb.items.${k}`)) : "")).join("")}</table>
     ${so ? `<h2>Trainer sign-offs</h2><table>${(so.items || []).map(i => { const d = (so.done || {})[i.key]; return row(i.label, d ? `${d.name || d.by} · ${new Date(d.at).toLocaleDateString()}` : ""); }).join("")}</table>` : ""}
     <h2>Sign-off</h2><table class="vote"><tr><th>Orientation chair</th><td></td><th>Date</th><td></td></tr><tr><th>New member</th><td></td><th>Date</th><td></td></tr></table>
     <footer>Potsdam Volunteer Rescue Squad · Printed ${esc(new Date().toLocaleDateString())}</footer></section>`);
