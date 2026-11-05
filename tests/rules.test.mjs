@@ -200,6 +200,42 @@ await t("staff share online status", setDoc(doc(member, "presence/member@pvrs.or
 await t("only their own", setDoc(doc(member, "presence/admin@pvrs.org"), { at: now() }), false);
 await t("applicants can't see who's online", getDoc(doc(applicant, "presence/member@pvrs.org")), false);
 
+console.log("Orientation");
+await env.withSecurityRulesDisabled(async c => { const db = c.firestore();
+  await setDoc(doc(db, "portal/o1"), { email: "new@example.com", orientation: { total: 2, done: 0 }, orient: null, bookingOpen: false, interview: null });
+  await setDoc(doc(db, "portalEmails/new@example.com"), { id: "o1", at: 1 });
+  await setDoc(doc(db, "orientSlots/os1"), { start: now() + 5 * DAY, duration: 60, location: "Station", bookedBy: null });
+  await setDoc(doc(db, "orientSlots/os2"), { start: now() + 5 * DAY, duration: 60, location: "Station", bookedBy: null });
+  await setDoc(doc(db, "signoffs/o1"), { name: "New One", trainers: ["member@pvrs.org"], items: [{ key: "rig", label: "Rig" }], done: {} });
+  await setDoc(doc(db, "library/d1"), { name: "Handbook", path: "library/d1/h.pdf", roles: ["member"], newMembers: true });
+  await setDoc(doc(db, "library/d2"), { name: "Board only", path: "library/d2/b.pdf", roles: ["admin"], newMembers: false });
+});
+const nm = fsOf("new@example.com");
+const bookO = (db, pid, slot) => { const b = writeBatch(db); b.update(doc(db, "orientSlots", slot), { bookedBy: pid }); b.update(doc(db, "portal", pid), { orient: { slotId: slot, start: 0 } }); return b.commit(); };
+await t("an applicant not moved to orientation can't book", bookO(applicant, "a1", "os2"), false);
+let startOf; await env.withSecurityRulesDisabled(async c => { startOf = (await getDoc(doc(c.firestore(), "orientSlots/os1"))).data().start; });
+const bookNm = () => { const b = writeBatch(nm); b.update(doc(nm, "orientSlots", "os1"), { bookedBy: "o1" }); b.update(doc(nm, "portal", "o1"), { orient: { slotId: "os1", start: startOf, duration: 60, location: "Station", bookedAt: now() } }); return b.commit(); };
+await t("a new member books their own orientation", bookNm(), true);
+await t("a stranger can't read orientation times", getDocs(collection(stranger, "orientSlots")), false);
+await t("only the owner adds orientation times", setDoc(doc(admin, "orientSlots/os3"), { start: 1 }), false);
+await t("a new member can't edit their checklist", updateDoc(doc(nm, "portal/o1"), { orientation: { total: 2, done: 2 } }), false);
+await t("a trainer reads their sign-off list", getDoc(doc(member, "signoffs/o1")), true);
+await t("someone else can't", getDoc(doc(iv, "signoffs/o1")), false);
+await t("a trainer signs off", updateDoc(doc(member, "signoffs/o1"), { done: { rig: { by: "member@pvrs.org", name: "M", at: now() } }, updatedAt: now() }), true);
+await t("a trainer can't add trainers", updateDoc(doc(member, "signoffs/o1"), { trainers: ["member@pvrs.org", "iv@pvrs.org"] }), false);
+await t("a trainer still can't open the file", getDoc(doc(member, "applicants/o1")), false);
+const ci = (x = {}) => ({ rating: 4, going: "Good", help: "", at: now(), ...x });
+await t("a new member answers a check-in", setDoc(doc(nm, "portal/o1/checkins/30"), ci()), true);
+await t("and can't change it", setDoc(doc(nm, "portal/o1/checkins/30"), ci({ rating: 1 })), false);
+await t("a rating of 9 is rejected", setDoc(doc(nm, "portal/o1/checkins/90"), ci({ rating: 9 })), false);
+await t("an admin reads check-ins", getDocs(collectionGroup(admin, "checkins")), true);
+await t("a member can't", getDocs(collectionGroup(member, "checkins")), false);
+await t("a member lists documents for members", getDocs(query(collection(member, "library"), where("roles", "array-contains", "member"))), true);
+await t("not board-only ones", getDoc(doc(member, "library/d2")), false);
+await t("a new member lists documents meant for them", getDocs(query(collection(nm, "library"), where("newMembers", "==", true))), true);
+await t("a stranger can't", getDocs(query(collection(stranger, "library"), where("newMembers", "==", true))), false);
+await t("only the owner adds documents", setDoc(doc(admin, "library/d3"), { name: "x" }), false);
+
 // Storage rules look up portal/{id} in Firestore. firebase-tools sends that emulator-to-emulator call through
 // HTTPS_PROXY and ignores NO_PROXY, so behind a proxy (e.g. a cloud sandbox) the lookup fails and the upload test
 // below fails too. Run without a proxy (a Mac, GitHub Actions) or let localhost bypass it.

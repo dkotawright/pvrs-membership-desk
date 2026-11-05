@@ -13,7 +13,7 @@ const stubs = {
   "firebase-admin/firestore": { getFirestore: () => fakeDb },
   "firebase-admin/messaging": { getMessaging: () => ({ sendEachForMulticast: async m => { sent.push(m); return { successCount: m.tokens.length, failureCount: 0, responses: m.tokens.map(() => ({ success: true })) }; } }) },
   "firebase-functions/logger": { info(){} },
-  "firebase-functions/v2/firestore": { onDocumentCreated: (o, h) => h, onDocumentUpdated: (o, h) => h },
+  "firebase-functions/v2/firestore": { onDocumentCreated: (o, h) => h, onDocumentUpdated: (o, h) => h, onDocumentWritten: (o, h) => h },
   "firebase-functions/v2/scheduler": { onSchedule: (o, h) => h },
 };
 const load = Module._load;
@@ -110,6 +110,18 @@ const last = () => sent[sent.length - 1];
   check(mm.interviewers.get("iv@pvrs.org").length === 1 && /Jack G at 7:30 AM · Station/.test(mm.interviewers.get("iv@pvrs.org")[0].body), "morning interviewer: " + JSON.stringify([...mm.interviewers]));
   check(mm.applicants.length === 1 && mm.applicants[0].id === "x1" && /tomorrow at 7:30 AM/.test(mm.applicants[0].body), "morning applicant: " + JSON.stringify(mm.applicants));
   check(buildMorning({ now: NOW, apps: [], slots: [] }).owner === null, "nothing to say means no morning alert");
+  // orientation
+  await P.portalChanged(upd({ steps: [] }, { steps: [], orientation: { total: 3, done: 0 } }, { id: "a1" }));
+  check(last().notification.title === "Orientation is open" && last().tokens.join() === "appTok", "orientation open alert");
+  const mo = buildMorning({ now: NOW, apps: [{ id: "o1", name: "New One", updatedAt: NOW }, { id: "o2", name: "Waiting On Sterling", updatedAt: NOW }, { id: "o3", name: "Late", updatedAt: NOW }], slots: [],
+    portals: [{ id: "o1", orient: { start: NOW + D, location: "Station" }, orientation: { due: "2026-11-11", done: 1, total: 3 } }, { id: "o2", orient: { start: NOW + D } }, { id: "o3", orientation: { due: "2026-11-01", done: 0, total: 3 } }] });
+  check(mo.owner && mo.owner.body === "1 orientation tomorrow · 1 behind on orientation", "morning orientation: " + JSON.stringify(mo.owner));
+  check(mo.applicants.map(x => x.id + ":" + x.title).join() === "o1:Orientation tomorrow,o1:Orientation due soon", "applicant orientation reminders (nobody before Sterling): " + JSON.stringify(mo.applicants));
+  k = sent.length;
+  await P.signoffChanged({ data: { before: { data: () => ({ trainers: [], done: {} }) }, after: { data: () => ({ name: "New One", trainers: ["iv@pvrs.org"], items: [], done: {} }) } }, params: { id: "o1" } });
+  check(last().tokens.join() === "ivTok" && /trainer for New One/.test(last().notification.body), "new trainer alert: " + JSON.stringify(last()));
+  await P.signoffChanged({ data: { before: { data: () => ({ trainers: ["iv@pvrs.org"], done: {} }) }, after: { data: () => ({ name: "New One", trainers: ["iv@pvrs.org"], items: [{ key: "rig", label: "Rig walkthrough" }], done: { rig: { by: "iv@pvrs.org", name: "Ivy" } } }) } }, params: { id: "o1" } });
+  check(last().tokens.join() === "ownerTok" && /Ivy signed off Rig walkthrough for New One/.test(last().notification.body), "sign-off alert: " + JSON.stringify(last()));
   console.log(errors.length ? "ERRORS:\n" + errors.join("\n") : `${n} notification checks, no errors`);
   process.exit(errors.length ? 1 : 0);
 })();

@@ -90,10 +90,19 @@
     <div class="sheet glass">
       <div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
       <div><div class="eyebrow">Membership Portal</div><h2 class="signh">Sign in</h2></div>
-      <div class="seg who" id="whoSeg" role="tablist" aria-label="Who is signing in">
-        <button type="button" role="tab" data-who="staff">Squad member</button><button type="button" role="tab" data-who="applicant">Applicant</button>
+      <div id="appSignin">
+        <p class="help">Applicants, new members and squad members all sign in here. Enter your email and we'll send you a secure sign-in link. No password needed.</p>
+        <form id="linkForm" class="field" novalidate>
+          <label for="linkEmail">Email address</label>
+          <input id="linkEmail" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required>
+          <button class="btn primary block" type="submit">Send sign-in link</button>
+        </form>
+        <p class="help spamnote"><b>The email often lands in spam or junk.</b> If you don't see it in a minute or two, look there.</p>
+        <div class="sent" id="linkSent" hidden></div>
+        <p class="help">Haven't applied yet? <a href="/apply" data-nav="/apply">Start an application</a></p>
+        <div class="or">or</div>
       </div>
-      <div id="staffSignin" hidden>
+      <div id="staffSignin">
         <button class="btn google block" id="googleBtn" type="button"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>Continue with Google</button>
         <details class="manual" id="manualSignin">
           <summary>Use email and password instead</summary>
@@ -129,16 +138,6 @@
           <button class="btn reqbtn" type="button" id="reqEmailBtn"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 4l6 4.5L14 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>With email</button>
         </div>
         <p class="help reqacc">Every new account is reviewed by the membership coordinator before it can see anything.</p>
-      </div>
-      <div id="appSignin" hidden>
-        <p class="help">Enter the email address from your application and we'll send you a secure sign-in link. No password needed.</p>
-        <form id="linkForm" class="field" novalidate>
-          <label for="linkEmail">Email address</label>
-          <input id="linkEmail" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required>
-          <button class="btn primary block" type="submit">Send sign-in link</button>
-        </form>
-        <div class="sent" id="linkSent" hidden></div>
-        <p class="help">Haven't applied yet? <a href="/apply" data-nav="/apply">Start an application</a></p>
       </div>
     </div>
   </div>
@@ -194,6 +193,9 @@
       <div class="navh">Desk</div>
       <button class="nav-i" id="overviewBtn" type="button" title="Overview (Esc)"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.5"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.5"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.5"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.5"/></svg><span class="nl">Overview</span></button>
       <button class="nav-i" id="slotsBtn" type="button" title="Interview times" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><path d="M1.5 6.5h13M5 1v3M11 1v3"/></svg><span class="nl">Interview times</span></button>
+      <button class="nav-i" id="orientBtn" type="button" title="Orientation" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h10v11H3zM5.5 6l1 1 2-2M5.5 10.5l1 1 2-2M10 6.5h1.5M10 11h1.5"/></svg><span class="nl">Orientation</span></button>
+      <button class="nav-i" id="trainBtn" type="button" title="Sign-offs" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8"/></svg><span class="nl">Sign-offs</span></button>
+      <button class="nav-i" id="libBtn" type="button" title="Documents"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5.5L12.5 4.5v10H4zM9.5 1.5v3h3M6 8h5M6 11h5"/></svg><span class="nl">Documents</span></button>
       <button class="nav-i" id="boardBtn" type="button" title="Board meeting" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13.5h12M3.5 13.5V7M12.5 13.5V7M8 13.5V7M1.5 6h13L8 2.2z"/></svg><span class="nl">Board meeting</span></button>
       <button class="nav-i" id="settingsBtn" type="button" title="Settings" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="7" width="11" height="7.5" rx="2"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg><span class="nl">Settings</span></button>
       <button class="nav-i" id="aiBtn" type="button" title="Med Control: ask about applicants or get a draft" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.6 1.5h2.8v4l3.5-2 1.4 2.4L10.8 8l3.5 2.1-1.4 2.4-3.5-2v4H6.6v-4l-3.5 2-1.4-2.4L5.2 8 1.7 5.9l1.4-2.4 3.5 2z"/></svg><span class="nl">Med Control</span></button>

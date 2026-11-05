@@ -206,6 +206,9 @@ service cloud.firestore {
     match /{path=**}/messages/{messageId} {
       allow read: if isOwner();
     }
+    match /{path=**}/checkins/{n} {
+      allow read: if isAdmin();
+    }
     // Lets the owner's desk pick up new references from every applicant in one query
     match /{path=**}/refUpdates/{updateId} {
       allow read: if isOwner();
@@ -220,6 +223,19 @@ service cloud.firestore {
       allow read: if isAdmin() || (verified() && resource.data.email == myEmail());
       allow create, delete: if isOwner();
       allow update: if isOwner() || (
+        // orientation booking: only once the owner's desk has opened orientation (Sterling complete and clear)
+        verified() && resource.data.email == myEmail()
+        && onlyChanged(['orient'])
+        && resource.data.get('orientation', null) != null
+        && (
+          (request.resource.data.orient != null
+            && getAfter(/databases/$(database)/documents/orientSlots/$(request.resource.data.orient.slotId)).data.bookedBy == id
+            && request.resource.data.orient.start == getAfter(/databases/$(database)/documents/orientSlots/$(request.resource.data.orient.slotId)).data.start)
+          ||
+          (request.resource.data.orient == null && resource.data.orient != null
+            && getAfter(/databases/$(database)/documents/orientSlots/$(resource.data.orient.slotId)).data.bookedBy == null)
+        )
+      ) || (
         verified() && resource.data.email == myEmail()
         && onlyChanged(['interview'])
         && (
@@ -253,6 +269,17 @@ service cloud.firestore {
 
       // A different reference, sent by the applicant when the owner asks for one (portal.refReplace lists which).
       // The owner's desk copies it into the private references and marks it applied.
+      // 30- and 90-day check-ins from new members. One answer each; the applicant can't change it afterwards.
+      match /checkins/{n} {
+        allow read: if isAdmin() || ownsPortal(id);
+        allow create: if ownsPortal(id) && n in ['30', '90']
+          && request.resource.data.keys().hasOnly(['rating', 'going', 'help', 'at'])
+          && request.resource.data.rating is int && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
+          && request.resource.data.going is string && request.resource.data.going.size() <= 2000
+          && request.resource.data.help is string && request.resource.data.help.size() <= 2000
+          && request.resource.data.at is int;
+        allow delete: if isOwner();
+      }
       match /refUpdates/{updateId} {
         allow read: if isOwner() || ownsPortal(id);
         allow create: if ownsPortal(id)
@@ -351,6 +378,37 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['members', 'names', 'updatedAt'])
         && request.resource.data.members is list && request.resource.data.members.size() <= 50;
       allow delete: if isOwner();
+    }
+    // One-on-one orientation times the owner posts. New members claim or release one for themselves, 24h+ ahead.
+    match /orientSlots/{slotId} {
+      allow read: if isAdmin() || isInvitedApplicant();
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || (
+        verified() && onlyChanged(['bookedBy']) && resource.data.start > nowMs() + DAY()
+        && (
+          (resource.data.bookedBy == null && request.resource.data.bookedBy is string
+            && ownsPortal(request.resource.data.bookedBy)
+            && portalOf(request.resource.data.bookedBy).data.get('orientation', null) != null
+            && getAfter(/databases/$(database)/documents/portal/$(request.resource.data.bookedBy)).data.orient.slotId == slotId)
+          ||
+          (resource.data.bookedBy != null && request.resource.data.bookedBy == null
+            && ownsPortal(resource.data.bookedBy)
+            && (getAfter(/databases/$(database)/documents/portal/$(resource.data.bookedBy)).data.orient == null
+                || getAfter(/databases/$(database)/documents/portal/$(resource.data.bookedBy)).data.orient.slotId != slotId))
+        )
+      );
+    }
+    // Trainer sign-offs: the owner picks trainers and the list; a trainer sees only that person's list, nothing else on the file.
+    match /signoffs/{appId} {
+      allow read: if isAdmin() || (verified() && myEmail() in resource.data.trainers);
+      allow create, delete: if isOwner();
+      allow update: if isOwner() || (verified() && exists(staffPath()) && myEmail() in resource.data.trainers && onlyChanged(['done', 'updatedAt']));
+    }
+    // Squad documents: each file lists the roles that can see it; newMembers also shows it in the orientation portal.
+    match /library/{docId} {
+      allow read: if isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role in resource.data.roles)
+        || (isInvitedApplicant() && resource.data.newMembers == true);
+      allow write: if isOwner();
     }
     // Who's online and typing (squad only). Everyone writes only their own.
     match /presence/{email} {

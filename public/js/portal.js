@@ -1,5 +1,5 @@
 // Applicant portal: status, document uploads, interview booking.
-import { app, db, storage, doc, collection, onSnapshot, writeBatch, addDoc, updateDoc, setDoc, deleteDoc, ref, uploadBytes } from "./fb.js";
+import { app, db, storage, doc, collection, onSnapshot, writeBatch, addDoc, updateDoc, setDoc, deleteDoc, query, where, ref, uploadBytes, getDownloadURL } from "./fb.js";
 import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download, isConfidential } from "./shared.js";
 import { CONTACT_EMAIL, VAPID_KEY } from "./config.js";
 
@@ -32,8 +32,31 @@ function pushHTML(st){
   if (st === "blocked") return `<div class="pushrow"><span>Alerts are blocked for this site. You can allow them in your browser's settings.</span></div>`;
   return "";
 }
-export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "" }){
-  const now = Date.now();
+// Orientation card: only there once the owner's desk opens it (board approved and Sterling complete and clear).
+function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis }){
+  const now = Date.now(), s = pd.orient, open = oslots.filter(x => !x.bookedBy && x.start > now + DAY).sort((a, b) => a.start - b.start);
+  const days = {}; open.forEach(x => { const k = slotDay(x.start); (days[k] = days[k] || []).push(x); });
+  const pct = o.total ? Math.round(o.done / o.total * 100) : 0, left = o.due ? Math.round((new Date(o.due + "T12:00") - now) / DAY) : null;
+  const uploaded = k => files.filter(f => f.docKey === "onb:" + k).length;
+  const session = s ? `<div class="booked"><div class="cal"><b>${esc(new Date(s.start).toLocaleDateString(undefined, { month: "short" }))}</b><span>${new Date(s.start).getDate()}</span></div><div><b>${esc(slotLong(s.start))}</b>${s.location ? `<div class="info">${esc(s.location)}</div>` : ""}</div></div>
+      <div class="acts" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn small" type="button" data-oics ${dis}>Add to my calendar</button>${s.start > now + DAY ? `<button class="btn small" type="button" data-ocancel ${dis}>Change time</button>` : ""}</div>`
+    : open.length ? `<p class="info" style="margin:0">Pick a time to come in. Orientation is one-on-one with our orientation chair.</p><div class="slots">${Object.entries(days).map(([d, l]) => `<div class="slotday"><h4>${esc(d)}</h4><div class="slotrow">${l.map(x => `<button class="slotbtn" type="button" data-oslot="${esc(x.id)}" aria-pressed="${opick === x.id}" ${dis}>${esc(slotTime(x.start))}</button>`).join("")}</div></div>`).join("")}</div>
+        ${opick ? `<div style="display:flex;justify-content:flex-end"><button class="btn primary" type="button" data-obook ${obusy ? "disabled" : ""}>Book this time</button></div>` : ""}`
+    : `<p class="info">Times will show up here soon. Questions? Email <b>${esc(CONTACT_EMAIL)}</b>.</p>`;
+  const item = i => `<div class="or-item${i.date ? " done" : ""}"><span class="or-ck" aria-hidden="true">${i.date ? "✓" : ""}</span><span class="or-tx">${esc(i.label)}${i.link ? ` <a href="${esc(i.link)}" target="_blank" rel="noopener">Open</a>` : ""}</span>
+    ${i.date ? "" : uploaded(i.key) ? `<span class="badge wait">Under review</span>` : i.cert ? `<button class="btn small" type="button" data-upload="onb:${esc(i.key)}" ${dis}>${isConfidential(i.label) ? "🔒 " : ""}Upload</button>` : ""}</div>`;
+  const check = pd.checkin && !checkinDone ? `<div class="or-check"><h3>Your ${esc(pd.checkin)}-day check-in</h3><p class="info" style="margin:0">Goes to the orientation chair. It only takes a minute.</p>
+      <label class="info">How's it going so far? (1 = not great, 5 = great)</label><div class="slotrow">${[1, 2, 3, 4, 5].map(n => `<button class="slotbtn" type="button" data-crate="${n}" ${dis}>${n}</button>`).join("")}</div>
+      <textarea id="ciGoing" rows="2" maxlength="2000" placeholder="Tell us how it's going" aria-label="How it's going" ${dis}></textarea><textarea id="ciHelp" rows="2" maxlength="2000" placeholder="Anything that would help?" aria-label="Anything that would help" ${dis}></textarea>
+      <div style="display:flex;justify-content:flex-end"><button class="btn primary" type="button" data-csend ${dis}>Send</button></div></div>` : "";
+  return `<section class="card glass" id="orientCard"><h2>Orientation</h2>
+    <p class="info" style="margin:0">${o.done} of ${o.total} done${left === null ? "" : left < 0 ? `. This was due ${esc(new Date(o.due + "T12:00").toLocaleDateString())}, so please reach out` : `. Please finish by ${esc(new Date(o.due + "T12:00").toLocaleDateString())}`}.</p>
+    <div class="or-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
+    <h3 class="or-h">Your session</h3>${session}<h3 class="or-h">Checklist</h3><div class="or-list">${(o.items || []).map(item).join("")}</div>
+    ${lib.length ? `<h3 class="or-h">Documents</h3><div class="docbtns">${lib.map(d => `<button class="btn small" type="button" data-olib="${esc(d.id)}">${esc(d.name)}</button>`).join("")}</div>` : ""}${check}</section>`;
+}
+export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "", oslots = [], opick = null, obusy = false, lib = [], checkinDone = false }){
+  const now = Date.now(), nm = !!pd.orientation;   // nm: moved to orientation, so only the orientation dashboard shows
   const docs = pd.docs || [];
   const byKey = k => files.filter(f => f.docKey === k);
   const other = files.filter(f => !f.docKey || !docs.some(d => d.key === f.docKey));
@@ -67,22 +90,22 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
 
   return `<div class="wrap">
     <section class="card glass"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
-      <div class="ptop"><div><div class="eyebrow">Applicant portal</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
-      <div class="info">${esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div>
+      <div class="ptop"><div><div class="eyebrow">${nm ? "New member" : "Applicant portal"}</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
+      <div class="info">${nm ? "Welcome to the squad. Here's your orientation." : esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div>
       ${preview ? `<span class="badge wait">Preview</span>` : `<button class="btn small" type="button" data-signout>Sign out</button>`}</div></section>
 
-${ivSoonHTML(iv, ivDone, now, dis)}
-    <section class="card glass"><h2>Your application</h2>${trackerHTML(pd.steps || [])}${timelineHTML(pd.steps || [])}</section>
+${nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checkinDone, dis }) : `${ivSoonHTML(iv, ivDone, now, dis)}
+    <section class="card glass"><h2>Your application</h2>${trackerHTML(pd.steps || [])}${timelineHTML(pd.steps || [])}</section>`}
 
     <section class="card glass" id="msgCard"><div class="ptop"><h2>Messages</h2>${msgs.some(m => m.from === "staff" && !m.seenAt) ? `<span class="badge wait">New reply</span>` : ""}</div>
-      <p class="info" style="margin:0">Questions about your application? Send them here. We'll reply in this space, usually within a few days.</p>
+      <p class="info" style="margin:0">${nm ? "Questions about orientation?" : "Questions about your application?"} Send them here. We'll reply in this space, usually within a few days.</p>
       ${pushHTML(push)}<div class="thread" id="thread">${threadHTML(msgs, "applicant")}</div>
       <div class="composer"><textarea id="msgText" rows="2" maxlength="2000" placeholder="Type your question…" aria-label="Your message" ${dis}></textarea>
         <button class="btn primary" type="button" data-send ${dis}>Send</button></div></section>
 
-    <section class="card glass" id="ivCard"><h2>Interview</h2>${ivBody}${ivDone ? "" : ivPrepHTML(iv)}</section>
+    ${nm ? "" : `<section class="card glass" id="ivCard"><h2>Interview</h2>${ivBody}${ivDone ? "" : ivPrepHTML(iv)}</section>
 
-    <section class="card glass" id="refCard"><h2>References</h2>${refsBody(pd.refs || [], { ups: refUps, form: refForm, draft: refDraft, sending: refSending, dis })}</section>
+    <section class="card glass" id="refCard"><h2>References</h2>${refsBody(pd.refs || [], { ups: refUps, form: refForm, draft: refDraft, sending: refSending, dis })}</section>`}
 
     <section class="card glass"><h2>Documents</h2>
       ${docs.length ? `<div>${docRows}</div>` : `<p class="info">Nothing needed right now. If we need anything from you, it will show up here.</p>`}
@@ -93,12 +116,12 @@ ${ivSoonHTML(iv, ivDone, now, dis)}
       <p class="info" style="margin:0">Use <b>Secure document upload</b> for medical records, your Social Security card and other sensitive papers. Only our orientation paperwork coordinator can open them; the membership committee can't.</p>
       <p class="info" style="margin:0">PDF or photo, up to 15 MB each. Trouble uploading? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></section>
 
-    <section class="card glass"><h2>What to expect</h2><div class="info">
+    ${nm ? "" : `<section class="card glass"><h2>What to expect</h2><div class="info">
       <ul><li>Your application goes to the next board meeting once your references and all other prerequisites (interview, driving record and application review) are complete. You'll hear back within about a week of that meeting.</li>
       <li>If the board approves you, the next step is a background check through Sterling Volunteers. Watch for an email from them.</li>
       <li>Members complete orientation (including required medical documentation and online education), self-schedule at least 4 duty crew shifts a month, and attend the monthly membership meeting on the 2nd Tuesday unless excused in advance.</li>
       <li>Monthly training is offered and all members are encouraged to take part.</li></ul>
-      <p style="margin:10px 0 0">Questions? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></div></section>
+      <p style="margin:10px 0 0">Questions? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></div></section>`}
   </div>`;
 }
 // "How to prepare" under the interview card (until the interview is done). Topics follow the committee's question list.
@@ -171,7 +194,7 @@ function slotPicker(days, pick, dis, busy){
 }
 
 export function startPortal(id, email){
-  const P = { pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false, refUps: [], refForm: null, refDraft: {}, refSending: false };
+  const P = { oslots: [], opick: null, obusy: false, lib: [], checkins: [], orientOn: false, crate: 0, pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false, refUps: [], refForm: null, refDraft: {}, refSending: false };
   const seen = new Set();
   const root = $("#portal");
   const render = () => {
@@ -181,7 +204,7 @@ export function startPortal(id, email){
     const ta = $("#msgText"), focused = !!ta && document.activeElement === ta, caret = ta ? ta.selectionStart : 0, scroll = root.scrollTop;
     const rf = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.rf ? document.activeElement : null, rfCaret = rf ? rf.selectionStart : 0;
     if (ta) P.draft = ta.value;
-    root.innerHTML = portalHTML({ pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending, push: P.push });
+    root.innerHTML = portalHTML({ pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending, push: P.push, oslots: P.oslots, opick: P.opick, obusy: P.obusy, lib: P.lib, checkinDone: !!P.pd.checkin && P.checkins.includes(P.pd.checkin) });
     if (rf) { const back = root.querySelector(`[data-rf="${rf.dataset.rf}"]`); if (back) { back.focus({ preventScroll: true }); try { back.setSelectionRange(rfCaret, rfCaret); } catch {} } }
     const t2 = $("#msgText"); if (t2) { t2.value = P.draft; if (focused) { t2.focus({ preventScroll: true }); t2.setSelectionRange(caret, caret); } }
     const th = $("#thread"); if (th) th.scrollTop = th.scrollHeight;
@@ -202,7 +225,11 @@ export function startPortal(id, email){
     try { const m = await import(FM_URL); await m.deleteToken(m.getMessaging(app)); } catch {}
     try { localStorage.removeItem(PUSH_KEY); } catch {}
     P.push = "off"; render(); toast("Alerts are off for this device."); };
-  onSnapshot(doc(db, "portal", id), s => { P.pd = s.exists() ? s.data() : { steps: [] }; render(); }, () => toast("Couldn't load your application. Reload the page."));
+  const startOrient = () => { if (P.orientOn) return; P.orientOn = true;
+    onSnapshot(collection(db, "orientSlots"), s => { P.oslots = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
+    onSnapshot(query(collection(db, "library"), where("newMembers", "==", true)), s => { P.lib = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
+    onSnapshot(collection(db, "portal", id, "checkins"), s => { P.checkins = s.docs.map(d => d.id); render(); }, () => {}); };
+  onSnapshot(doc(db, "portal", id), s => { P.pd = s.exists() ? s.data() : { steps: [] }; if (P.pd.orientation) startOrient(); render(); }, () => toast("Couldn't load your application. Reload the page."));
   onSnapshot(collection(db, "portal", id, "messages"), s => { P.msgs = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x,y) => (x.at||0) - (y.at||0)); render(); }, () => {});
   const send = async () => {
     const ta = $("#msgText"); const text = (ta ? ta.value : "").trim();
@@ -239,8 +266,8 @@ export function startPortal(id, email){
   let uploadKey = "";
   picker.addEventListener("change", async () => {
     const list = [...picker.files]; picker.value = ""; if (!list.length) return;
-    const docEntry = (P.pd.docs || []).find(d => d.key === uploadKey);
-    const label = docEntry ? docEntry.label : uploadKey === CONF_KEY ? "Secure document" : "Other";
+    const docEntry = (P.pd.docs || []).find(d => d.key === uploadKey), orItem = (P.pd.orientation?.items || []).find(i => "onb:" + i.key === uploadKey);
+    const label = docEntry ? docEntry.label : orItem ? orItem.label : uploadKey === CONF_KEY ? "Secure document" : "Other";
     const conf = uploadKey === CONF_KEY || isConfidential(label), docKey = uploadKey === CONF_KEY ? "" : uploadKey;
     for (const f of list) {
       if (!okType(f)) { toast(`${f.name} isn't a PDF or photo.`); continue; }
@@ -267,6 +294,20 @@ export function startPortal(id, email){
 
   root.addEventListener("click", async e => {
     const t = e.target;
+    const os = t.closest("[data-oslot]"); if (os) { P.opick = os.dataset.oslot; render(); return; }
+    if (t.closest("[data-obook]")) { const s = P.oslots.find(x => x.id === P.opick); if (!s) return; P.obusy = true; render();
+      try { const b = writeBatch(db); b.update(doc(db, "orientSlots", s.id), { bookedBy: id }); b.update(doc(db, "portal", id), { orient: { slotId: s.id, start: s.start, duration: s.duration || null, location: s.location || "", bookedAt: Date.now() } }); await b.commit(); P.opick = null; toast("Orientation booked for " + slotLong(s.start)); }
+      catch (err) { console.error(err); toast("That time was just taken or is too soon. Pick another."); } finally { P.obusy = false; render(); } return; }
+    if (t.closest("[data-ocancel]")) { const o = P.pd.orient; if (!o) return;
+      try { const b = writeBatch(db); b.update(doc(db, "orientSlots", o.slotId), { bookedBy: null }); b.update(doc(db, "portal", id), { orient: null }); await b.commit(); toast("Time released. Pick a new one when you're ready."); }
+      catch (err) { console.error(err); toast(`Couldn't change it. Email ${CONTACT_EMAIL}.`); } return; }
+    if (t.closest("[data-oics]")) { const o = P.pd.orient; if (o) download("PVRS-orientation.ics", icsFile([{ uid: "or-" + o.slotId, start: o.start, duration: o.duration || 60, title: "PVRS orientation", location: o.location || "", description: "One-on-one orientation with the Potsdam Volunteer Rescue Squad." }]), "text/calendar"); return; }
+    const ol = t.closest("[data-olib]"); if (ol) { const d = P.lib.find(x => x.id === ol.dataset.olib); if (!d) return; const w = window.open("", "_blank");
+      try { const url = await getDownloadURL(ref(storage, d.path)); if (w) w.location = url; else location.href = url; } catch { if (w) w.close(); toast("Couldn't open that document."); } return; }
+    const cr = t.closest("[data-crate]"); if (cr) { P.crate = +cr.dataset.crate; root.querySelectorAll("[data-crate]").forEach(b => b.setAttribute("aria-pressed", String(b === cr))); return; }
+    if (t.closest("[data-csend]")) { if (!P.crate) return toast("Pick a number from 1 to 5 first.");
+      try { await setDoc(doc(db, "portal", id, "checkins", String(P.pd.checkin)), { rating: P.crate, going: $("#ciGoing").value.trim(), help: $("#ciHelp").value.trim(), at: Date.now() }); toast("Thanks! That helps a lot."); }
+      catch (err) { console.error(err); toast("Couldn't send that. Try again."); } return; }
     if (t.closest("[data-send]")) return send();
     if (t.closest("[data-pushon]")) { try { await pushOn(); } catch (err) { console.error(err); toast(Notification.permission === "denied" ? "Alerts were blocked. You can allow them in your browser's settings." : "Couldn't turn on alerts. Try again."); } return; }
     if (t.closest("[data-pushoff]")) return pushOff();

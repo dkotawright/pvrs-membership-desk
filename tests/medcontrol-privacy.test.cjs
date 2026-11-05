@@ -16,4 +16,12 @@ for (const full of [false, true]) {
   if (!out.includes("Pat Example") || !out.includes("Ref One")) { fail++; console.log("✗ lost the basics"); }
   if (full && (!out.includes("Reliable") || !out.includes("Help people") || !out.includes("PHS"))) { fail++; console.log("✗ full record missing answers"); }
 }
+// Filed reference forms keep their answers nested in form.answers: they must reach the brief, and only the brief.
+const filed = { refs: { r1: { name: "Ref Two", email: "SECRET-E@example.com", returned: "2026-10-08", form: { date: "2026-10-08", answers: { skills: "Very dependable", ratings: { reliability: 5 }, signName: "Ref Two" } } } } };
+const ff = JSON.stringify(_safeApplicant("a2", shared, filed, true)), fs0 = JSON.stringify(_safeApplicant("a2", shared, filed, false));
+if (!ff.includes("Very dependable") || !ff.includes('"reliability":5')) { fail++; console.log("✗ filed reference answers don't reach the brief: " + ff); } else console.log("✓ filed reference answers reach the brief");
+if (fs0.includes("Very dependable")) { fail++; console.log("✗ reference answers leaked into chat"); } else console.log("✓ reference answers stay out of chat");
+if (ff.includes("SECRET-")) { fail++; console.log("✗ filed form leaked contact details"); }
+const scored = JSON.stringify(_safeApplicant("a3", { ...shared, iv: { ...shared.iv, score: { comm: 4 } } }, {}, true));
+if (!scored.includes('"comm":4')) { fail++; console.log("✗ committee scores missing"); } else console.log("✓ committee scores reach the brief");
 process.exit(fail ? 1 : 0);

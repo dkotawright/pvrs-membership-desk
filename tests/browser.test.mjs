@@ -166,7 +166,7 @@ try {
     if (!/Good (morning|afternoon|evening)/.test(await page.locator("#greet").textContent())) fail("no greeting"); else ok("sign-in greets by time of day");
     if (await page.locator("#wx").isVisible()) fail("weather card shown with no data"); else ok("weather card stays hidden when the weather service is unreachable");
     const txt = await page.locator("#signin").textContent();
-    if (/Dkota/.test(txt) || !/Squad member/.test(txt) || !/Continue with Google/.test(txt)) fail("sign-in wording"); else ok("sign-in wording is professional (no first names)");
+    if (/Dkota/.test(txt) || !/spam or junk/.test(txt) || await page.locator("#whoSeg").count() || !/Continue with Google/.test(txt)) fail("sign-in wording"); else ok("sign-in wording is professional (no first names)");
     await ctx.close();
   }
   // ---- create an account with email + password → confirm email → request access (approval still required)
@@ -742,6 +742,95 @@ try {
       await page.screenshot({ path: path.join(OUT, "63-channel-extras.png") });
       await ctx.close(); }
   }
+  // ---- Orientation: locked until Sterling is clear, moved by hand; new members see only their dashboard
+  {
+    const stS = { result: "approved", date: "2026-10-20" }, pm = (bg, extra = {}) => ({ board: stS, appr: { committee: "yes" }, bg, portal: { invited: "2026-09-01" }, notify: { applicant: "2026-10-21" }, ...extra });
+    const seed = [["applicants/o1", { name: "Sam Ready", email: "sam@example.com", type: "Regular", app: { received: "2026-09-01" }, updatedAt: Date.now() }], ["applicants/o1/private/main", pm({ sterReq: "2026-10-21", sterDone: "2026-10-28", sterResult: "clear" })],
+      ["applicants/o2", { name: "Una Waiting", email: "una@example.com", app: { received: "2026-09-01" }, updatedAt: Date.now() }], ["applicants/o2/private/main", pm({ sterReq: "2026-10-21" })],
+      ["applicants/o3", { name: "Rae Review", email: "rae@example.com", app: { received: "2026-09-01" }, updatedAt: Date.now() }], ["applicants/o3/private/main", pm({ sterReq: "2026-10-21", sterDone: "2026-10-28", sterResult: "review" })],
+      ["portal/o1", { email: "sam@example.com", name: "Sam Ready", firstName: "Sam", steps: [{ label: "Interview", state: "done" }], docs: [], refs: [], bookingOpen: false }], ["portalEmails/sam@example.com", { id: "o1" }],
+      ["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Lane" }], ["settings/main", { signature: "Dkota Wright", orientDays: 60 }],
+      ["orientSlots/s1", { start: Date.now() + 5 * 864e5, duration: 60, location: "Station", bookedBy: null }]];
+    const { ctx, page } = await open(browser, { seed }); await wait(page, 900);
+    await page.evaluate(() => { window.__mock.docs.set("settings/main", { signature: "Dkota Wright", orientDays: 60 }); window.__mock.emit(); }); await wait(page, 300);
+    await page.locator("#orientBtn").click(); await wait(page, 400);
+    const b0 = await page.locator("#orBoard").textContent();
+    if (!/Ready to move to orientation/.test(b0) || !/Sam Ready/.test(b0)) fail("board ready: " + b0.slice(0, 200)); else ok("Sterling clear shows as ready to move, not moved");
+    if (!/Waiting on Sterling/.test(b0) || !/Una Waiting/.test(b0) || !/Rae Review/.test(b0) || !/needs review/.test(b0)) fail("board waiting: " + b0.slice(0, 300)); else ok("not-complete and needs-review Sterling stay locked");
+    if (await page.locator(".or-grid").count()) fail("someone in orientation before being moved"); else ok("nobody enters orientation on their own");
+    if (await page.locator('[data-omove="o2"],[data-omove="o3"]').count()) fail("can move before Sterling"); else ok("only Sterling-clear people can be moved");
+    await page.locator('[data-omove="o1"]').click(); await wait(page, 300);
+    await page.locator("#mvEmail").fill("sam@pvrs.org"); await page.locator("#mvGo").click(); await wait(page, 2200);
+    const o = await page.evaluate(() => { const m = window.__mock.docs; return { pv: m.get("applicants/o1/private/main"), a: m.get("applicants/o1"), pd: m.get("portal/o1"), msg: [...m.entries()].filter(([k]) => k.startsWith("portal/o1/messages/")).map(([, v]) => v.text) }; });
+    if (!o.pv.onb?.orientStarted || !o.pd.orientation || o.pd.orientation.items.length < 5 || !o.pd.orientation.due) fail("move: " + JSON.stringify([o.pv.onb, o.pd.orientation])); else ok("moving opens the orientation checklist with a due date");
+    if (o.a.email !== "sam@pvrs.org" || o.pd.email !== "sam@pvrs.org") fail("sign-in email not changed: " + JSON.stringify([o.a.email, o.pd.email])); else ok("moving can switch them to a new sign-in email");
+    if (!o.msg.some(x => /moving on to orientation/.test(x))) fail("no welcome message"); else ok("moving posts a message to them");
+    const others = await page.evaluate(() => [window.__mock.docs.get("portal/o2")?.orientation, window.__mock.docs.get("portal/o3")?.orientation]);
+    if (others.some(Boolean)) fail("orientation opened for a locked file"); else ok("locked files get no orientation data");
+    await page.locator("#orientBtn").click(); await wait(page, 400);
+    if (!(await page.locator(".or-grid").count())) fail("no grid after moving"); else ok("the board shows them against every requirement");
+    await page.locator('[data-ocell="o1"]').first().click(); await wait(page, 400);
+    if (!(await page.locator('[data-ocell="o1"].on').count())) fail("cell didn't toggle"); else ok("clicking a box marks it done");
+    await page.screenshot({ path: path.join(OUT, "70-orientation-board.png") });
+    await page.locator('[data-obook="o1"]').click(); await wait(page, 300); await page.locator('[data-opick="s1"]').click(); await wait(page, 500);
+    const bk = await page.evaluate(() => [window.__mock.docs.get("orientSlots/s1").bookedBy, window.__mock.docs.get("portal/o1").orient?.slotId]);
+    if (bk.join() !== "o1,s1") fail("owner booking: " + bk); else ok("you can book their one-on-one for them");
+    await pickApplicant(page, "Sam Ready"); await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    const box = await page.locator("#orientBox").textContent();
+    if (!/Status: New member/.test(box) || !/One-on-one session/.test(box)) fail("onboard box: " + box); else ok("the Onboard tab shows their status and session");
+    await page.locator('[data-oact="attend"]').click(); await wait(page, 1600);
+    if (!(await page.evaluate(() => window.__mock.docs.get("applicants/o1/private/main").onb?.items?.orientation_completed))) fail("attended not saved"); else ok("Mark attended checks off orientation");
+    await page.locator('[data-oact="trainers"]').click(); await wait(page, 300); await page.locator('.cv-pick input[value="ivy@pvrs.org"]').check(); await page.locator("#trSave").click(); await wait(page, 400);
+    const so = await page.evaluate(() => window.__mock.docs.get("signoffs/o1"));
+    if (so?.trainers?.join() !== "ivy@pvrs.org" || (so.items || []).length < 3) fail("signoff doc: " + JSON.stringify(so)); else ok("assigning a trainer creates their sign-off list");
+    await page.locator('[data-oact="member"]').click(); await wait(page, 300);
+    if (!/isn't finished/.test(await page.locator("#modal").textContent())) fail("no not-finished warning"); else ok("Make squad member warns when orientation isn't finished");
+    await page.locator("#mmGo").click(); await wait(page, 400);
+    const st = await page.evaluate(() => window.__mock.docs.get("staff/sam@pvrs.org"));
+    if (st?.role !== "member") fail("staff doc: " + JSON.stringify(st)); else ok("converting gives them a Member account on their sign-in email");
+    const seed2 = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => /^(signoffs|orientSlots|portal\/o1$|portalEmails|applicants\/o1)/.test(k)));
+    await ctx.close();
+    // Ivy, the trainer: only the sign-off list
+    { const { ctx, page } = await open(browser, { user: { email: "ivy@pvrs.org", displayName: "Ivy" }, seed: [...seed, ...seed2] }); await wait(page, 800);
+      if (await page.locator("#trainBtn").isHidden()) fail("trainer has no Sign-offs"); else { await page.locator("#trainBtn").click(); await wait(page, 300);
+        if (!/Sam Ready/.test(await page.locator("#trList").textContent())) fail("trainer list"); else { await page.locator("#trList [data-tr]").first().click(); await wait(page, 300);
+          const d = await page.evaluate(() => window.__mock.docs.get("signoffs/o1").done); if (Object.values(d)[0]?.by !== "ivy@pvrs.org") fail("sign off: " + JSON.stringify(d)); else ok("a trainer signs off an item"); }
+        await page.locator("#modal [data-x]").click(); await wait(page, 200); }
+      if (await page.locator('#list .arow[data-id="o1"]').count()) fail("trainer can see the file"); else ok("a trainer doesn't get the applicant's file");
+      await ctx.close(); }
+    // the new member: only the orientation dashboard
+    { const seed3 = seed2.map(([k, v]) => k === "portal/o1" ? [k, { ...v, email: "sam@example.com", checkin: "30" }] : [k, v]);
+      const { ctx, page } = await open(browser, { w: 430, h: 900, user: { email: "sam@example.com", displayName: "Sam" }, seed: [...seed, ...seed3, ["library/l1", { name: "Squad handbook.pdf", path: "library/l1/h.pdf", roles: [], newMembers: true, uploadedAt: 1 }]] }); await wait(page, 1000);
+      const t = await page.locator("#portal").textContent();
+      if (!/New member/.test(t) || !/Your session/.test(t) || !/Checklist/.test(t)) fail("dashboard: " + t.slice(0, 300)); else ok("a new member gets the orientation dashboard");
+      if (/Your application/.test(t) || await page.locator("#ivCard").count() || await page.locator("#refCard").count() || /What to expect/.test(t)) fail("application pages still showing"); else ok("the application pages are gone for them");
+      if (!/Squad handbook/.test(t)) fail("no library doc in dashboard"); else ok("new members see documents meant for them");
+      await page.locator("#orientCard").screenshot({ path: path.join(OUT, "71-orientation-dashboard.png") });
+      await page.locator('[data-crate="4"]').click(); await page.locator("#ciGoing").fill("Going well"); await page.locator("[data-csend]").click(); await wait(page, 400);
+      const c = await page.evaluate(() => window.__mock.docs.get("portal/o1/checkins/30"));
+      if (c?.rating !== 4 || c.going !== "Going well") fail("check-in: " + JSON.stringify(c)); else ok("a new member answers their check-in");
+      await ctx.close(); }
+    // an applicant before the move sees no orientation
+    { const { ctx, page } = await open(browser, { w: 430, h: 844, user: { email: "marcus.bell@example.com", displayName: "Marcus" } }); await wait(page, 800);
+      if (await page.locator("#orientCard").count() || !(await page.locator("#ivCard").count())) fail("applicant view changed"); else ok("applicants keep their normal portal, with no orientation");
+      await ctx.close(); }
+    // one sign-in page
+    { const { ctx, page } = await open(browser, { url: "/signin", user: null }); await wait(page, 500);
+      if (!(await page.locator("#linkEmail").isVisible()) || !(await page.locator("#googleBtn").isVisible()) || await page.locator("#whoSeg").count()) fail("sign-in isn't one page"); else ok("one sign-in page for everyone");
+      await page.locator("#signin").screenshot({ path: path.join(OUT, "72-signin.png") }).catch(() => {});
+      await page.screenshot({ path: path.join(OUT, "72-signin.png") });
+      await page.locator("#linkEmail").fill("new@example.com"); await page.locator("#linkForm button").click(); await wait(page, 400);
+      if (!/spam or junk/.test(await page.locator("#linkSent").textContent())) fail("no spam note after sending"); else ok("the sent message warns about spam");
+      await ctx.close(); }
+  }
+  // ---- AI summary: interview, references together, and an advisory recommendation
+  { const { ctx, page } = await open(browser); await wait(page, 600);
+    await page.evaluate(() => { const m = window.__mock.docs; m.set("settings/main", { ...m.get("settings/main"), ai: true }); m.get("applicants/a1/private/main").ai = { brief: { at: Date.now(), summary: "Summary here.", interviewSummary: "They want to give back.", referencesSummary: "Two of three answered, both positive.", recommendation: "look_closer", recommendationReasons: ["One reference is still out"], strengths: [], followUps: [], questions: [], references: [] } }; window.__mock.emit(); }); await wait(page, 400);
+    await pickApplicant(page, "Georgia Thurmond"); await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 400);
+    const t = await page.locator("#aiBrief").textContent();
+    if (!/Worth looking into more/.test(t) || !/They want to give back/.test(t) || !/both positive/.test(t) || !/the committee decides/.test(t)) fail("AI brief: " + t.slice(0, 300)); else ok("the brief shows the interview summary, references together and a recommendation labelled as advice");
+    await page.locator(".aibrief").screenshot({ path: path.join(OUT, "73-ai-summary.png") }).catch(() => {});
+    await ctx.close(); }
   // ---- Med Control (AI): hidden until switched on; chat, brief and reply drafts go through the function
   {
     const { ctx, page } = await open(browser, { seed: [["portal/a2/messages/m1", { text: "Can I join if I'm only here in the school year?", from: "applicant", by: "marcus.bell@example.com", name: "Marcus", at: Date.now() - 6e4 }]] }); await wait(page, 600);

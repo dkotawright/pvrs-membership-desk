@@ -110,7 +110,8 @@ export const MILESTONES = [
   ["Board approval",                a => get(a,"board.result") === "approved"],
   ["Background check (Sterling)",   a => !!(get(a,"bg.sterDone") && get(a,"bg.sterResult"))],   // run only after the board approves
   ["Applicant notified",            a => !!get(a,"notify.applicant")],
-  ["Orientation chair notified",    a => !!get(a,"notify.orientation")],
+  // The orientation chair runs this desk, so this step is moving them to orientation (needs Sterling complete and clear).
+  ["Moved to orientation",          a => !!get(a,"notify.orientation") || !!get(a,"onb.orientStarted")],
   ["Chief notified for duty crew",  a => !!get(a,"notify.chief")],
   ["Tech chair notified (email)",   a => !!get(a,"notify.tech")],
 ];
@@ -154,7 +155,7 @@ export function applicantSteps(a){
       detail: g("board.result") === "approved" ? "Approved" + (g("board.date") ? " " + longDate(g("board.date")) : "") : g("board.date") ? "Your application goes to the board meeting on " + longDate(g("board.date")) + ". You'll hear back within about a week." : "Your application goes to the next board meeting. You'll hear back within about a week of it." },
     { label:"Background check", done: approved && !!g("bg.sterDone"),
       detail: approved ? (g("bg.sterDone") ? "Complete." : "Now that the board has approved you, we run a background check through Sterling Volunteers. Watch for an email from them.") : "After the board approves you, we run a background check through Sterling Volunteers." },
-    { label:"Welcome to PVRS", done: !!g("notify.applicant") && !!g("notify.orientation"),
+    { label:"Welcome to PVRS", done: !!g("notify.applicant") && (!!g("notify.orientation") || !!g("onb.orientStarted")),
       detail: "Orientation, duty crew scheduling and your PVRS email account." },
   ];
   const cur = steps.findIndex(s => !s.done);
