@@ -156,7 +156,10 @@ function tabHTML(tab){
   if (tab === "onb") return `<div class="cols">
     ${group("Background check · Sterling Volunteers",[F.note("Run after the board approves the applicant. Sterling Volunteers runs the full background check."),F.date("bg.sterReq","Date requested"),F.date("bg.sterDone","Date completed"),
       F.seg("bg.sterResult","Result",[["clear","Clear","good"],["review","Needs review","bad"]],true),F.init("bg.sterInit")])}
-    ${group("Notifications",[F.date("notify.applicant","Applicant notified"),F.init("notify.applicantInit"),F.date("notify.orientation","Orientation chair notified")])}
+    ${group("Notifications",[F.date("notify.applicant","Applicant notified"),F.init("notify.applicantInit")])}
+    ${admin ? `<section class="group noiv"><h3><span>Orientation</span></h3><div class="ios" id="orientBox"></div></section>
+      <section class="group noiv"><h3><span>Trainer sign-offs</span>${S.canEdit ? `<button class="btn small" type="button" data-oact="trainers">Assign</button>` : ""}</h3><div class="ios" id="trainBox"></div></section>
+      <section class="group noiv"><h3><span>Check-ins</span></h3><div class="ios" id="checkinBox"></div></section>` : ""}
     ${group("Duty crew",[`<div class="row"><span class="lbl">Applicant phone<small id="phoneEcho">—</small></span><button class="copy" type="button" data-copy="phone">Copy</button></div>`,F.date("notify.chief","Chief notified"),F.init("notify.chiefInit")])}
     ${group("Email account",[`<div class="row"><span class="lbl">Applicant email<small id="emailEcho">—</small></span><button class="copy" type="button" data-copy="email">Copy</button></div>`,F.date("notify.tech","Technology chair notified"),F.init("notify.techInit")])}
     ${group("New-member checklist",[F.note("After the board approves them: the date each item was done. Edit the list in Settings.", "onbnote"),...onbItems().map(([k,l]) => F.date(`onb.items.${k}`, esc(l)))],"",`<small id="onbCount" style="font-weight:500;color:var(--fg3)"></small>`)}
@@ -185,7 +188,7 @@ function tabHTML(tab){
 }
 
 /* ---------- state ---------- */
-const S = { msgs:[], records:[], requests:[], shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[], hist:[], feedFiles:[],
+const S = { oslots:new Map(), checkins:new Map(), signoffs:new Map(), library:[], msgs:[], records:[], requests:[], shared:new Map(), secure:new Map(), apps:new Map(), portal:new Map(), slots:new Map(), staff:new Map(), files:[], hist:[], feedFiles:[],
   sel:null, tab:"app", filter:"all", q:"", admin:false, owner:false, me:"", settings:{}, ready:false };
 const pending = {}, inflight = {}, timers = {};
 let filesUnsub = null;
@@ -303,7 +306,12 @@ const okEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || "").trim());
 const DEFAULT_ONB = ["ID badge issued", "Uniform and gear issued", "Building access set up", "Paging / dispatch app set up", "Orientation completed",
   "CPR / BLS", "EVOC (drivers)", "ICS-100", "ICS-700", "HIPAA training", "Bloodborne pathogens training"];
 const onbKey = l => String(l).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40) || "item";
-const onbItems = () => (Array.isArray(S.settings.onbItems) ? S.settings.onbItems : DEFAULT_ONB).map(l => [onbKey(l), l]);
+const onbRaw = () => Array.isArray(S.settings.onbItems) ? S.settings.onbItems : DEFAULT_ONB;
+const onbItems = () => onbRaw().map(l => { const label = String(l).split("|")[0].trim(); return [onbKey(label), label]; });
+const onbLink = key => { const hit = onbRaw().find(l => onbKey(String(l).split("|")[0].trim()) === key), u = hit && String(hit).split("|")[1]?.trim(); return u && /^https:\/\//.test(u) ? u : ""; };
+// Starter list for trainer sign-offs; edit it in Settings.
+const DEFAULT_SKILLS = ["Rig and equipment walkthrough", "Radio and dispatch procedures", "Stretcher and stair chair", "First duty shift", "Second duty shift"];
+const skillItems = () => (Array.isArray(S.settings.skillItems) ? S.settings.skillItems : DEFAULT_SKILLS).map(l => [onbKey(l), l]);
 // Expiration dates to watch (To do 30 days ahead and once expired), for anyone in process or approved.
 const EXPIRES = [["dl.expires", "Driver's license", "checks"], ["onb.cprExpires", "CPR / BLS card", "onb"], ["onb.emtExpires", "EMS certification", "onb"]];
 // Data retention: declined/withdrawn files untouched for longer than settings.retentionYears get flagged for the owner
@@ -398,11 +406,12 @@ function todoItems(){
       case 8: if (!g("board.date")) add(3, "Ready for the board", rs.done ? "On the board queue" : "", "board"); break;
       case 9: if (!g("bg.sterReq")) add(2, "Request the Sterling background check", "Approved by the board " + (g("board.date") ? fmtDate(g("board.date")) : ""), "onb"); break;
       case 10: add(2, `Let ${fn} know they're approved`, "", "onb"); break;
-      case 11: add(2, "Notify the orientation chair", "", "onb"); break;
-      case 12: add(2, "Notify the chief for duty crew", "", "onb"); break;
-      case 13: add(2, "Ask the tech chair for an email account", "", "onb"); break;
+      case 11: if (orientReady(a)) add(1, `Move ${fn} to orientation`, "Sterling is complete and clear", "onb", "omove", "Move"); else if (get(a, "bg.sterResult") === "review") add(1, `Review ${fn}'s Sterling result`, "Orientation stays locked until it's clear", "onb"); break;
+      case 12: add(2, "Notify the chief for duty crew", "", "onb", "handoff_chief", "Draft email"); break;
+      case 13: add(2, "Ask the tech chair for an email account", "", "onb", "handoff_tech", "Draft email"); break;
     }
   }
+  out.push(...orientToDo());
   return out.sort((x, y) => x.pri - y.pri || y.age - x.age);
 }
 function todoCard(){
@@ -678,7 +687,7 @@ function syncDetail(){
     const cal = a._booked ? `<button class="btn small" type="button" data-act="ics" title="Add to Calendar">${ICON.cal}<span class="tl">Calendar</span></button>` : "";
     $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
-  renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges(); renderInterviewers(a); renderDupeNote(a);
+  renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges(); renderInterviewers(a); renderDupeNote(a); renderOrientTab(a);
   if (S.tab === "msgs" && !$("#dThread")?.childElementCount) renderMessages();
   syncSignoff(a);
   const dlr = $("#dlFromApp"); if (dlr) { const n = get(a, "form.person.dlNumber"); dlr.hidden = !n; if (n) { $("#dlNum").textContent = n; $("#dlFromAppNote").textContent = `Issued in ${get(a, "form.person.dlState") || "—"} · admins only`; } }
@@ -906,9 +915,10 @@ function portalPayload(a){
     steps: applicantSteps(a), docs: requestedDocs(a).map(d => ({ key: d.key, label: d.label, received: d.received })),
     refs: refList(a).map(r => ({ slot: r.i, name: r.name, received: r.received, ...(r.replace ? { replace: true } : {}) })),
     refReplace: refList(a).filter(r => r.replace).map(r => r.i),
-    bookingOpen: get(a,"portal.bookingOpen") === "yes" && !isDeclined(a) };
+    bookingOpen: get(a,"portal.bookingOpen") === "yes" && !isDeclined(a),
+    orientation: orientPayload(a), checkin: checkinDue(a) };
 }
-const portalKey = p => JSON.stringify([p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.refReplace || [], p.bookingOpen]);
+const portalKey = p => JSON.stringify([p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.refReplace || [], p.bookingOpen, p.orientation || null, p.checkin || null]);
 const portalTimers = {};
 function schedulePortal(id, delay = 1500){ if (!S.canEdit) return; clearTimeout(portalTimers[id]); portalTimers[id] = setTimeout(() => syncPortal(id), delay); }
 async function syncPortal(id, force = false){
@@ -1346,7 +1356,11 @@ function openSettings(){
     <div class="group"><h3><span>Med Control (AI assistant)</span></h3><div class="ios">
       ${F.seg("_ai","Med Control",[["on","On","good"],["off","Off"]]).replace('data-k="_ai"', 'id="sAi"')}
       <div class="row"><span class="lbl"><small>Chat, applicant briefs and reply drafts for you and admins, powered by Claude. Only turn on after the board has OK'd it and the API key is set (docs/med-control.md). It never sees license numbers, birth dates, addresses, phone numbers, conviction details or uploaded files, and it only drafts: nothing is sent without you.</small></span></div></div></div>
-    <div class="group"><h3><span>New-member checklist</span></h3><div class="ios"><label class="row stack"><span class="lbl">One item per line<small>Shown on the Onboard tab after board approval. Renaming an item starts it fresh.</small></span><textarea id="sOnb" rows="8">${esc(onbItems().map(x => x[1]).join("\n"))}</textarea></label></div></div>
+    <div class="group"><h3><span>New-member checklist</span></h3><div class="ios"><label class="row stack"><span class="lbl">One item per line<small>Shown on the Onboard tab and, once you move them to orientation, on the new member's dashboard. Add a link with a bar: <b>HIPAA training | https://…</b> Renaming an item starts it fresh.</small></span><textarea id="sOnb" rows="8">${esc(onbRaw().join("\n"))}</textarea></label>
+      <label class="row stack"><span class="lbl">Finish orientation within (days)<small>Counts from the day you move them to orientation. Leave blank for no deadline.</small></span><input type="number" id="sOrientDays" min="1" max="365" class="inlinefield" value="${esc(s.orientDays || "")}"></label>
+      <label class="row stack"><span class="lbl">Trainer sign-off list<small>One per line. Used when you first assign a trainer to a new member.</small></span><textarea id="sSkills" rows="5">${esc(skillItems().map(x => x[1]).join("\n"))}</textarea></label>
+      <label class="row stack"><span class="lbl">Chief's email<small>For the duty-crew handoff</small></span><input type="email" id="sChief" class="inlinefield" value="${esc(s.chiefEmail || "")}"></label>
+      <label class="row stack"><span class="lbl">Tech chair's email<small>For the email-account handoff</small></span><input type="email" id="sTech" class="inlinefield" value="${esc(s.techEmail || "")}"></label></div></div>
     <div class="group"><h3><span>Data retention</span></h3><div class="ios">
       <label class="row"><span class="lbl">Keep declined and withdrawn files for<small>Years with no changes before they're flagged for you to review and delete. Blank = off. Match the board's policy.</small></span><input type="number" id="sRet" min="1" max="20" placeholder="Off" value="${esc(s.retentionYears||"")}"></label>
       <div class="row"><span class="lbl">Old files<small>${pastRetention().length} past the retention period</small></span><button class="btn small" type="button" id="sRetReview">Review</button></div></div></div>
@@ -1393,6 +1407,8 @@ function openSettings(){
         ai: $("#sAi .on")?.dataset.v === "on",
         retentionYears: parseInt($("#sRet").value, 10) > 0 ? Math.min(20, parseInt($("#sRet").value, 10)) : null,
         onbItems: [...new Set($("#sOnb").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
+        skillItems: [...new Set($("#sSkills").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
+        orientDays: +$("#sOrientDays").value > 0 ? Math.min(365, +$("#sOrientDays").value) : null, chiefEmail: $("#sChief").value.trim(), techEmail: $("#sTech").value.trim(),
         replies: [...document.querySelectorAll("#qrList .qredit")].map(r => ({ title: r.querySelector(".qrTitle").value.trim(), text: r.querySelector(".qrText").value.trim() })).filter(r => r.title && r.text).slice(0, 20) };
       try { await setDoc(doc(db, "settings", "main"), next, { merge: true }); closeModal(); toast("Settings saved"); } catch { toast("Couldn't save settings."); }
     }
@@ -1496,6 +1512,10 @@ async function deleteApplicant(id, quiet = false, { keepRecordFiles = false } = 
     const subs = await getDocs(query(collection(db, "submissions"), where("applicantId", "==", id))).catch(() => null);
     if (subs) for (const sd of subs.docs) await deleteDoc(sd.ref).catch(() => {});
     await deleteDoc(doc(db, "convos", id)).catch(() => {});
+    await deleteDoc(doc(db, "signoffs", id)).catch(() => {});
+    for (const [slotId, s0] of S.oslots) if (s0.bookedBy === id) await updateDoc(doc(db, "orientSlots", slotId), { bookedBy: null }).catch(() => {});
+    const chk = await getDocs(collection(db, "portal", id, "checkins")).catch(() => null);
+    if (chk) for (const c0 of chk.docs) await deleteDoc(c0.ref).catch(() => {});
     const toks = await getDocs(query(collection(db, "applicantTokens"), where("appId", "==", id))).catch(() => null);
     if (toks) for (const t of toks.docs) await deleteDoc(t.ref).catch(() => {});
     await deleteDoc(doc(db, "applicants", id, "private", "main"));
@@ -1549,6 +1569,10 @@ function openPalette(){
     { label: "Recruiting flyer (print)", show: S.admin, words: "flyer poster qr recruit print", run: go(printFlyer) },
     { label: "Year-end report (print)", show: S.admin, words: "year end annual report stats print", run: go(printYearReport) },
     { label: S.canEdit ? "Interview times" : "My interview times", show: canHostSlots(), words: "interview times slots schedule calendar", run: go(openSlots) },
+    { label: "Orientation", show: S.admin || S.owner, words: "orientation new members board checklist", run: go(openOrientBoard) },
+    { label: "Orientation times", show: S.canEdit, words: "orientation times schedule slots", run: go(openOrientTimes) },
+    { label: "Sign-offs", show: !$("#trainBtn").hidden, words: "sign offs trainer skills", run: go(openSignoffs) },
+    { label: "Documents", show: true, words: "documents library handbook policies forms", run: go(openLibrary) },
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(() => openChat()) },
     { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
     { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
@@ -1676,7 +1700,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation"], ["trainBtn", "Sign-offs"], ["libBtn", "Documents"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
@@ -1812,6 +1836,9 @@ function bindEvents(){
     const tab = t.closest("[data-tab]");
     if (tab) { switchTab(tab.dataset.tab); return; }
     const po = t.closest("[data-printother]"); if (po) { const x = S.apps.get(S.sel)?.otherForms?.[+po.dataset.printother]; if (x) printForm(x); return; }
+    const oa = t.closest("[data-oact]"); if (oa && S.sel) { const k = oa.dataset.oact; if (k === "move") return openMoveToOrientation(S.sel); if (k === "member") return openMakeMember(S.sel); if (k === "back") return moveBackToApplicant(S.sel); if (k === "book") return openOrientBook(S.sel); if (k === "attend") return markAttended(S.sel); if (k === "record") return printOrientRecord(S.sel); if (k === "trainers") return openTrainers(S.sel); }
+    const oap = t.closest("[data-oapprove]"); if (oap) { edit(S.sel, `onb.items.${oap.dataset.oapprove}`, today()); toast("Approved"); return; }
+    const ord = t.closest("[data-oread]"); if (ord) { edit(S.sel, `onb.checkinRead.${ord.dataset.oread}`, today()); return; }
     const si = t.closest("[data-startiv]"); if (si) { select(si.dataset.startiv); switchTab("iv"); enterIvMode(); return; }
     const dp = t.closest("[data-dupe]"); if (dp) return openDupe(S.sel, dp.dataset.dupe);
     const op = t.closest("[data-open]"); if (op) return select(op.dataset.open);
@@ -1821,6 +1848,12 @@ function bindEvents(){
     if (ta) { const id = ta.dataset.id, k = ta.dataset.todoact;
       if (k === "refsall") return openRefsAll(id);
       if (k === "dupe") return openDupe(id);
+      if (k === "omove") return openMoveToOrientation(id);
+      if (k === "omember") return openMakeMember(id);
+      if (k === "oattend") return markAttended(id);
+      if (k === "obook") return openOrientBook(id);
+      if (k === "handoff_chief") return handoffMail(id, "chief");
+      if (k === "handoff_tech") return handoffMail(id, "tech");
       if (k === "retention") return openRetention();
       if (k === "nextgo") { select(id); setTimeout(goNextStep, 60); return; }
       if (k === "invite") return inviteToPortal(id);
@@ -1913,6 +1946,9 @@ function bindEvents(){
   $("#newBtn").addEventListener("click", openNew);
   $("#boardBtn").addEventListener("click", () => openBoardMtg());
   $("#pwBtn").addEventListener("click", openPassword);
+  $("#orientBtn").addEventListener("click", openOrientBoard);
+  $("#trainBtn").addEventListener("click", openSignoffs);
+  $("#libBtn").addEventListener("click", openLibrary);
   $("#msgsBtn").addEventListener("click", () => openChat());
   bindChat();
 
@@ -2560,10 +2596,14 @@ async function aiMakeBrief(btn){
 }
 const TONE = { strong: ["Strong", "good"], positive: ["Positive", "good"], mixed: ["Mixed", "warn"], concern: ["Concern", "bad"], waiting: ["Waiting", ""] };
 function briefHTML(b){
-  if (!b) return `<div class="row"><span class="lbl"><small>${S.canEdit ? "Make brief writes a one-page summary from the application, interview answers and reference answers: strengths, things to follow up on, interview questions and a reference digest." : "No brief yet. The owner can make one."}</small></span></div>`;
+  if (!b) return `<div class="row"><span class="lbl"><small>${S.canEdit ? "Make brief writes a summary from the application, interview answers and reference answers: what they said in their interview, all the references together, and whether they look ready to proceed or need a closer look. It's advice only; the committee decides. Remake it after new answers come in." : "No brief yet. The owner can make one."}</small></span></div>`;
   const list = (title, xs, cls) => xs && xs.length ? `<div class="aib-sec"><h4 class="${cls}">${title}</h4><ul>${xs.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "";
-  return `<div class="aibody"><div class="aib-tag">AI draft · check before using · ${esc(new Date(b.at).toLocaleDateString())}</div>
+  const REC = { proceed: ["Looks ready to proceed", "good"], look_closer: ["Worth looking into more", "warn"], not_ready: ["Not enough to go on yet", ""] }, rec = REC[b.recommendation];
+  return `<div class="aibody"><div class="aib-tag">AI draft · check before using · the committee decides · ${esc(new Date(b.at).toLocaleDateString())}</div>
+    ${rec ? `<div class="aib-rec ${rec[1]}"><b>${esc(rec[0])}</b>${(b.recommendationReasons || []).length ? `<ul>${b.recommendationReasons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>` : ""}
     <p class="aib-sum">${esc(b.summary || "")}</p>
+    ${b.interviewSummary ? `<div class="aib-sec"><h4>What they said in their interview</h4><p>${esc(b.interviewSummary)}</p></div>` : ""}
+    ${b.referencesSummary ? `<div class="aib-sec"><h4>What their references said</h4><p>${esc(b.referencesSummary)}</p></div>` : ""}
     <div class="aib-cols">${list("Strengths", b.strengths, "good")}${list("Follow up on", b.followUps, "warn")}</div>
     ${list("Interview follow-up questions", b.questions, "")}
     ${b.references && b.references.length ? `<div class="aib-sec"><h4>References</h4>${b.references.map(r => { const [l, c] = TONE[r.tone] || [r.tone, ""];
@@ -3138,6 +3178,275 @@ function startPresence(){
   setInterval(paintPresence, 2000);
 }
 
+/* ---------- orientation: one-on-one with the owner, and only once Sterling is complete and clear ---------- */
+const sterlingClear = a => !!get(a, "bg.sterDone") && get(a, "bg.sterResult") === "clear";
+const isClosedFile = a => isDeclined(a) || a.status === "withdrawn";
+// Status is moved by hand: Applicant → (Sterling complete and clear) → New member, then Squad member when they finish.
+const orientReady = a => get(a, "board.result") === "approved" && !isClosedFile(a) && sterlingClear(a) && !get(a, "onb.orientStarted");
+const orientOpen = a => get(a, "board.result") === "approved" && !isClosedFile(a) && sterlingClear(a) && !!get(a, "onb.orientStarted");
+const orientWaiting = a => get(a, "board.result") === "approved" && !isClosedFile(a) && !sterlingClear(a);
+const orientCounts = a => { const its = onbItems(); return { total: its.length, done: its.filter(([k]) => get(a, `onb.items.${k}`)).length }; };
+const orientAllDone = a => { const c = orientCounts(a); return c.total > 0 && c.done >= c.total; };
+function orientDue(a){ const days = +S.settings.orientDays, st = get(a, "onb.orientStarted"); if (!days || !st) return ""; const d = new Date(st + "T12:00"); d.setDate(d.getDate() + days); return isoDay(d.getTime()); }
+const orientDaysLeft = a => { const d = orientDue(a); return d ? Math.round((new Date(d + "T12:00") - new Date(today() + "T12:00")) / 864e5) : null; };
+const orientSession = id => S.portal.get(id)?.orient || null;
+const orientItemKey = () => (onbItems().find(([, l]) => /orientation/i.test(l)) || [])[0] || "";
+const CERT_RE = /cpr|bls|evoc|ics-|hipaa|bloodborne|certif|training|card/i;
+function orientPayload(a){
+  if (!orientOpen(a)) return null;
+  const c = orientCounts(a);
+  return { start: get(a, "onb.orientStarted"), due: orientDue(a), done: c.done, total: c.total, items: onbItems().map(([key, label]) => ({ key, label, date: get(a, `onb.items.${key}`) || "", link: onbLink(key), cert: CERT_RE.test(label) })) };
+}
+function checkinDue(a){
+  if (!orientOpen(a)) return null;
+  const n = daysSince(get(a, "onb.orientStarted")), id = a._id;
+  if (n >= 90) return S.checkins.has(`${id}:90`) ? null : "90";
+  if (n >= 30) return S.checkins.has(`${id}:30`) ? null : "30";
+  return null;
+}
+function watchOrientation(){
+  if (S.admin || S.owner) {
+    onSnapshot(collection(db, "orientSlots"), s => { S.oslots = new Map(s.docs.map(d => [d.id, { id: d.id, ...d.data() }])); S._oPaint?.(); S._boardPaint?.(); }, () => {});
+    onSnapshot(collectionGroup(db, "checkins"), s => { S.checkins = new Map(s.docs.map(d => [`${d.ref.parent.parent.id}:${d.id}`, { n: d.id, appId: d.ref.parent.parent.id, ...d.data() }])); if (S.sel) syncDetail(); else renderOverview(); if (S.canEdit) syncAllPortals(); }, () => {});
+    $("#orientBtn").hidden = false;
+  }
+  const q0 = S.admin || S.owner ? collection(db, "signoffs") : query(collection(db, "signoffs"), where("trainers", "array-contains", S.me));
+  onSnapshot(q0, s => { S.signoffs = new Map(s.docs.map(d => [d.id, d.data()])); $("#trainBtn").hidden = ![...S.signoffs.values()].some(x => (x.trainers || []).includes(S.me)); S._trainPaint?.(); S._boardPaint?.(); if (S.sel) syncDetail(); paintMnav(); }, () => {});
+  const q1 = S.owner ? collection(db, "library") : query(collection(db, "library"), where("roles", "array-contains", S.role));
+  onSnapshot(q1, s => { S.library = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => (x.name || "").localeCompare(y.name || "")); S._libPaint?.(); }, () => {});
+}
+function orientToDo(){
+  const out = []; if (!S.owner) return out;
+  const td = today();
+  for (const a of S.apps.values()) { if (isClosedFile(a)) continue;
+    const id = a._id, push = (pri, text, sub, tab = "onb", act, btn) => out.push({ id, a, pri, text, sub, tab, act, btn, age: 0 });
+    if (orientOpen(a) && orientAllDone(a) && !get(a, "onb.memberSince")) push(1, `${first(a.name) || a.name} finished orientation`, "Ready to become a squad member", "onb", "omember", "Make squad member");
+    if (orientOpen(a)) {
+      const s = orientSession(id), key = orientItemKey(), attended = key && get(a, `onb.items.${key}`);
+      if (s && !attended) { const d = isoDay(s.start);
+        if (d === td) push(0, `Orientation today with ${first(a.name) || a.name}`, slotTime(s.start) + (s.location ? " · " + s.location : ""), "onb", "oattend", "Mark attended");
+        else if (d < td) push(1, `Did ${first(a.name) || a.name} attend orientation?`, "Was " + longDate(d), "onb", "oattend", "Mark attended"); }
+      if (!s && !attended) push(3, `${first(a.name) || a.name} hasn't booked orientation`, "Sterling is complete. They can pick a time in their portal.", "onb", "obook", "Book");
+      const left = orientDaysLeft(a); if (left !== null && left < 0 && !orientAllDone(a)) { const c = orientCounts(a); push(1, `${first(a.name) || a.name} is behind on orientation`, `${c.done} of ${c.total} done · was due ${longDate(orientDue(a))}`); }
+    }
+    for (const [cn, c] of S.checkins) if (c.appId === id && !get(a, `onb.checkinRead.${c.n}`)) push(c.rating <= 2 ? 0 : 2, `Read ${first(a.name) || a.name}'s ${c.n}-day check-in`, `Rated it ${c.rating} of 5`);
+  }
+  const certs = (S.feedFiles || []).filter(f => String(f.docKey || "").startsWith("onb:") && S.apps.has(f.appId) && !get(S.apps.get(f.appId), `onb.items.${f.docKey.slice(4)}`));
+  for (const f of certs) { const a = S.apps.get(f.appId); out.push({ id: a._id, a, pri: 1, text: `Review ${first(a.name) || a.name}'s certificate`, sub: f.label || "", tab: "onb", age: 0 }); }
+  return out;
+}
+/* the board: everyone in orientation against every requirement */
+function openOrientBoard(){
+  const cols = onbItems();
+  const M = openModal(`<div class="or-head"><h3>Orientation</h3><span style="flex:1"></span>${S.canEdit ? `<button class="btn small" type="button" data-otimes>Orientation times</button>` : ""}</div>
+    <p class="help">${S.canEdit ? "Click a box to mark it done today; click again to undo." : "View only."} You move people in by hand once Sterling is complete and clear.</p><div id="orBoard"></div>
+    <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`, true);
+  M.classList.add("wide");
+  const paint = () => { const el = $("#orBoard"); if (!el) return;
+    const ready = [...S.apps.values()].filter(orientReady);
+    const all = [...S.apps.values()], now = all.filter(a => orientOpen(a) && !orientAllDone(a)).sort((x, y) => (orientDaysLeft(x) ?? 9e9) - (orientDaysLeft(y) ?? 9e9)), wait = all.filter(orientWaiting), fin = all.filter(a => orientOpen(a) && orientAllDone(a));
+    const dueChip = a => { const l = orientDaysLeft(a); return l === null ? "" : `<span class="or-due${l < 0 ? " late" : l <= 7 ? " soon" : ""}">${l < 0 ? `${-l}d late` : l === 0 ? "due today" : `${l}d left`}</span>`; };
+    const row = a => { const s = orientSession(a._id), c = orientCounts(a);
+      return `<tr><th scope="row"><button class="or-name" type="button" data-orfile="${esc(a._id)}">${esc(a.name || "Unnamed")}</button><small>${c.done} of ${c.total} ${dueChip(a)}</small>
+          <small>${s ? esc(slotLong(s.start)) : "Not booked"}</small>
+          <span class="or-acts">${S.canEdit ? `<button class="copy" type="button" data-obook="${esc(a._id)}">${s ? "Change" : "Book"}</button>` : ""}<button class="copy" type="button" data-orec="${esc(a._id)}">Record</button></span></th>
+        ${cols.map(([k, l]) => { const d = get(a, `onb.items.${k}`); return `<td><button type="button" class="or-c${d ? " on" : ""}" ${S.canEdit ? "" : "disabled"} data-ocell="${esc(a._id)}" data-k="${esc(k)}" aria-pressed="${!!d}" title="${esc(l)}${d ? " · " + esc(fmtDate(d)) : ""}" aria-label="${esc(a.name || "")}: ${esc(l)}">${d ? "✓" : ""}</button></td>`; }).join("")}</tr>`; };
+    el.innerHTML = (now.length ? `<div class="or-scroll"><table class="or-grid"><thead><tr><th>New member</th>${cols.map(([, l]) => `<th><span>${esc(l)}</span></th>`).join("")}</tr></thead><tbody>${now.map(row).join("")}</tbody></table></div>` : `<div class="oempty">Nobody is in orientation right now.</div>`)
+      + (ready.length ? `<div class="group"><h3><span>Ready to move to orientation</span></h3><div class="ios">${ready.map(a => `<div class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>Sterling complete ${esc(fmtDate(get(a, "bg.sterDone")))}</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-omove="${esc(a._id)}">Move to orientation</button>` : ""}</div>`).join("")}</div></div>` : "")
+      + (wait.length ? `<div class="group"><h3><span>Waiting on Sterling</span></h3><div class="ios">${wait.map(a => `<div class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>${get(a, "bg.sterDone") ? "Sterling needs review" : get(a, "bg.sterReq") ? "Requested " + esc(fmtDate(get(a, "bg.sterReq"))) : "Not requested yet"}</small></span></div>`).join("")}</div></div>` : "")
+      + (fin.length ? `<div class="group"><h3><span>Finished</span></h3><div class="ios">${fin.map(a => `<div class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>${get(a, "onb.memberSince") ? "Squad member since " + esc(fmtDate(get(a, "onb.memberSince"))) : "Not a squad member yet"}</small></span>${S.canEdit && !get(a, "onb.memberSince") ? `<button class="btn small primary" type="button" data-omember="${esc(a._id)}">Make squad member</button>` : ""}<button class="btn small" type="button" data-orec="${esc(a._id)}">Print record</button></div>`).join("")}</div></div>` : ""); };
+  paint(); S._boardPaint = paint; M._cleanup = () => { S._boardPaint = null; M.classList.remove("wide"); };
+  M.onclick = e => { const t = e.target;
+    if (t.closest("[data-x]")) return closeModal();
+    if (t.closest("[data-otimes]")) { closeModal(); return setTimeout(openOrientTimes, 60); }
+    const f = t.closest("[data-orfile]"); if (f) { closeModal(); select(f.dataset.orfile); switchTab("onb"); return; }
+    const b = t.closest("[data-obook]"); if (b) { closeModal(); return setTimeout(() => openOrientBook(b.dataset.obook), 60); }
+    const r = t.closest("[data-orec]"); if (r) { closeModal(); return printOrientRecord(r.dataset.orec); }
+    const mv = t.closest("[data-omove]"); if (mv) { closeModal(); return setTimeout(() => openMoveToOrientation(mv.dataset.omove), 60); }
+    const mm = t.closest("[data-omember]"); if (mm) { closeModal(); return setTimeout(() => openMakeMember(mm.dataset.omember), 60); }
+    const c = t.closest("[data-ocell]"); if (c) { const a = S.apps.get(c.dataset.ocell), p = `onb.items.${c.dataset.k}`; edit(a._id, p, get(a, p) ? "" : today()); setTimeout(paint, 60); }
+  };
+}
+function openOrientTimes(){
+  if (!S.canEdit) return ownerOnlyToast();
+  const d0 = new Date(Date.now() + 3 * 864e5), dStr = isoDay(d0.getTime());
+  const M = openModal(`<h3>Orientation times</h3><p class="help">When you're free to bring someone in. New members can book any open time at least 24 hours out, once Sterling is complete.</p>
+    <form id="oForm" class="ios" style="padding:14px"><div class="addslot">
+      <div class="field"><label for="oDate">Date</label><input id="oDate" type="date" value="${dStr}" required></div>
+      <div class="field"><label for="oTime">First start time</label><input id="oTime" type="time" value="18:00" required></div>
+      <div class="field"><label for="oDur">Length</label><select id="oDur"><option>30</option><option>45</option><option selected>60</option><option>90</option><option>120</option></select></div>
+      <div class="field"><label for="oCount">Back-to-back times</label><select id="oCount">${[1, 2, 3, 4].map(n => `<option>${n}</option>`).join("")}</select></div>
+      <div class="field full"><label for="oLoc">Location</label><input id="oLoc" type="text" placeholder="PVRS building" value="${esc(S.settings.defaultLocation || "")}"></div>
+      <div class="full" style="display:flex;justify-content:flex-end"><button class="btn primary" type="submit">Add times</button></div></div></form><div id="oList"></div>
+    <div class="acts"><button class="btn" type="button" id="oIcs">Add booked orientations to Calendar</button><button class="btn" type="button" data-x>Done</button></div>`, true);
+  const paint = () => { const el = $("#oList"); if (!el) return;
+    const up = [...S.oslots.values()].filter(s => s.start > Date.now() - 864e5).sort((x, y) => x.start - y.start);
+    el.innerHTML = up.length ? `<div class="ios slotlist">${up.map(s => `<div class="row"><span class="lbl"><span class="when">${esc(slotLong(s.start))}</span><small>${esc([s.duration ? s.duration + " min" : "", s.location].filter(Boolean).join(" · "))}</small></span>
+      ${s.bookedBy ? `<span class="badge ok">${esc(S.apps.get(s.bookedBy)?.name || "New member")}</span><button class="btn small" type="button" data-orel="${esc(s.id)}">Release</button>` : `<span class="badge wait">Open</span><button class="btn small danger" type="button" data-odel="${esc(s.id)}">Delete</button>`}</div>`).join("")}</div>` : `<p class="help">No orientation times yet.</p>`; };
+  paint(); S._oPaint = paint; M._cleanup = () => { S._oPaint = null; };
+  $("#oForm").onsubmit = async e => { e.preventDefault();
+    const [y, mo, d] = $("#oDate").value.split("-").map(Number), [h, mi] = $("#oTime").value.split(":").map(Number); if (!y || isNaN(h)) return toast("Pick a date and time.");
+    const dur = +$("#oDur").value, n = +$("#oCount").value, where = $("#oLoc").value.trim();
+    try { for (let i = 0; i < n; i++) await addDoc(collection(db, "orientSlots"), { start: new Date(y, mo - 1, d, h, mi + i * dur).getTime(), duration: dur, location: where, bookedBy: null, createdAt: Date.now() }); toast(`Added ${n} time${n > 1 ? "s" : ""}`); }
+    catch (err) { console.error(err); toast("Couldn't add those times."); } };
+  M.onclick = async e => { const t = e.target;
+    if (t.closest("[data-x]")) return closeModal();
+    if (t.id === "oIcs") { const ev = [...S.oslots.values()].filter(s => s.bookedBy && s.start > Date.now() - 864e5 && S.apps.has(s.bookedBy)).map(s => ({ ...icsEvent(S.apps.get(s.bookedBy), s), uid: "or-" + s.id, title: `PVRS orientation: ${S.apps.get(s.bookedBy).name || "New member"}` }));
+      if (!ev.length) return toast("No booked orientations to add."); download(`PVRS-orientation-${today()}.ics`, icsFile(ev), "text/calendar"); return toast("Calendar file downloaded. Open it to add them."); }
+    const del = t.closest("[data-odel]"); if (del) { try { await deleteDoc(doc(db, "orientSlots", del.dataset.odel)); } catch { toast("Couldn't delete that time."); } return; }
+    const rel = t.closest("[data-orel]"); if (rel) { try { await releaseOrient(S.oslots.get(rel.dataset.orel).bookedBy); toast("Time released"); } catch (err) { console.error(err); toast("Couldn't release that time."); } }
+  };
+}
+async function releaseOrient(id){
+  const s = orientSession(id); if (!s) return;
+  const b = writeBatch(db); b.update(doc(db, "orientSlots", s.slotId), { bookedBy: null }); b.set(doc(db, "portal", id), { orient: null }, { merge: true }); await b.commit();
+}
+function openOrientBook(id){
+  const a = S.apps.get(id); if (!S.canEdit || !a) return;
+  if (!orientOpen(a)) return toast("Move them to orientation first. That needs Sterling complete and clear.");
+  if (!get(a, "portal.invited")) return toast("Welcome them to the portal first.");
+  const cur = orientSession(id), open = [...S.oslots.values()].filter(s => !s.bookedBy && s.start > Date.now()).sort((x, y) => x.start - y.start);
+  const M = openModal(`<h3>Orientation for ${esc(a.name || "this new member")}</h3>${cur ? `<p class="help">Booked for <b>${esc(slotLong(cur.start))}</b>. Pick another time to move it.</p>` : `<p class="help">Booking here works even inside 24 hours.</p>`}
+    ${open.length ? `<div class="ios slotlist">${open.map(s => `<div class="row"><span class="lbl"><span class="when">${esc(slotLong(s.start))}</span><small>${esc([s.duration ? s.duration + " min" : "", s.location].filter(Boolean).join(" · "))}</small></span><button class="btn small primary" type="button" data-opick="${esc(s.id)}">Book</button></div>`).join("")}</div>` : `<p class="help">No open times. Add some under <b>Orientation times</b>.</p>`}
+    <div class="acts">${cur ? `<button class="btn danger" type="button" id="oRel">Release this time</button>` : ""}<span style="flex:1"></span><button class="btn" type="button" id="oTimes">Orientation times</button><button class="btn" type="button" data-x>Close</button></div>`, true);
+  M.onclick = async e => { const t = e.target;
+    if (t.closest("[data-x]")) return closeModal();
+    if (t.id === "oTimes") { closeModal(); return setTimeout(openOrientTimes, 60); }
+    if (t.id === "oRel") { try { await releaseOrient(id); closeModal(); toast("Time released"); } catch { toast("Couldn't release that time."); } return; }
+    const p = t.closest("[data-opick]"); if (!p) return; const s = S.oslots.get(p.dataset.opick);
+    try { const b = writeBatch(db); if (cur && cur.slotId !== s.id) b.update(doc(db, "orientSlots", cur.slotId), { bookedBy: null }); b.update(doc(db, "orientSlots", s.id), { bookedBy: id });
+      b.set(doc(db, "portal", id), { orient: { slotId: s.id, start: s.start, duration: s.duration || null, location: s.location || "", bookedAt: Date.now() } }, { merge: true }); await b.commit(); closeModal(); toast(`Booked ${slotLong(s.start)}`); }
+    catch (err) { console.error(err); toast("Couldn't book that time. It may have just been taken."); } };
+}
+// Applicant → New member. Only possible once the board approved and Sterling is complete and clear (Dkota's rule).
+function openMoveToOrientation(id){
+  const a = S.apps.get(id); if (!S.canEdit || !a) return ownerOnlyToast();
+  if (!orientReady(a)) return toast(sterlingClear(a) ? "They're not ready to move." : "Orientation stays locked until Sterling is complete and clear.");
+  const M = openModal(`<h3>Move ${esc(first(a.name) || "them")} to orientation?</h3>
+    <p class="help">Sterling is complete and clear. Their next sign-in shows only the orientation dashboard: checklist, booking a time with you, documents and messages. The application pages go away for them. Nothing in their file changes.</p>
+    <div class="field"><label for="mvEmail">Sign-in email</label><input id="mvEmail" type="email" value="${esc(a.email || "")}"><p class="help">Change this if they should now sign in with a different address, like a PVRS one. They'd need to use the new address from then on.</p></div>
+    <label class="row" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="mvMail" checked style="width:auto"> Also open an email telling them</label>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="mvGo">Move to orientation</button></div>`);
+  M.onclick = async e => { if (e.target.closest("[data-x]")) return closeModal(); const go = e.target.closest("#mvGo"); if (!go) return;
+    const email = lower($("#mvEmail").value.trim()), mail = $("#mvMail").checked;
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Enter a valid email address.");
+    go.disabled = true;
+    try {
+      if (email !== lower(a.email)) edit(id, "email", email);
+      edit(id, "onb.orientStarted", today());
+      if (!get(a, "portal.invited")) await inviteToPortal(id, false);
+      await addDoc(collection(db, "portal", id, "messages"), { text: `Hi ${first(a.name) || "there"}, your background check is complete, so you're moving on to orientation! Your dashboard now has your checklist. Please pick a time to come in and meet with me.`, from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() });
+      closeModal(); toast(`${first(a.name) || "They"} moved to orientation.`);
+      if (mail) { const l = document.createElement("a"); l.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("PVRS orientation: you're cleared to start")}&body=${encodeURIComponent(`Hi ${first(a.name) || "there"},\n\nYour background check is complete, so you're moving on to orientation.\n\nSign in at ${location.origin}/signin with ${email} to see your checklist and pick a time to come in. The sign-in email often lands in spam or junk, so check there if you don't see it.\n\nThank you,\n${sig()}`)}`; l.click(); }
+    } catch (err) { console.error(err); go.disabled = false; toast("Couldn't finish that. Try again."); } };
+}
+function moveBackToApplicant(id){ const a = S.apps.get(id); if (!S.canEdit || !a) return; edit(id, "onb.orientStarted", ""); toast(`${first(a.name) || "They"} moved back to the applicant view.`); }
+// New member → Squad member: gives them a Member account, so their next sign-in opens the desk (Messages) instead of the dashboard.
+function openMakeMember(id){
+  const a = S.apps.get(id); if (!S.canEdit || !a) return ownerOnlyToast();
+  const c = orientCounts(a), email = lower(a.email);
+  if (!email) return toast("Add their email first.");
+  const M = openModal(`<h3>Make ${esc(first(a.name) || "them")} a squad member?</h3>
+    ${orientAllDone(a) ? `<p class="help">Orientation is complete.</p>` : `<p class="help"><b>Orientation isn't finished: ${c.done} of ${c.total} done.</b> You can still go ahead.</p>`}
+    <p class="help">${esc(email)} becomes a <b>Member</b>: their next sign-in opens the desk with Messages instead of the orientation dashboard. You can change their role in Settings → Team.</p>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="mmGo">Make squad member</button></div>`);
+  M.onclick = async e => { if (e.target.closest("[data-x]")) return closeModal(); if (!e.target.closest("#mmGo")) return;
+    try { const cur = S.staff.get(email); if (!cur) await setDoc(doc(db, "staff", email), { role: "member", name: a.name || "", addedAt: Date.now(), addedBy: S.me }); edit(id, "onb.memberSince", today()); closeModal(); toast(`${first(a.name) || "They"} ${a.name ? "is" : "are"} now a squad member.`); }
+    catch (err) { console.error(err); toast("Couldn't save. Try again."); } };
+}
+function markAttended(id){
+  const a = S.apps.get(id), key = orientItemKey(), s = orientSession(id); if (!a) return;
+  if (!key) return toast("Add an item with \"orientation\" in its name to the checklist in Settings first.");
+  edit(id, `onb.items.${key}`, s ? isoDay(Math.min(s.start, Date.now())) : today()); toast(`${first(a.name) || a.name}'s orientation is marked attended.`);
+}
+function printOrientRecord(id){
+  const a = S.apps.get(id); if (!a) return;
+  const so = S.signoffs.get(id), s = orientSession(id), row = (k, v) => `<tr><th>${esc(k)}</th><td>${esc(v || "—")}</td></tr>`;
+  printHTML(`<section class="pk"><header><img src="/img/logo.png" alt=""><div><div class="pk-k">Orientation record</div><h1>${esc(a.name || "New member")}</h1>
+      <div class="pk-s">${esc([a.type ? a.type + " membership" : "", get(a, "board.date") ? "Board approved " + longDate(get(a, "board.date")) : "", get(a, "bg.sterDone") ? "Sterling complete " + longDate(get(a, "bg.sterDone")) : ""].filter(Boolean).join(" · "))}</div></div></header>
+    <h2>Orientation</h2><table>${row("Session", s ? slotLong(s.start) : "")}${row("Mentor", get(a, "onb.mentor"))}</table>
+    <h2>Checklist</h2><table>${onbItems().map(([k, l]) => row(l, get(a, `onb.items.${k}`) ? fmtDate(get(a, `onb.items.${k}`)) : "")).join("")}</table>
+    ${so ? `<h2>Trainer sign-offs</h2><table>${(so.items || []).map(i => { const d = (so.done || {})[i.key]; return row(i.label, d ? `${d.name || d.by} · ${new Date(d.at).toLocaleDateString()}` : ""); }).join("")}</table>` : ""}
+    <h2>Sign-off</h2><table class="vote"><tr><th>Orientation chair</th><td></td><th>Date</th><td></td></tr><tr><th>New member</th><td></td><th>Date</th><td></td></tr></table>
+    <footer>Potsdam Volunteer Rescue Squad · Printed ${esc(new Date().toLocaleDateString())}</footer></section>`);
+}
+/* Onboard tab */
+function renderOrientTab(a){
+  const el = $("#orientBox"); if (!el) return; const id = a._id;
+  if (orientReady(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Applicant<small>Sterling is complete and clear, so they're ready for orientation.</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-oact="move">Move to orientation</button>` : ""}</div>`; }
+  else if (!orientOpen(a)) { el.innerHTML = `<div class="row"><span class="lbl" style="color:var(--fg2)">Locked until Sterling is complete and clear.<small>${get(a, "bg.sterDone") ? (get(a, "bg.sterResult") ? "Sterling is marked Needs review." : "Enter the Sterling result above.") : get(a, "bg.sterReq") ? "Requested " + esc(fmtDate(get(a, "bg.sterReq"))) + "." : "Not requested yet."}</small></span></div>`; }
+  else { const s = orientSession(id), c = orientCounts(a), l = orientDaysLeft(a), key = orientItemKey(), att = key && get(a, `onb.items.${key}`);
+    const files = (S.files || []).filter(f => String(f.docKey || "").startsWith("onb:"));
+    el.innerHTML = `<div class="row"><span class="lbl">Status: ${get(a, "onb.memberSince") ? "Squad member" : "New member"}<small>In orientation since ${esc(fmtDate(get(a, "onb.orientStarted")))}${get(a, "onb.memberSince") ? " · member since " + esc(fmtDate(get(a, "onb.memberSince"))) : ""}</small></span>
+        ${S.canEdit && !get(a, "onb.memberSince") ? `<button class="copy" type="button" data-oact="back">Move back</button><button class="btn small" type="button" data-oact="member">Make squad member</button>` : ""}</div>
+      <div class="row"><span class="lbl">One-on-one session<small>${s ? esc(slotLong(s.start)) + (s.location ? " · " + esc(s.location) : "") : "Not booked yet"}${att ? " · attended " + esc(fmtDate(att)) : ""}</small></span>
+        ${S.canEdit ? `<button class="btn small" type="button" data-oact="book">${s ? "Change" : "Book"}</button>${att ? "" : `<button class="btn small primary" type="button" data-oact="attend">Mark attended</button>`}` : ""}</div>
+      <div class="row"><span class="lbl">Progress<small>${c.done} of ${c.total} done${l === null ? "" : l < 0 ? ` · ${-l} days late` : ` · due ${esc(longDate(orientDue(a)))}`}</small></span><button class="btn small" type="button" data-oact="record">Print record</button></div>
+      ${files.map(f => { const k = f.docKey.slice(4), done = get(a, `onb.items.${k}`); return `<div class="row"><span class="lbl">${f.confidential ? "🔒 Secure document" : `<button class="filelink" type="button" data-file="${esc(f.id)}">${esc(f.name)}</button>`}<small>${esc(f.label || "Certificate")} · uploaded ${esc(new Date(f.uploadedAt).toLocaleDateString())}${f.confidential ? " · sent to " + esc(PAPERWORK_EMAIL) : ""}</small></span>${done ? `<span class="badge ok">Approved</span>` : S.canEdit ? `<button class="btn small primary" type="button" data-oapprove="${esc(k)}">Approve</button>` : ""}</div>`; }).join("")}`; }
+  const sb = $("#trainBox"); if (sb) { const so = S.signoffs.get(id);
+    sb.innerHTML = so ? `<div class="row"><span class="lbl">Trainers<small>${esc((so.trainers || []).map(e => memberName(e)).join(", ") || "None")}</small></span></div>` + (so.items || []).map(i => { const d = (so.done || {})[i.key]; return `<div class="row"><span class="lbl">${esc(i.label)}<small>${d ? `Signed off by ${esc(d.name || d.by)} · ${esc(new Date(d.at).toLocaleDateString())}` : "Not signed off yet"}</small></span>${d ? `<span class="badge ok">Done</span>` : ""}</div>`; }).join("")
+      : `<div class="row"><span class="lbl" style="color:var(--fg2)">No trainer yet. A trainer signs off skills and first shifts from their own phone and sees nothing else on this file.</span></div>`; }
+  const cb = $("#checkinBox"); if (cb) { const list = [...S.checkins.values()].filter(c => c.appId === id).sort((x, y) => +x.n - +y.n);
+    cb.innerHTML = list.map(c => `<div class="row stack"><span class="lbl">${esc(c.n)}-day check-in · rated it ${esc(c.rating)} of 5<small>${esc(new Date(c.at).toLocaleDateString())}</small></span><p class="cv-note"><b>How it's going:</b> ${esc(c.going || "—")}<br><b>What would help:</b> ${esc(c.help || "—")}</p>${S.canEdit && !get(a, `onb.checkinRead.${c.n}`) ? `<div><button class="btn small" type="button" data-oread="${esc(c.n)}">Mark read</button></div>` : ""}</div>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">New members are asked how it's going 30 and 90 days after moving to orientation. Answers show here.</span></div>`; }
+}
+function openTrainers(id){
+  if (!S.canEdit) return ownerOnlyToast();
+  const a = S.apps.get(id), so = S.signoffs.get(id) || {}, cur = so.trainers || [];
+  const team = [...S.staff.entries()].sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
+  const M = openModal(`<h3>Trainers for ${esc(first(a.name) || "this new member")}</h3><p class="help">They see only this person's name and sign-off list, nothing else on the file. Any role can be a trainer.</p>
+    <div class="ios cv-pick">${team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"${cur.includes(e) ? " checked" : ""}><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${roleLabel(s.role)}</small></span></label>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">No team members yet.</span></div>`}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="trSave">Save</button></div>`);
+  M.onclick = async e => { if (e.target.closest("[data-x]")) return closeModal(); if (!e.target.closest("#trSave")) return;
+    const trainers = [...M.querySelectorAll(".cv-pick input:checked")].map(i => i.value);
+    try { await setDoc(doc(db, "signoffs", id), { name: a.name || "", trainers, items: so.items || skillItems().map(([key, label]) => ({ key, label })), done: so.done || {}, updatedAt: Date.now() }); closeModal(); toast("Saved"); }
+    catch (err) { console.error(err); toast("Couldn't save."); } };
+}
+function openSignoffs(){
+  const M = openModal(`<h3>Sign-offs</h3><p class="help">New members you're training. Sign off each item when they've shown you they can do it.</p><div id="trList"></div><div class="acts"><button class="btn" type="button" data-x>Done</button></div>`, true);
+  const paint = () => { const el = $("#trList"); if (!el) return; const mine = [...S.signoffs.entries()].filter(([, x]) => (x.trainers || []).includes(S.me));
+    el.innerHTML = mine.map(([id, x]) => `<div class="group"><h3><span>${esc(x.name || "New member")}</span></h3><div class="ios">${(x.items || []).map(i => { const d = (x.done || {})[i.key];
+      return `<div class="row"><span class="lbl">${esc(i.label)}<small>${d ? `${esc(d.name || d.by)} · ${esc(new Date(d.at).toLocaleDateString())}` : "Not signed off yet"}</small></span>${d ? (d.by === S.me ? `<button class="btn small" type="button" data-tr="${esc(id)}" data-k="${esc(i.key)}">Undo</button>` : `<span class="badge ok">Done</span>`) : `<button class="btn small primary" type="button" data-tr="${esc(id)}" data-k="${esc(i.key)}">Sign off</button>`}</div>`; }).join("")}</div></div>`).join("") || `<p class="help">Nobody assigned to you right now.</p>`; };
+  paint(); S._trainPaint = paint; M._cleanup = () => { S._trainPaint = null; };
+  M.onclick = async e => { if (e.target.closest("[data-x]")) return closeModal(); const b = e.target.closest("[data-tr]"); if (!b) return;
+    const x = S.signoffs.get(b.dataset.tr), done = { ...(x.done || {}) }, k = b.dataset.k;
+    if (done[k]) delete done[k]; else done[k] = { by: S.me, name: first(S.name) || S.me.split("@")[0], at: Date.now() };
+    try { await updateDoc(doc(db, "signoffs", b.dataset.tr), { done, updatedAt: Date.now() }); x.done = done; paint(); } catch (err) { console.error(err); toast("Couldn't save that."); } };
+}
+function handoffMail(id, who){
+  const a = S.apps.get(id); if (!a) return;
+  const to = (who === "chief" ? S.settings.chiefEmail : S.settings.techEmail) || "", path = who === "chief" ? "notify.chief" : "notify.tech";
+  const subject = who === "chief" ? `New member for duty crew: ${a.name}` : `PVRS email account for ${a.name}`;
+  const lines = who === "chief" ? `${a.name} has been approved by the board and cleared Sterling, and is ready to be added to duty crew.` : `${a.name} has been approved by the board and cleared Sterling. Please set up a PVRS email account.`;
+  const body = `${lines}\n\nName: ${a.name}\nPhone: ${a.phone || "—"}\nEmail: ${a.email || "—"}\nMembership type: ${a.type || "—"}\n\nThank you,\n${sig()}`;
+  const l = document.createElement("a"); l.href = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`; l.click();
+  edit(id, path, today()); toast(to ? "Email opened in Mail." : "Email opened. Add their address in Settings → Emails to fill it in next time.");
+}
+/* squad documents */
+function openLibrary(){
+  const ROLES = [["admin", "Admins"], ["interviewer", "Interviewers"], ["member", "Members"]];
+  const M = openModal(`<h3>Documents</h3><p class="help">Squad handbook, policies and forms.${S.canEdit ? " Choose who sees each one. Nothing medical or Social Security." : ""}</p>
+    ${S.canEdit ? `<div class="ios" style="padding:12px"><div class="field"><label>Who can see it</label><div class="cv-rolepick">${ROLES.map(([v, l]) => `<label><input type="checkbox" value="${v}" checked> ${l}</label>`).join("")}<label><input type="checkbox" id="libNew" checked> New members in orientation</label></div></div>
+      <label class="dropzone" for="libFile"><input type="file" id="libFile" accept="application/pdf,image/*" hidden><b>Add a document</b><span>PDF or photo, up to 25 MB</span></label></div>` : ""}
+    <div id="libList" class="ios" style="margin-top:10px"></div><div class="acts"><button class="btn" type="button" data-x>Done</button></div>`, true);
+  const paint = () => { const el = $("#libList"); if (!el) return;
+    el.innerHTML = (S.library || []).map(d => `<div class="row"><span class="lbl">${esc(d.name)}<small>${S.canEdit ? esc([...(d.roles || []).map(r => roleLabel(r)), d.newMembers ? "New members" : ""].filter(Boolean).join(", ") || "Only you") : esc(new Date(d.uploadedAt).toLocaleDateString())}</small></span><button class="btn small" type="button" data-libopen="${esc(d.id)}">Open</button>${S.canEdit ? `<button class="copy" type="button" data-libdel="${esc(d.id)}">Remove</button>` : ""}</div>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">No documents yet.</span></div>`; };
+  paint(); S._libPaint = paint; M._cleanup = () => { S._libPaint = null; };
+  $("#libFile")?.addEventListener("change", async e => { const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    if (!(f.type === "application/pdf" || /^image\//.test(f.type))) return toast("Only PDFs and photos.");
+    if (f.size > 25 * 1024 * 1024) return toast("That file is over 25 MB.");
+    if (isConfidential(f.name)) return toast("That looks medical or Social Security, so it can't go in Documents.");
+    const roles = [...M.querySelectorAll('.cv-rolepick input[value]')].filter(i => i.checked).map(i => i.value), newMembers = !!$("#libNew")?.checked;
+    try { const id = doc(collection(db, "library")).id, path = `library/${id}/${Date.now()}-${f.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
+      await setDoc(doc(db, "library", id), { name: f.name.slice(0, 200), path, size: f.size, type: f.type, roles, newMembers, uploadedAt: Date.now(), uploadedBy: S.me });
+      await uploadBytes(ref(storage, path), f, { contentType: f.type }); toast("Added."); }
+    catch (err) { console.error(err); toast("Couldn't add that document."); } });
+  M.onclick = async e => { const t = e.target; if (t.closest("[data-x]")) return closeModal();
+    const o = t.closest("[data-libopen]"); if (o) { const d = (S.library || []).find(x => x.id === o.dataset.libopen); if (!d) return; const w = window.open("", "_blank");
+      try { const url = await getDownloadURL(ref(storage, d.path)); if (w) w.location = url; else location.href = url; } catch { if (w) w.close(); toast("Couldn't open that file."); } return; }
+    const r = t.closest("[data-libdel]"); if (r) { if (r.dataset.confirm !== "1") { r.dataset.confirm = "1"; r.textContent = "Confirm remove"; return; } const d = (S.library || []).find(x => x.id === r.dataset.libdel);
+      try { await deleteObject(ref(storage, d.path)).catch(() => {}); await deleteDoc(doc(db, "library", d.id)); } catch { toast("Couldn't remove that."); } } };
+}
+
 /* ---------- push notifications on this device (functions/push.js sends them) ---------- */
 // The messaging SDK loads only here, so the public pages never pay for it. Each device that turns them on gets
 // pushTokens/{token} = {email, device, at}; the owner's devices get everything, admins' devices get interview bookings.
@@ -3241,7 +3550,7 @@ export function startDesk({ email, role, owner, name }){
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
   startIdleLock();
   startPushToasts();
-  watchChat(); startPresence(); $("#msgsBtn").hidden = false; paintMnav();
+  watchOrientation(); watchChat(); startPresence(); $("#msgsBtn").hidden = false; paintMnav();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
 
   // Admins load every file, interviewers only the ones assigned to them, members none (Messages only).

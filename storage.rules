@@ -56,6 +56,18 @@ service firebase.storage {
       allow delete: if verified() && myEmail() == 'dkota@pvrs.org';
     }
 
+    // Squad documents: same audience as the library entry (library/{docId}).
+    match /library/{docId}/{fileName} {
+      function entry() { return firestore.get(/databases/(default)/documents/library/$(docId)).data; }
+      allow read: if verified() && (myEmail() == 'dkota@pvrs.org'
+        || (firestore.exists(/databases/(default)/documents/staff/$(myEmail())) && firestore.get(/databases/(default)/documents/staff/$(myEmail())).data.role in entry().roles)
+        || (firestore.exists(/databases/(default)/documents/portalEmails/$(myEmail())) && entry().newMembers == true));
+      allow create: if verified() && myEmail() == 'dkota@pvrs.org' && request.resource.size <= 25 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+      allow delete: if verified() && myEmail() == 'dkota@pvrs.org';
+    }
+
+    // Uploaded certificates and everything else: no access by default.
     match /{everythingElse=**} {
       allow read, write: if false;
     }

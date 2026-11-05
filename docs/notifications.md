@@ -18,7 +18,8 @@ Alerts say who and what ("Duke McCauley answered for Jack Gradzewicz"), never me
 
 - **Owner:** one summary, only when there's something to say: interviews today and tomorrow, overdue references (7+ days), cards expiring within 30 days, files with no movement in 14+ days.
 - **Interviewers:** their own interview today or tomorrow.
-- **Applicants with alerts on:** the day before their interview.
+- **Applicants with alerts on:** the day before their interview or orientation, and 7 days and 1 day before an orientation deadline.
+- The owner summary also counts orientations today and tomorrow and people behind on orientation.
 
 ## Applicant alerts
 

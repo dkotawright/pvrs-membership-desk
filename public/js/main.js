@@ -77,22 +77,15 @@ $("#linkForm").addEventListener("submit", async e => {
     await sendSignInLinkToEmail(auth, email, linkSettings());
     store.set(email);
     const s = $("#linkSent"); s.hidden = false;
-    s.innerHTML = `<span>✉️</span><span>Check <b></b> for a sign-in link. It can take a minute, and may land in spam. Open it on this device.</span>`;
+    s.innerHTML = `<span>✉️</span><span>Check <b></b> for a sign-in link. It can take a minute and often lands in <b>spam or junk</b>, so look there too. Open it on this device.</span>`;
     s.querySelector("b").textContent = email;
   } catch { toast("Couldn't send the link. Check the address and try again."); }
   finally { btn.disabled = false; }
 });
-// Applicant (emailed link) or PVRS staff (email + password, Google as backup). The choice is remembered on this computer.
+// One sign-in for everyone: emailed link, Google or password. startFor() opens the desk, orientation dashboard or portal by status.
 const pref = { get(k){ try { return localStorage.getItem(k); } catch { return null; } }, set(k, v){ try { localStorage.setItem(k, v); } catch {} } };
-function setWho(who){
-  $("#whoSeg").querySelectorAll("[data-who]").forEach(b => { const on = b.dataset.who === who; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
-  $("#staffSignin").hidden = who !== "staff"; $("#appSignin").hidden = who !== "applicant";
-  pref.set("pvrsWho", who);
-}
-setWho(pref.get("pvrsWho") === "staff" ? "staff" : "applicant");
 $("#pwEmail").value = pref.get("pvrsStaffEmail") || "";
 if (pref.get("pvrsStaffEmail")) $("#manualSignin").open = true;   // they've used a password here before
-$("#whoSeg").addEventListener("click", e => { const b = e.target.closest("[data-who]"); if (b) { setWho(b.dataset.who); (b.dataset.who === "staff" ? ($("#manualSignin").open ? ($("#pwEmail").value ? $("#pwPass") : $("#pwEmail")) : $("#googleBtn")) : $("#linkEmail")).focus(); } });
 $("#pwForm").addEventListener("submit", async e => {
   e.preventDefault();
   const email = lower($("#pwEmail").value), pw = $("#pwPass").value;

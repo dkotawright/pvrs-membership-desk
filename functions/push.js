@@ -3,7 +3,7 @@
 // Alerts say who and what, never message content, reference answers or anything else from the private record.
 // Tapping one opens the desk at that applicant's file (/?open=<id>).
 // Deploy on its own: firebase deploy --only functions:push   (doesn't need the SMTP secret)
-const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const { buildMorning } = require("./morning");
@@ -63,6 +63,8 @@ exports.portalChanged = onDocumentUpdated({ document: "portal/{id}", ...OPTS }, 
   const b = e.data.before.data() || {}, a = e.data.after.data() || {}, id = e.params.id;
   if (!b.bookingOpen && a.bookingOpen) await sendApplicant(id, { title: "Interview times are open", body: "You can pick your interview time in your PVRS portal." });
   if (doneCount(a) > doneCount(b)) await sendApplicant(id, { title: "Your application moved forward", body: "Open your PVRS portal to see what's next." });
+  if (!b.orientation && a.orientation) await sendApplicant(id, { title: "Orientation is open", body: "Your background check is complete. Pick your orientation time in your PVRS portal." });
+  if (!b.checkin && a.checkin) await sendApplicant(id, { title: "Quick check-in", body: "How's it going so far? Tell us in your PVRS portal." });
   if ((a.docs || []).length > (b.docs || []).length) await sendApplicant(id, { title: "Document needed", body: "PVRS asked for a document. Details are in your portal." });
 });
 
@@ -72,12 +74,31 @@ async function runMorning(now){
   const appDocs = (await db.collection("applicants").get()).docs;
   const apps = await Promise.all(appDocs.map(async d => { const sec = await db.doc(`applicants/${d.id}/private/main`).get(); return { id: d.id, ...(sec.exists ? sec.data() : {}), ...d.data() }; }));
   const slots = (await db.collection("slots").get()).docs.map(d => d.data());
-  const m = buildMorning({ apps, slots, now });
+  const portals = (await db.collection("portal").get()).docs.map(d => ({ id: d.id, ...d.data() }));
+  const m = buildMorning({ apps, slots, now, portals });
   if (m.owner) await send({ to: [OWNER_EMAIL], ...m.owner });
   for (const [email, lines] of m.interviewers) for (const l of lines) await send({ to: [email], ...l });
   for (const x of m.applicants) await sendApplicant(x.id, x);
 }
 exports.morning = onSchedule({ schedule: "30 7 * * *", timeZone: "America/New_York", maxInstances: 1 }, () => runMorning(Date.now()));
+
+// Orientation bookings, trainer sign-offs and check-ins go to the owner (who runs orientation).
+exports.orientBooking = onDocumentUpdated({ document: "orientSlots/{id}", ...OPTS }, async e => {
+  const b = e.data.before.data() || {}, a = e.data.after.data() || {};
+  if (!b.bookedBy && a.bookedBy) await send({ title: "Orientation booked", body: `${await nameOf(a.bookedBy)} · ${when(a.start)}`, id: a.bookedBy });
+  else if (b.bookedBy && !a.bookedBy) await send({ title: "Orientation cancelled", body: `${await nameOf(b.bookedBy)} · ${when(b.start)} is open again`, id: b.bookedBy });
+});
+exports.signoffChanged = onDocumentWritten({ document: "signoffs/{id}", ...OPTS }, async e => {
+  const b = e.data.before?.data() || {}, a = e.data.after?.data(); if (!a) return;
+  const added = (a.trainers || []).filter(x => !(b.trainers || []).includes(x));
+  if (added.length) await send({ to: added, title: "New member to sign off", body: `You're a trainer for ${a.name || "a new member"}. Open Sign-offs in the desk.` });
+  const newly = Object.keys(a.done || {}).filter(k => !(b.done || {})[k]);
+  for (const k of newly) { const item = (a.items || []).find(x => x.key === k), d = a.done[k];
+    await send({ skip: d.by, title: "Trainer sign-off", body: `${d.name || "A trainer"} signed off ${item?.label || "an item"} for ${a.name || "a new member"}`, id: e.params.id }); }
+});
+exports.checkinAnswered = onDocumentCreated({ document: "portal/{id}/checkins/{n}", ...OPTS }, async e => {
+  await send({ title: `${e.params.n}-day check-in`, body: `${await nameOf(e.params.id)} answered their check-in`, id: e.params.id });
+});
 
 exports.newApplication = onDocumentCreated({ document: "submissions/{id}", ...OPTS }, async e => {
   const p = e.data?.data()?.person || {};

@@ -1,7 +1,7 @@
 // Med Control: the desk's AI assistant (Claude). One callable function, three jobs:
 //   chat  - answer questions about the roster ("who's waiting on references?") and draft emails   [Claude Haiku 5.5]
-//   brief - a one-page applicant brief: summary, strengths, follow-ups, interview questions,
-//           reference digest; saved to applicants/{id}/private/main.ai.brief                     [Claude Sonnet 5.5]
+//   brief - a one-page applicant brief: summary, interview summary, combined reference summary, an advisory
+//           recommendation (proceed / look closer / not ready), strengths, follow-ups, questions, reference digest; saved to applicants/{id}/private/main.ai.brief                     [Claude Sonnet 5.5]
 //   reply - a draft answer to the applicant's latest portal message                                [Claude Haiku 5.5]
 // Owner and admins only, capped per person per day. The function loads the records itself and filters them here,
 // so the model NEVER sees: license numbers, date/place of birth, addresses, phone numbers, reference contact details,
@@ -54,7 +54,8 @@ function interview(iv){
   for (const [k, v] of Object.entries(iv)) {
     if (/^convicted(Explain|Detail)?$/i.test(k) && k !== "convicted") continue;   // yes/no only, never the explanation
     if (k === "panel" && v && typeof v === "object") { out.panel = Object.values(v).filter(Boolean).map(x => clip(String(x), 60)); continue; }
-    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") out[k] = clip(v);
+    if (k === "score" && v && typeof v === "object") { out.committeeScores = pick(v, ["comm", "motiv", "avail", "team", "fit"]); continue; }
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") out[k] = clip(v, 3000);
   }
   return nonEmpty(out);
 }
@@ -64,8 +65,12 @@ function refs(r, full){
     const x = r[k] || {};
     const o = pick(x, ["name", "relationship", "contacted", "returned", "replace", "reminded"]);   // no email, phone or address
     if (full && x.form && typeof x.form === "object") {
-      const ans = {};
-      for (const [q, v] of Object.entries(x.form)) if (typeof v === "string" || typeof v === "number") ans[q] = clip(v, 600);
+      // Filed forms keep the answers in form.answers (with the 1-5 ratings nested inside); older test data has them flat.
+      const src = x.form.answers && typeof x.form.answers === "object" ? x.form.answers : x.form, ans = {};
+      for (const [q, v] of Object.entries(src)) {
+        if (typeof v === "string" || typeof v === "number") ans[q] = clip(v, 3000);
+        else if (q === "ratings" && v && typeof v === "object") ans.ratings = pick(v, Object.keys(v));
+      }
       o.answers = ans;
     }
     return o;
@@ -169,8 +174,12 @@ async function chat(data){
   return { text: textOf(r), usage: r.usage };
 }
 
-const BRIEF_SCHEMA = { type: "object", additionalProperties: false, required: ["summary", "strengths", "followUps", "questions", "references"],
+const BRIEF_SCHEMA = { type: "object", additionalProperties: false, required: ["summary", "interviewSummary", "referencesSummary", "recommendation", "recommendationReasons", "strengths", "followUps", "questions", "references"],
   properties: {
+    interviewSummary: { type: "string", description: "3-5 sentences on what the applicant said in their interview: why they want to join, how they see the commitment, their own thoughts in their own terms, and the committee's scores if any. If there are no interview answers yet, say so." },
+    referencesSummary: { type: "string", description: "3-5 sentences bringing all the references' answers together: what they agree on, ratings, any differences or reservations. Say how many have answered. If none have, say so." },
+    recommendation: { type: "string", enum: ["proceed", "look_closer", "not_ready"], description: "proceed: the interview and references give no reason for concern. look_closer: something specific needs a person's attention. not_ready: the interview or at least 3 reference answers are still missing." },
+    recommendationReasons: { type: "array", items: { type: "string" }, description: "1-4 short reasons, each pointing at something specific in the record." },
     summary: { type: "string", description: "3-4 sentences: who they are, membership type, availability, relevant experience." },
     strengths: { type: "array", items: { type: "string" }, description: "Up to 4 short points." },
     followUps: { type: "array", items: { type: "string" }, description: "Up to 4 gaps or things to check (missing items, waiting references, unclear answers)." },
@@ -183,15 +192,18 @@ async function brief(data, who){
   const { shared, priv } = await loadOne(data.id);
   const rec = safeApplicant(data.id, shared, priv, true);
   const r = await client().beta.messages.create({
-    model: BRIEF_MODEL, max_tokens: 8000,
+    model: BRIEF_MODEL, max_tokens: 16000,
     betas: ["server-side-fallback-2026-07-01"], fallbacks: "default",
     output_config: { effort: "medium", format: { type: "json_schema", schema: BRIEF_SCHEMA } },
-    system: SQUAD + `\nWrite an applicant brief for the membership committee and board. Be fair and factual; base every point on the record. Mark a reference "waiting" if it hasn't come back.`,
+    system: SQUAD + `\nWrite an applicant brief for the membership committee and board. Be fair and factual; base every point on the record. Mark a reference "waiting" if it hasn't come back.
+The recommendation is advice to the committee, which makes the decision. Weigh only what bears on doing this volunteer work: commitment, availability, reliability, teamwork and what references said. Never weigh or mention age, gender, race, ethnicity, national origin, religion, disability, health, sexual orientation or family status, even if they appear in the record. A "yes" to the conviction or driving question means look_closer, with a reason saying the committee should review the explanation on file; you never see that explanation, so don't guess at it or judge it. Don't use "reject", "deny" or similar words.`,
     messages: [{ role: "user", content: `<record>\n${JSON.stringify(rec)}\n</record>\nWrite the brief.` }],
   });
   checkStop(r);
   let out; try { out = JSON.parse(textOf(r)); } catch { throw new HttpsError("internal", "Med Control's brief came back garbled. Try again."); }
-  const b = { summary: clip(out.summary, 1500), strengths: (out.strengths || []).slice(0, 6).map(x => clip(x, 300)), followUps: (out.followUps || []).slice(0, 6).map(x => clip(x, 300)),
+  const REC = ["proceed", "look_closer", "not_ready"];
+  const b = { interviewSummary: clip(out.interviewSummary, 2000), referencesSummary: clip(out.referencesSummary, 2000), recommendation: REC.includes(out.recommendation) ? out.recommendation : "look_closer",
+    recommendationReasons: (out.recommendationReasons || []).slice(0, 5).map(x => clip(x, 300)), summary: clip(out.summary, 1500), strengths: (out.strengths || []).slice(0, 6).map(x => clip(x, 300)), followUps: (out.followUps || []).slice(0, 6).map(x => clip(x, 300)),
     questions: (out.questions || []).slice(0, 5).map(x => clip(x, 400)), references: (out.references || []).slice(0, 4).map(x => ({ name: clip(x.name, 100), tone: x.tone, note: clip(x.note, 300) })),
     at: Date.now(), by: who.email, model: r.model || BRIEF_MODEL };
   await db.doc(`applicants/${data.id}/private/main`).set({ ai: { brief: b } }, { merge: true });
