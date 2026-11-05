@@ -1008,20 +1008,34 @@ try {
     await card.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(OUT, `18-stats${dark ? "-dark" : ""}.png`) });
     await ctx.close();
   }
-  // ---- desktop: the applicant list tucks into a strip; filters slide it out
+  // ---- desktop: the applicants live in a box on the dashboard (no slide-out strip)
   {
-    const { ctx, page } = await open(browser); await wait(page, 400); await page.mouse.move(900, 500); await wait(page, 900);
-    const tucked = () => page.evaluate(() => getComputedStyle(document.querySelector(".roster")).transform !== "none");
-    if (!(await tucked())) fail("list not tucked on the dashboard"); else ok("desktop: the applicant list tucks into a strip by default");
-    await page.locator('#chips [data-f="screen"]').click(); await wait(page, 700);
-    if (await tucked() || !/Screening/.test(await page.locator("#rosterTitle").textContent())) fail("filter didn't slide the list out"); else ok("choosing a filter slides the list out with the results");
-    await page.mouse.click(1200, 600); await wait(page, 900);
-    if (!(await tucked())) fail("list didn't tuck after clicking elsewhere"); else ok("clicking elsewhere tucks it away again");
-    await page.locator(".rhandle").hover(); await wait(page, 700);
-    await page.locator("#pinBtn").click(); await page.mouse.move(1200, 600); await wait(page, 900);
-    if (await tucked()) fail("pinned list still tucks"); else ok("the pin keeps the list docked open");
+    const { ctx, page } = await open(browser); await wait(page, 500);
+    const inBox = () => page.evaluate(() => { const R = document.querySelector(".roster"); return !!R.closest("#ovRoster") && getComputedStyle(R).display !== "none"; });
+    if (!(await inBox())) fail("list isn't in the dashboard box"); else ok("desktop: the applicant list is a box on the dashboard");
+    if (await page.locator(".rhandle").count() || await page.locator("#pinBtn").count()) fail("slide-out strip still there"); else ok("the slide-out strip and pin are gone");
+    if (await page.locator("#ovRoster .arow").count() < 3) fail("box rows"); else ok("the box lists the applicants");
+    await page.locator("#ovRoster #q").fill("georgia"); await wait(page, 300);
+    if (await page.locator("#ovRoster .arow").count() !== 1) fail("box search"); else ok("search works in the box");
+    if (await page.evaluate(() => document.activeElement?.id) !== "q") fail("search lost focus"); else ok("search keeps your cursor");
+    await page.evaluate(() => { window.__mock.docs.get("applicants/a2").updatedAt = Date.now(); window.__mock.docs.get("applicants/a2").name = "Marcus Bell Jr"; window.__mock.emit(); }); await wait(page, 400);
+    if (await page.evaluate(() => document.activeElement?.id) !== "q" || !(await inBox())) fail("a live update broke the box"); else ok("live updates leave the box and your typing alone");
+    await page.locator("#ovRoster #q").fill(""); await wait(page, 200);
+    await page.locator("#ovRoster .arow").first().click(); await wait(page, 400);
+    if (await page.locator("#ovRoster").count() || !(await page.locator("#backBtn").isVisible())) fail("file view"); else ok("opening a file gives a clear way back");
+    if (!/Applicants/.test(await page.locator("#backBtn").textContent())) fail("back label"); else ok("the back button says Applicants");
+    await page.locator('#chips [data-f="screen"]').click(); await wait(page, 500);
+    if (!(await inBox()) || !/Screening/.test(await page.locator("#rosterTitle").textContent())) fail("sidebar filter from a file"); else ok("a sidebar filter returns to the dashboard and filters the box");
+    await page.locator("#msgsBtn").click(); await wait(page, 300);
+    if (!(await page.locator(".cv").count()) || !(await page.evaluate(() => !!document.querySelector(".roster")))) fail("Messages lost the list"); else ok("Messages opens without destroying the list");
+    await page.locator("#overviewBtn").click(); await wait(page, 400);
+    if (!(await inBox())) fail("box gone after Messages"); else ok("the box comes back on the dashboard");
+    await page.screenshot({ path: path.join(OUT, "74-applicants-box.png") });
     await ctx.close();
   }
+  { const { ctx, page } = await open(browser, { w: 390, h: 844 }); await wait(page, 500);
+    if (await page.locator("#ovRoster .roster").count() || !(await page.locator(".roster").isVisible())) fail("phone list"); else ok("phones keep the applicant list as its own screen");
+    await ctx.close(); }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);

@@ -533,6 +533,7 @@ function renderOverview(){
       <p>${rows.length ? `${inProc.length} applicant${inProc.length===1?"":"s"} in process${S.admin && c.board ? `, ${c.board} waiting on the board` : ""}${thisWeek ? `, ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet."}</p></div>
       <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
     <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
+    ${S.role !== "member" ? `<div id="ovRoster" class="ovroster"></div>` : ""}
     ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
       ${unreadChatTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open messages</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => S.apps.has(m.appId) && unreadIn("a:" + m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
         return `<button class="oitem" type="button" data-openmsg="${esc(id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name)}</b><small>${esc(last.text.slice(0, 80))}</small></span><span class="when"><span class="newdot"></span>${esc(ago(last.at))}</span></button>`; }).join("")}</div></section>` : ""}
@@ -541,8 +542,9 @@ function renderOverview(){
     : `<div class="ovmain single"><div class="ovcol">${comingUp}</div></div>`}
     <p class="kbdhint">Tip: press <kbd>⌘K</kbd> to find anyone or run a command, <kbd>J</kbd> <kbd>K</kbd> to move through applicants, <kbd>?</kbd> for all shortcuts.</p>
   </div></div>`;
-  if (D.querySelector(".ov") && D._ovHTML === html) return;
-  D._ovHTML = html; D.innerHTML = html; stackCols(D);
+  if (D.querySelector(".ov") && D._ovHTML === html) return placeRoster();
+  const rst = rosterState(); parkRoster();
+  D._ovHTML = html; D.innerHTML = html; stackCols(D); placeRoster(rst);
   const ov = D.querySelector(".ov"); if (ov) ov.scrollTop = keepScroll;
 }
 
@@ -628,7 +630,16 @@ function renderDetail(){
   [".roster", ".side"].forEach(s => { const el = $(s); if (el) el.inert = (!!S.sel || !!S.mOv) && narrow && $("#modal").hidden; });
   paintMnav();
 }
+// Desktop: the applicant list lives in a box on the dashboard. It's one element moved in and out, so search, filters,
+// sort and Select keep working; it must leave #detail before anything rewrites that pane.
+const isDesk = () => matchMedia("(min-width:861px)").matches;
+function rosterState(){ const R = $(".roster"), a = document.activeElement, keep = R && R.contains(a) ? a : null; return R ? { keep, caret: keep ? keep.selectionStart : 0, top: R.scrollTop } : null; }
+function parkRoster(){ const R = $(".roster"), main = $(".main"); if (R && R.parentElement !== main) main.insertBefore(R, $("#detail")); }
+function placeRoster(st){ const R = $(".roster"), slot = $("#ovRoster"); if (!R) return;
+  if (isDesk() && slot && !S.sel && !S.chatOn) { if (R.parentElement !== slot) slot.appendChild(R); } else parkRoster();
+  if (st) { R.scrollTop = st.top; if (st.keep && R.contains(st.keep)) { st.keep.focus({ preventScroll: true }); try { st.keep.setSelectionRange(st.caret, st.caret); } catch {} } } }
 function paintDetail(){
+  parkRoster();
   const D = $("#detail"), a = S.apps.get(S.sel);
   $("#app").classList.toggle("open", !!a);
   $("#overviewBtn").classList.toggle("on", !a && !S.chatOn);
@@ -638,7 +649,7 @@ function paintDetail(){
   if (!tabs.some(t => t[0] === S.tab)) S.tab = "app";
   // The header sticks to the top of the scrolling file and the tab bar floats at the bottom; content scrolls under both.
   D.innerHTML = `<div class="dbody" id="dbody"><div class="dhead">
-      <div class="drow"><button class="btn small back" type="button" id="backBtn" aria-label="Back to roster">‹ Roster</button>
+      <div class="drow"><button class="btn small back" type="button" id="backBtn" aria-label="Back to applicants">‹ Applicants</button>
         <span class="av" id="dAv" aria-hidden="true"></span>
         <div class="dname"><h2 id="dName"></h2><div class="sub" id="dSub"></div></div>
         ${S.admin ? `<div class="hacts">
@@ -1711,16 +1722,13 @@ function openMore(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("[data-notif]")) { closeModal(); setTimeout(openNotifications, 60); return; } const b = e.target.closest("[data-more]"); if (b) { closeModal(); setTimeout(() => $("#" + b.dataset.more).click(), 60); } };
 }
 function deselect(){ if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
+// Choosing a filter (sidebar or stage tile) shows the results in the dashboard's Applicants box.
 function setFilter(f, focusList){
-  S.filter = f; renderList();
-  peekList();
-  if (focusList) { const L = $("#list"); $(".roster").scrollTop = 0; const first = L.querySelector(".arow"); if (first && innerWidth > 860) first.focus(); }
-}
-// Desktop: the list lives as a strip on the left; choosing a filter slides it out to show the results until the pointer leaves it.
-function peekList(){
-  const R = $(".roster"); if (!R || innerWidth <= 860 || $("#app").classList.contains("pinned")) return;
-  R.classList.remove("nohover"); R.classList.add("peek");
-  clearTimeout(peekList.t); peekList.t = setTimeout(() => { if (!R.matches(":hover")) R.classList.remove("peek"); }, 6000);
+  S.filter = f;
+  if (isDesk()) { if (S.chatOn) { closeChat(); } if (S.sel) deselect(); else renderDetail(); }
+  renderList();
+  const slot = $("#ovRoster"); if (slot && isDesk()) slot.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion:reduce)").matches ? "auto" : "smooth" });
+  if (focusList) { const L = $("#list"); $(".roster").scrollTop = 0; const first = L.querySelector(".arow"); if (first && innerWidth > 860) first.focus({ preventScroll: true }); }
 }
 function moveSel(dir){
   const ids = S.vis || []; if (!ids.length) return;
@@ -1788,7 +1796,7 @@ function onKeys(e){
   if (e.key === "j" || (e.key === "ArrowDown" && inList)) { e.preventDefault(); moveSel(1); }
   else if (e.key === "k" || (e.key === "ArrowUp" && inList)) { e.preventDefault(); moveSel(-1); }
   else if ((e.key === "n" || e.key === "N") && S.canEdit) { e.preventDefault(); openNew(); }
-  else if (e.key === "/") { e.preventDefault(); $("#q").focus(); }
+  else if (e.key === "/") { e.preventDefault(); if (isDesk() && (S.sel || S.chatOn)) { if (S.chatOn) closeChat(); if (S.sel) deselect(); else renderDetail(); } $("#q").focus(); }
   else if (e.key === "?") { e.preventDefault(); openShortcuts(); }
   else if (S.sel && /^[1-9]$/.test(e.key) && tabs[+e.key - 1]) { e.preventDefault(); switchTab(tabs[+e.key - 1]); }
   else if (S.sel && (e.key === "[" || e.key === "]")) { e.preventDefault(); const i = tabs.indexOf(S.tab); switchTab(tabs[(i + (e.key === "]" ? 1 : -1) + tabs.length) % tabs.length]); }
@@ -1806,18 +1814,7 @@ function bindEvents(){
   $("#chips").addEventListener("click", onFilter);
   $("#chipsMini").addEventListener("click", onFilter);
   $("#q").addEventListener("input", e => { S.q = e.target.value; renderList(); });
-  // While a file is open the list tucks away to a strip on the left; hover (or ⌘K) slides it out. Pin keeps it docked.
-  const setPinned = on => { $("#app").classList.toggle("pinned", on); $("#pinBtn").setAttribute("aria-pressed", on); $("#pinBtn").title = on ? "Let the list tuck away to a strip" : "Keep the list open"; prefs.set("pinned", on ? "1" : ""); };
-  setPinned(prefs.get("pinned") === "1");
-  $("#pinBtn").addEventListener("click", () => setPinned(!$("#app").classList.contains("pinned")));
-  // After picking someone from the slid-out list, let it tuck away again instead of holding it open by focus.
-  // and don't slide back out under the mouse until the pointer has left the list once.
-  const R = $(".roster");
-  $("#list").addEventListener("click", e => { if ($("#app").classList.contains("pinned") || !e.target.closest(".arow")) return;
-    R.classList.remove("peek"); R.classList.add("nohover"); setTimeout(() => { const f = document.activeElement; if (f && f.closest && f.closest(".roster") && f.id !== "q") f.blur(); }, 0); });
-  R.addEventListener("mouseleave", () => { R.classList.remove("nohover"); R.classList.remove("peek"); });
-  document.addEventListener("pointerdown", e => { if (R.classList.contains("peek") && !e.target.closest(".roster, #chips, #chipsMini, .stg, [data-filter]")) R.classList.remove("peek"); });
-  $(".rhandle").addEventListener("mouseenter", () => R.classList.remove("nohover"));
+  matchMedia("(min-width:861px)").addEventListener("change", () => { if (!S.sel && !S.chatOn) renderDetail(); placeRoster(); });
   const sortSel = $("#sort"); sortSel.value = S.sort; sortSel.addEventListener("change", e => { S.sort = e.target.value; prefs.set("sort", S.sort); renderList(); });
   $("#overviewBtn").addEventListener("click", () => { if (S.chatOn) { closeChat(); renderDetail(); return; } if (S.sel) deselect(); else { S.filter = "all"; renderList(); } });
   $("#mnav").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) mnavGo(b.dataset.m); });
@@ -2743,6 +2740,7 @@ function openChat(key){
   if (S.sel) { if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); }
   S.chatOn = true; S.mOv = false;
   if (!C.key && !matchMedia("(max-width:860px)").matches) { const { chans, apps } = chatItems(); C.key = (chans[0] || apps[0] || {}).key || null; }
+  parkRoster();
   const D = $("#detail"); D._chatKey = undefined; D.innerHTML = "";
   $("#app").classList.remove("open"); $("#app").classList.add("chatopen"); $("#overviewBtn").classList.remove("on"); $("#msgsBtn").classList.add("on");
   paintChat(); renderDetail();
@@ -2750,6 +2748,7 @@ function openChat(key){
 function closeChat(){
   if (!S.chatOn) return;
   S.chatOn = false; $("#app").classList.remove("chatopen"); $("#msgsBtn").classList.remove("on");
+  parkRoster();
   const D = $("#detail"); D._chatKey = undefined; D.innerHTML = "";
 }
 const chIcon = (it, big) => it.kind === "c"
@@ -2966,9 +2965,11 @@ function renderMyInterviews(D){
     <section class="ovcard"><h3>Coming up</h3><div class="olist">${up.map(a => row(a, whenText(a), true)).join("") || `<div class="oempty">Nothing booked yet.</div>`}</div></section>
     ${toSet.length ? `<section class="ovcard"><h3>Waiting on a time</h3><div class="olist">${toSet.map(a => row(a, a.phone || a.email || "Not booked yet", true)).join("")}</div></section>` : ""}
     ${!mine.length ? `<section class="ovcard"><div class="oempty">When the membership coordinator assigns you an applicant, or an applicant books a time you offered, they'll show up here.</div></section>` : ""}
-    ${done.length ? `<section class="ovcard"><h3>Done</h3><div class="olist">${done.map(a => row(a, "Completed " + longDate(get(a, "sched.completed")), false)).join("")}</div></section>` : ""}</div></div>`;
-  if (D.querySelector(".ov") && D._ovHTML === html) return;
-  D._ovHTML = html; D.innerHTML = html;
+    ${done.length ? `<section class="ovcard"><h3>Done</h3><div class="olist">${done.map(a => row(a, "Completed " + longDate(get(a, "sched.completed")), false)).join("")}</div></section>` : ""}
+    ${mine.length ? `<div id="ovRoster" class="ovroster"></div>` : ""}</div></div>`;
+  if (D.querySelector(".ov") && D._ovHTML === html) return placeRoster();
+  const rst = rosterState(); parkRoster();
+  D._ovHTML = html; D.innerHTML = html; placeRoster(rst);
 }
 
 /* ---------- duplicates: same email, phone or name ---------- */
@@ -3044,8 +3045,6 @@ async function mergeFiles(keepId, dropId){
 /* ---------- bulk actions on the applicant list (owner) ---------- */
 function bulkToggle(on){
   S.bulk = on ? new Set() : null;
-  const app = $("#app");
-  if (on) { S._bulkPinned = app.classList.contains("pinned"); app.classList.add("pinned"); } else if (!S._bulkPinned) app.classList.remove("pinned");
   $("#bulkBtn").setAttribute("aria-pressed", String(!!on)); $("#bulkBtn").textContent = on ? "Cancel" : "Select";
   renderList(); paintBulk();
 }
