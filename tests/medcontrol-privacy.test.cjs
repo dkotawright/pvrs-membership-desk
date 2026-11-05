@@ -24,4 +24,15 @@ if (fs0.includes("Very dependable")) { fail++; console.log("✗ reference answer
 if (ff.includes("SECRET-")) { fail++; console.log("✗ filed form leaked contact details"); }
 const scored = JSON.stringify(_safeApplicant("a3", { ...shared, iv: { ...shared.iv, score: { comm: 4 } } }, {}, true));
 if (!scored.includes('"comm":4')) { fail++; console.log("✗ committee scores missing"); } else console.log("✓ committee scores reach the brief");
-process.exit(fail ? 1 : 0);
+// Med Control is owner only: everyone else is refused by the function itself.
+(async () => {
+  const { _checkCaller } = require("../functions/medcontrol.js");
+  const tok = email => ({ token: { email, email_verified: true } });
+  const who = await _checkCaller(tok("dkota@pvrs.org")).catch(() => null);
+  if (!who || !who.owner) { fail++; console.log("✗ owner refused"); } else console.log("✓ the owner can use Med Control");
+  for (const e of ["admin@pvrs.org", "ivy@pvrs.org", "x@example.com"]) { const r = await _checkCaller(tok(e)).then(() => "allowed", err => err.code);
+    if (r !== "permission-denied") { fail++; console.log(`✗ ${e}: ${r}`); } else console.log(`✓ ${e} is refused`); }
+  const un = await _checkCaller({ token: { email: "dkota@pvrs.org", email_verified: false } }).then(() => "allowed", err => err.code);
+  if (un !== "unauthenticated") { fail++; console.log("✗ unverified owner email allowed"); } else console.log("✓ an unverified email is refused");
+  process.exit(fail ? 1 : 0);
+})();

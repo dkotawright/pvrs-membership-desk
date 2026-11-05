@@ -1,9 +1,9 @@
 # Med Control (the desk's AI assistant)
 
-Med Control is Claude, built into the desk for the owner and admins (never members or applicants):
+Med Control is Claude, built into the desk for the owner only (never admins, interviewers, members or applicants):
 
 - **Chat** (sidebar → Med Control, or ⌘K "Med Control"): ask about applicants, deadlines and the board; ask for email drafts. Answers link to the applicant's file.
-- **Brief** (Board tab → Make brief, owner only): a one-page summary, strengths, things to follow up on, interview questions and a reference digest. Admins can read it.
+- **Brief** (Board tab → Make brief, owner only): a one-page summary, strengths, things to follow up on, interview questions and a reference digest.
 - **Draft a reply** (Messages tab → Draft with Med Control): writes an answer to the applicant's latest message into the reply box. Nothing is sent until you press Send.
 
 ## What it can and can't see
@@ -44,7 +44,7 @@ firebase functions:secrets:set ANTHROPIC_API_KEY
 firebase deploy --only functions:ai
 ```
 
-6. **Switch it on.** In the desk, go to **Settings → Med Control → On → Save**. The Med Control button appears in the sidebar for you and admins.
+6. **Switch it on.** In the desk, go to **Settings → Med Control → On → Save**. The Med Control button appears in your sidebar. Nobody else sees it.
 
 ## Turning it off
 Settings → Med Control → Off hides it everywhere right away. To cut access completely, delete the key in the Anthropic console.

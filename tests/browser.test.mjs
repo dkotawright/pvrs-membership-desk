@@ -823,6 +823,15 @@ try {
       if (!/spam or junk/.test(await page.locator("#linkSent").textContent())) fail("no spam note after sending"); else ok("the sent message warns about spam");
       await ctx.close(); }
   }
+  // ---- Med Control is owner only: admins see no button, brief or draft chip, even when it's on
+  { const { ctx, page } = await open(browser, { user: { email: "admin@pvrs.org", displayName: "Casey" } }); await wait(page, 600);
+    await page.evaluate(() => { const m = window.__mock.docs; m.set("settings/main", { ...m.get("settings/main"), ai: true }); window.__mock.emit(); }); await wait(page, 400);
+    if (await page.locator("#aiBtn").isVisible()) fail("admin sees Med Control"); else ok("admins never see Med Control");
+    await pickApplicant(page, "Georgia Thurmond"); await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
+    if (await page.locator(".aibrief").count()) fail("admin sees the AI brief"); else ok("admins don't see the AI brief");
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 200); await page.locator("#palQ").fill("med control"); await wait(page, 200);
+    if (/Med Control/.test(await page.locator("#palList").textContent())) fail("admin finds Med Control in ⌘K"); else ok("Med Control isn't in an admin's ⌘K");
+    await ctx.close(); }
   // ---- AI summary: interview, references together, and an advisory recommendation
   { const { ctx, page } = await open(browser); await wait(page, 600);
     await page.evaluate(() => { const m = window.__mock.docs; m.set("settings/main", { ...m.get("settings/main"), ai: true }); m.get("applicants/a1/private/main").ai = { brief: { at: Date.now(), summary: "Summary here.", interviewSummary: "They want to give back.", referencesSummary: "Two of three answered, both positive.", recommendation: "look_closer", recommendationReasons: ["One reference is still out"], strengths: [], followUps: [], questions: [], references: [] } }; window.__mock.emit(); }); await wait(page, 400);

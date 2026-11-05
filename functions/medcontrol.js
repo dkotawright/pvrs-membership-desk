@@ -3,7 +3,7 @@
 //   brief - a one-page applicant brief: summary, interview summary, combined reference summary, an advisory
 //           recommendation (proceed / look closer / not ready), strengths, follow-ups, questions, reference digest; saved to applicants/{id}/private/main.ai.brief                     [Claude Sonnet 5.5]
 //   reply - a draft answer to the applicant's latest portal message                                [Claude Haiku 5.5]
-// Owner and admins only, capped per person per day. The function loads the records itself and filters them here,
+// Owner only (Dkota, Nov 2026: no one else, so it can't be spammed), capped per day. The function loads the records itself and filters them here,
 // so the model NEVER sees: license numbers, date/place of birth, addresses, phone numbers, reference contact details,
 // conviction explanations, uploaded files, or anything in the confidential vault. It only drafts; people send.
 // Needs the secret ANTHROPIC_API_KEY (docs/med-control.md). Deploy: firebase deploy --only functions:ai
@@ -28,9 +28,7 @@ async function checkCaller(auth){
   if (!t || !t.email || t.email_verified !== true) throw new HttpsError("unauthenticated", "Sign in first.");
   const email = String(t.email).toLowerCase();
   if (email === OWNER_EMAIL) return { email, owner: true };
-  const s = await db.doc(`staff/${email}`).get();
-  if (s.exists && s.data().role === "admin") return { email, owner: false };
-  throw new HttpsError("permission-denied", "Med Control is for the membership coordinator and admins.");
+  throw new HttpsError("permission-denied", "Med Control is only for the membership coordinator.");
 }
 async function countCall(email){
   const day = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
@@ -241,3 +239,4 @@ exports.medControl = onCall({ secrets: [ANTHROPIC_API_KEY], maxInstances: 3, tim
 });
 // exported so tests can check the privacy filter without calling the API
 exports._safeApplicant = safeApplicant;
+exports._checkCaller = checkCaller;

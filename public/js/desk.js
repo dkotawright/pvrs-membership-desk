@@ -2506,7 +2506,7 @@ function openTwoStep(){
 
 /* ---------- Med Control: the AI assistant (functions/medcontrol.js does the work and the privacy filtering) ---------- */
 // Off until the owner switches it on in Settings (after the board's OK and the API key are in place).
-const aiOn = () => !!(S.admin && S.settings.ai === true);
+const aiOn = () => !!(S.owner && S.settings.ai === true);   // owner only; the function refuses everyone else too
 function paintAi(){ const b = $("#aiBtn"); if (b) b.hidden = !aiOn(); }
 const FN_URL = "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 let aiCall = null;
