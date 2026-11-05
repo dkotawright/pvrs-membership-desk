@@ -52,7 +52,7 @@ function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis 
   return `<section class="card glass" id="orientCard"><h2>Orientation</h2>
     <p class="info" style="margin:0">${o.done} of ${o.total} done${left === null ? "" : left < 0 ? `. This was due ${esc(new Date(o.due + "T12:00").toLocaleDateString())}, so please reach out` : `. Please finish by ${esc(new Date(o.due + "T12:00").toLocaleDateString())}`}.</p>
     <div class="or-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
-    <h3 class="or-h">Your session</h3>${session}<h3 class="or-h">Checklist</h3><div class="or-list">${(o.items || []).map(item).join("")}</div>
+    <h3 class="or-h">Your session</h3>${session}<h3 class="or-h">Checklist</h3><p class="info" style="margin:0">All of these are required before you can be issued equipment or run calls.</p><div class="or-list">${(o.items || []).map(item).join("")}</div>
     ${lib.length ? `<h3 class="or-h">Documents</h3><div class="docbtns">${lib.map(d => `<button class="btn small" type="button" data-olib="${esc(d.id)}">${esc(d.name)}</button>`).join("")}</div>` : ""}${check}</section>`;
 }
 export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "", oslots = [], opick = null, obusy = false, lib = [], checkinDone = false }){

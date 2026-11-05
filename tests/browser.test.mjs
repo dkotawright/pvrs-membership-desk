@@ -416,14 +416,14 @@ try {
     await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
     await page.locator('[data-k="board.result"] [data-v="approved"]').click(); await wait(page, 300);
     await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
-    await page.locator('[data-k="onb.items.id_badge_issued"]').fill(localDay(Date.now())); await page.locator('[data-k="onb.items.id_badge_issued"]').blur(); await wait(page, 400);
+    await page.locator('[data-k="onb.items.completed_application"]').fill(localDay(Date.now())); await page.locator('[data-k="onb.items.completed_application"]').blur(); await wait(page, 400);
     if (!/1 of 11 done/.test(await page.locator("#onbCount").textContent())) fail("checklist count: " + await page.locator("#onbCount").textContent()); else ok("checking off an item updates the count");
     await page.keyboard.press("Escape"); await wait(page, 200); await page.keyboard.press("Escape"); await wait(page, 500);
     await page.evaluate(() => document.querySelector("#overviewBtn")?.click()); await wait(page, 500);
     await page.evaluate(() => document.querySelector('[data-cmd="todoall"]')?.click()); await wait(page, 300);
     const td = await page.locator(".todo .todoitem").evaluateAll(r => r.map(x => x.textContent.replace(/\s+/g, " ").trim()));
     if (!td.some(t => /CPR \/ BLS card expires in 10 days.*Marcus Bell/.test(t))) fail("no expiry to do: " + JSON.stringify(td)); else ok("To do warns 30 days before a card expires");
-    if (!td.some(t => /Finish the new-member checklist.*Georgia Thurmond.*1 of 11 done · next: Uniform and gear issued/.test(t))) fail("no checklist to do: " + JSON.stringify(td)); else ok("To do tracks the new-member checklist after approval");
+    if (!td.some(t => /Finish the new-member checklist.*Georgia Thurmond.*1 of 11 done · next: Copy of driver's license/.test(t))) fail("no checklist to do: " + JSON.stringify(td)); else ok("To do tracks the new-member checklist after approval");
     await ctx.close();
   }
   // ---- Data retention: old declined/withdrawn files are flagged for review, never deleted automatically
@@ -745,7 +745,7 @@ try {
   // ---- Orientation: locked until Sterling is clear, moved by hand; new members see only their dashboard
   {
     const stS = { result: "approved", date: "2026-10-20" }, pm = (bg, extra = {}) => ({ board: stS, appr: { committee: "yes" }, bg, portal: { invited: "2026-09-01" }, notify: { applicant: "2026-10-21" }, ...extra });
-    const seed = [["applicants/o1", { name: "Sam Ready", email: "sam@example.com", type: "Regular", app: { received: "2026-09-01" }, updatedAt: Date.now() }], ["applicants/o1/private/main", pm({ sterReq: "2026-10-21", sterDone: "2026-10-28", sterResult: "clear" })],
+    const seed = [["applicants/o1", { name: "Sam Ready", email: "sam@example.com", type: "Regular", app: { received: "2026-09-01", complete: "yes" }, updatedAt: Date.now() }], ["applicants/o1/private/main", pm({ sterReq: "2026-10-21", sterDone: "2026-10-28", sterResult: "clear" })],
       ["applicants/o2", { name: "Una Waiting", email: "una@example.com", app: { received: "2026-09-01" }, updatedAt: Date.now() }], ["applicants/o2/private/main", pm({ sterReq: "2026-10-21" })],
       ["applicants/o3", { name: "Rae Review", email: "rae@example.com", app: { received: "2026-09-01" }, updatedAt: Date.now() }], ["applicants/o3/private/main", pm({ sterReq: "2026-10-21", sterDone: "2026-10-28", sterResult: "review" })],
       ["portal/o1", { email: "sam@example.com", name: "Sam Ready", firstName: "Sam", steps: [{ label: "Interview", state: "done" }], docs: [], refs: [], bookingOpen: false }], ["portalEmails/sam@example.com", { id: "o1" }],
@@ -760,17 +760,21 @@ try {
     if (await page.locator(".or-grid").count()) fail("someone in orientation before being moved"); else ok("nobody enters orientation on their own");
     if (await page.locator('[data-omove="o2"],[data-omove="o3"]').count()) fail("can move before Sterling"); else ok("only Sterling-clear people can be moved");
     await page.locator('[data-omove="o1"]').click(); await wait(page, 300);
+    const sheet = await page.locator("#modal").textContent(); if (!/Sam/.test(sheet)) fail("move window");
     await page.locator("#mvEmail").fill("sam@pvrs.org"); await page.locator("#mvGo").click(); await wait(page, 2200);
     const o = await page.evaluate(() => { const m = window.__mock.docs; return { pv: m.get("applicants/o1/private/main"), a: m.get("applicants/o1"), pd: m.get("portal/o1"), msg: [...m.entries()].filter(([k]) => k.startsWith("portal/o1/messages/")).map(([, v]) => v.text) }; });
     if (!o.pv.onb?.orientStarted || !o.pd.orientation || o.pd.orientation.items.length < 5 || !o.pd.orientation.due) fail("move: " + JSON.stringify([o.pv.onb, o.pd.orientation])); else ok("moving opens the orientation checklist with a due date");
+    const lab = o.pd.orientation.items.map(i => i.label + (i.cert ? "+" : "")).join("|");
+    if (!/^Completed application\|Copy of driver's license\+/.test(lab) || !/Equipment request\+/.test(lab) || /Orientation form[^|]*\+/.test(lab)) fail("sheet items: " + lab); else ok("the checklist is PVRS's mandatory sheet, with uploads where they make sense");
+    if (!o.pd.orientation.items[0].date) fail("completed application not filled in"); else ok("the completed application is checked off automatically");
     if (o.a.email !== "sam@pvrs.org" || o.pd.email !== "sam@pvrs.org") fail("sign-in email not changed: " + JSON.stringify([o.a.email, o.pd.email])); else ok("moving can switch them to a new sign-in email");
     if (!o.msg.some(x => /moving on to orientation/.test(x))) fail("no welcome message"); else ok("moving posts a message to them");
     const others = await page.evaluate(() => [window.__mock.docs.get("portal/o2")?.orientation, window.__mock.docs.get("portal/o3")?.orientation]);
     if (others.some(Boolean)) fail("orientation opened for a locked file"); else ok("locked files get no orientation data");
     await page.locator("#orientBtn").click(); await wait(page, 400);
     if (!(await page.locator(".or-grid").count())) fail("no grid after moving"); else ok("the board shows them against every requirement");
-    await page.locator('[data-ocell="o1"]').first().click(); await wait(page, 400);
-    if (!(await page.locator('[data-ocell="o1"].on').count())) fail("cell didn't toggle"); else ok("clicking a box marks it done");
+    await page.locator('[data-ocell="o1"]').nth(1).click(); await wait(page, 400);
+    if (!(await page.locator('[data-ocell="o1"]').nth(1).evaluate(b => b.classList.contains("on")))) fail("cell didn't toggle"); else ok("clicking a box marks it done");
     await page.screenshot({ path: path.join(OUT, "70-orientation-board.png") });
     await page.locator('[data-obook="o1"]').click(); await wait(page, 300); await page.locator('[data-opick="s1"]').click(); await wait(page, 500);
     const bk = await page.evaluate(() => [window.__mock.docs.get("orientSlots/s1").bookedBy, window.__mock.docs.get("portal/o1").orient?.slotId]);
@@ -779,7 +783,7 @@ try {
     const box = await page.locator("#orientBox").textContent();
     if (!/Status: New member/.test(box) || !/One-on-one session/.test(box)) fail("onboard box: " + box); else ok("the Onboard tab shows their status and session");
     await page.locator('[data-oact="attend"]').click(); await wait(page, 1600);
-    if (!(await page.evaluate(() => window.__mock.docs.get("applicants/o1/private/main").onb?.items?.orientation_completed))) fail("attended not saved"); else ok("Mark attended checks off orientation");
+    if (!(await page.evaluate(() => Object.keys(window.__mock.docs.get("applicants/o1/private/main").onb?.items || {}).some(k => k.startsWith("orientation_form"))))) fail("attended not saved"); else ok("Mark attended checks off orientation");
     await page.locator('[data-oact="trainers"]').click(); await wait(page, 300); await page.locator('.cv-pick input[value="ivy@pvrs.org"]').check(); await page.locator("#trSave").click(); await wait(page, 400);
     const so = await page.evaluate(() => window.__mock.docs.get("signoffs/o1"));
     if (so?.trainers?.join() !== "ivy@pvrs.org" || (so.items || []).length < 3) fail("signoff doc: " + JSON.stringify(so)); else ok("assigning a trainer creates their sign-off list");
@@ -804,6 +808,9 @@ try {
       const t = await page.locator("#portal").textContent();
       if (!/New member/.test(t) || !/Your session/.test(t) || !/Checklist/.test(t)) fail("dashboard: " + t.slice(0, 300)); else ok("a new member gets the orientation dashboard");
       if (/Your application/.test(t) || await page.locator("#ivCard").count() || await page.locator("#refCard").count() || /What to expect/.test(t)) fail("application pages still showing"); else ok("the application pages are gone for them");
+      if (!/required before you can be issued equipment or run calls/.test(t)) fail("no requirement note"); else ok("new members see why the checklist matters");
+      const medBtn = page.locator('[data-upload^="onb:copy_of_health"]');
+      if (!/🔒/.test(await medBtn.textContent().catch(() => ""))) fail("medical item isn't marked secure"); else ok("the health physical item uploads through the secure route");
       if (!/Squad handbook/.test(t)) fail("no library doc in dashboard"); else ok("new members see documents meant for them");
       await page.locator("#orientCard").screenshot({ path: path.join(OUT, "71-orientation-dashboard.png") });
       await page.locator('[data-crate="4"]').click(); await page.locator("#ciGoing").fill("Going well"); await page.locator("[data-csend]").click(); await wait(page, 400);
@@ -1008,20 +1015,34 @@ try {
     await card.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(OUT, `18-stats${dark ? "-dark" : ""}.png`) });
     await ctx.close();
   }
-  // ---- desktop: the applicant list tucks into a strip; filters slide it out
+  // ---- desktop: the applicants live in a box on the dashboard (no slide-out strip)
   {
-    const { ctx, page } = await open(browser); await wait(page, 400); await page.mouse.move(900, 500); await wait(page, 900);
-    const tucked = () => page.evaluate(() => getComputedStyle(document.querySelector(".roster")).transform !== "none");
-    if (!(await tucked())) fail("list not tucked on the dashboard"); else ok("desktop: the applicant list tucks into a strip by default");
-    await page.locator('#chips [data-f="screen"]').click(); await wait(page, 700);
-    if (await tucked() || !/Screening/.test(await page.locator("#rosterTitle").textContent())) fail("filter didn't slide the list out"); else ok("choosing a filter slides the list out with the results");
-    await page.mouse.click(1200, 600); await wait(page, 900);
-    if (!(await tucked())) fail("list didn't tuck after clicking elsewhere"); else ok("clicking elsewhere tucks it away again");
-    await page.locator(".rhandle").hover(); await wait(page, 700);
-    await page.locator("#pinBtn").click(); await page.mouse.move(1200, 600); await wait(page, 900);
-    if (await tucked()) fail("pinned list still tucks"); else ok("the pin keeps the list docked open");
+    const { ctx, page } = await open(browser); await wait(page, 500);
+    const inBox = () => page.evaluate(() => { const R = document.querySelector(".roster"); return !!R.closest("#ovRoster") && getComputedStyle(R).display !== "none"; });
+    if (!(await inBox())) fail("list isn't in the dashboard box"); else ok("desktop: the applicant list is a box on the dashboard");
+    if (await page.locator(".rhandle").count() || await page.locator("#pinBtn").count()) fail("slide-out strip still there"); else ok("the slide-out strip and pin are gone");
+    if (await page.locator("#ovRoster .arow").count() < 3) fail("box rows"); else ok("the box lists the applicants");
+    await page.locator("#ovRoster #q").fill("georgia"); await wait(page, 300);
+    if (await page.locator("#ovRoster .arow").count() !== 1) fail("box search"); else ok("search works in the box");
+    if (await page.evaluate(() => document.activeElement?.id) !== "q") fail("search lost focus"); else ok("search keeps your cursor");
+    await page.evaluate(() => { window.__mock.docs.get("applicants/a2").updatedAt = Date.now(); window.__mock.docs.get("applicants/a2").name = "Marcus Bell Jr"; window.__mock.emit(); }); await wait(page, 400);
+    if (await page.evaluate(() => document.activeElement?.id) !== "q" || !(await inBox())) fail("a live update broke the box"); else ok("live updates leave the box and your typing alone");
+    await page.locator("#ovRoster #q").fill(""); await wait(page, 200);
+    await page.locator("#ovRoster .arow").first().click(); await wait(page, 400);
+    if (await page.locator("#ovRoster").count() || !(await page.locator("#backBtn").isVisible())) fail("file view"); else ok("opening a file gives a clear way back");
+    if (!/Applicants/.test(await page.locator("#backBtn").textContent())) fail("back label"); else ok("the back button says Applicants");
+    await page.locator('#chips [data-f="screen"]').click(); await wait(page, 500);
+    if (!(await inBox()) || !/Screening/.test(await page.locator("#rosterTitle").textContent())) fail("sidebar filter from a file"); else ok("a sidebar filter returns to the dashboard and filters the box");
+    await page.locator("#msgsBtn").click(); await wait(page, 300);
+    if (!(await page.locator(".cv").count()) || !(await page.evaluate(() => !!document.querySelector(".roster")))) fail("Messages lost the list"); else ok("Messages opens without destroying the list");
+    await page.locator("#overviewBtn").click(); await wait(page, 400);
+    if (!(await inBox())) fail("box gone after Messages"); else ok("the box comes back on the dashboard");
+    await page.screenshot({ path: path.join(OUT, "74-applicants-box.png") });
     await ctx.close();
   }
+  { const { ctx, page } = await open(browser, { w: 390, h: 844 }); await wait(page, 500);
+    if (await page.locator("#ovRoster .roster").count() || !(await page.locator(".roster").isVisible())) fail("phone list"); else ok("phones keep the applicant list as its own screen");
+    await ctx.close(); }
   // ---- New applicant (owner)
   {
     const { ctx, page } = await open(browser);

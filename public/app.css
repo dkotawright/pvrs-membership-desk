@@ -694,31 +694,6 @@ body{background:
 .seg button:disabled{cursor:default}
 .seg button:disabled:not(.on){opacity:.5}
 
-/* ---------- applicant list tucks away to a strip on desktop (Oct 22: always, not only with a file open); pin keeps it docked ---------- */
-.rhandle,.pinbtn{display:none}
-@media (min-width:861px){
-  .pinbtn{display:grid;margin-left:auto}
-  .pinbtn[aria-pressed="true"]{color:var(--navy);background:var(--tab-on)}
-  .titlebar .tt{flex:0 1 auto}
-  .main{position:relative}
-  .app:not(.pinned) .main{grid-template-columns:minmax(0,1fr);padding-left:26px;overflow:hidden;border-radius:24px}
-  .app:not(.pinned) .roster{position:absolute;left:0;top:0;bottom:0;width:min(360px,46vw);z-index:20;
-    transform:translateX(calc(-100% + 20px));transition:transform .28s cubic-bezier(.2,.8,.2,1) .35s,box-shadow .28s .35s;
-    box-shadow:0 1px 2px var(--glass-shade)}
-  .app:not(.pinned) .roster:not(.nohover):hover,.app:not(.pinned) .roster.peek,.app:not(.pinned) .roster:has(#q:focus),.app:not(.pinned) .roster:has(select:focus){
-    transform:none;transition-delay:.12s;box-shadow:inset 0 1px 0 var(--glass-hi),0 30px 70px -20px rgba(0,0,0,.4),0 0 0 1px var(--glass-edge)}
-  .app:not(.pinned) .rhandle{display:flex;position:absolute;right:0;top:0;bottom:0;width:20px;align-items:center;justify-content:center;z-index:6;cursor:e-resize;
-    border-left:1px solid var(--glass-line);background:color-mix(in srgb,var(--box) 40%,transparent);transition:opacity .2s .35s}
-  .app:not(.pinned) .rhandle span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--fg3)}
-  .app:not(.pinned) .roster:not(.nohover):hover .rhandle,.app:not(.pinned) .roster:has(#q:focus) .rhandle{opacity:0;transition-delay:.12s}
-  .app:not(.pinned) .roster .top,.app:not(.pinned) .roster .list{transition:opacity .2s .35s}
-  .app:not(.pinned) .roster:is(.nohover,:not(:hover)):not(.peek):not(:has(#q:focus)):not(:has(select:focus)) .top,
-  .app:not(.pinned) .roster:is(.nohover,:not(:hover)):not(.peek):not(:has(#q:focus)):not(:has(select:focus)) .list{opacity:0}
-  .app:not(.pinned) .roster.peek .rhandle{opacity:0}
-  .app:not(.pinned) .detail{grid-column:1}
-}
-@media (prefers-reduced-motion:reduce){ .app .roster,.app .rhandle,.app .roster .top,.app .roster .list{transition:none!important} }
-
 /* team access requests */
 .navbadge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--red-fill);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
 .navbadge[hidden]{display:none}
@@ -1780,3 +1755,19 @@ body:has(.gate:not([hidden])){background:
 #staffSignin .or{margin-top:2px}
 .aib-rec{padding:10px 14px;border-radius:14px;background:color-mix(in srgb,var(--fg3) 12%,transparent);margin:6px 0}.aib-rec b{font-size:14.5px}.aib-rec ul{margin:6px 0 0;padding-left:18px;font-size:13px}
 .aib-rec.good{background:color-mix(in srgb,#1F9A45 14%,transparent)}.aib-rec.warn{background:color-mix(in srgb,#F07A1A 16%,transparent)}
+
+/* ---------- Applicants box on the dashboard (Nov 4: replaces the slide-out strip) ---------- */
+.rhandle{display:none}
+@media (min-width:861px){
+  .main{grid-template-columns:minmax(0,1fr)}
+  .main>.roster{display:none}
+  .back{display:inline-flex}
+  .ovroster .roster{display:flex;flex-direction:column;max-height:min(540px,64vh);overflow-y:auto;border:0;border-radius:26px;background:var(--frost-2,var(--box));box-shadow:var(--soft,none);transform:none}
+  .ovroster .roster .top{border-radius:26px 26px 0 0}
+  .ovroster .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:4px 8px;align-content:start;padding:8px 10px 14px}
+  .ovroster .list>.empty{grid-column:1/-1}
+  .ovroster .bulkbar{position:sticky;bottom:0;z-index:4;border-radius:0 0 26px 26px}
+  .ovroster .bk-acts{width:auto;margin-left:auto}
+}
+.ovroster{scroll-margin:12px}
+body.member-user nav:has(#chips),body.member-user #overviewBtn{display:none}

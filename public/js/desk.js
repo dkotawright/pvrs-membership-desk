@@ -166,7 +166,7 @@ function tabHTML(tab){
     ${group("Mentor",[F.note("Pair each new member with an experienced member for their first year. You'll get a To do if a month goes by without a check-in."),
       F.text("onb.mentor","Mentor","Member's name"),F.date("onb.mentorSince","Paired on"),F.date("onb.mentorCheck","Last check-in"),F.area("onb.mentorNotes","Notes","How it's going")],"")}
     ${group("Expiration dates",[F.note("You'll get a To do 30 days before any of these expire."),`<div class="row"><span class="lbl">Driver's license<small>Entered on the Checks tab</small></span><b id="dlExpEcho">—</b></div>`,
-      F.date("onb.cprExpires","CPR / BLS card expires"),F.date("onb.emtExpires","EMS certification expires")])}
+      F.date("onb.cprExpires","CPR / BLS card expires"),F.text("onb.emtCard","EMT card number","Card #"),F.date("onb.emtExpires","EMT card expires")])}
   </div>
   <section class="group" style="margin-top:18px"><h3><span>Full checklist</span></h3><div class="ios" id="miles"></div></section>`;
   if (tab === "msgs") return `<div class="msgpane">
@@ -303,10 +303,14 @@ function restoreFocus(fk){
 // For each applicant in process: what needs doing next, most actionable first. "Waiting" states aren't listed.
 const okEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || "").trim());
 // New-member checklist (Onboard tab). The owner edits the list in Settings; each item's key comes from its label.
-const DEFAULT_ONB = ["ID badge issued", "Uniform and gear issued", "Building access set up", "Paging / dispatch app set up", "Orientation completed",
-  "CPR / BLS", "EVOC (drivers)", "ICS-100", "ICS-700", "HIPAA training", "Bloodborne pathogens training"];
+// PVRS's mandatory new-member sheet (Dkota's paper form, Nov 4), required before issuing equipment or running calls. Edit in Settings.
+const DEFAULT_ONB = ["Completed application", "Copy of driver's license", "Copy of training records (EMT, CPR, etc.)", "Insurance beneficiary card, completed",
+  "Copy of health physical, record of PPD, Hep B record or refusal", "Verification of completion of IS-100, IS-700", "Verification of Blood Borne Pathogen training",
+  "SOP/Constitution acceptance form", "Confidentiality statement", "Equipment request", "Orientation form completed, signed by member and orientation committee member"];
+// The starter list from before the real sheet: anyone still on it moves to the real list automatically.
+const OLD_ONB = ["ID badge issued", "Uniform and gear issued", "Building access set up", "Paging / dispatch app set up", "Orientation completed", "CPR / BLS", "EVOC (drivers)", "ICS-100", "ICS-700", "HIPAA training", "Bloodborne pathogens training"];
 const onbKey = l => String(l).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40) || "item";
-const onbRaw = () => Array.isArray(S.settings.onbItems) ? S.settings.onbItems : DEFAULT_ONB;
+const onbRaw = () => Array.isArray(S.settings.onbItems) && S.settings.onbItems.join("|") !== OLD_ONB.join("|") ? S.settings.onbItems : DEFAULT_ONB;
 const onbItems = () => onbRaw().map(l => { const label = String(l).split("|")[0].trim(); return [onbKey(label), label]; });
 const onbLink = key => { const hit = onbRaw().find(l => onbKey(String(l).split("|")[0].trim()) === key), u = hit && String(hit).split("|")[1]?.trim(); return u && /^https:\/\//.test(u) ? u : ""; };
 // Starter list for trainer sign-offs; edit it in Settings.
@@ -533,6 +537,7 @@ function renderOverview(){
       <p>${rows.length ? `${inProc.length} applicant${inProc.length===1?"":"s"} in process${S.admin && c.board ? `, ${c.board} waiting on the board` : ""}${thisWeek ? `, ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet."}</p></div>
       <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
     <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
+    ${S.role !== "member" ? `<div id="ovRoster" class="ovroster"></div>` : ""}
     ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
       ${unreadChatTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open messages</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => S.apps.has(m.appId) && unreadIn("a:" + m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
         return `<button class="oitem" type="button" data-openmsg="${esc(id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name)}</b><small>${esc(last.text.slice(0, 80))}</small></span><span class="when"><span class="newdot"></span>${esc(ago(last.at))}</span></button>`; }).join("")}</div></section>` : ""}
@@ -541,8 +546,9 @@ function renderOverview(){
     : `<div class="ovmain single"><div class="ovcol">${comingUp}</div></div>`}
     <p class="kbdhint">Tip: press <kbd>⌘K</kbd> to find anyone or run a command, <kbd>J</kbd> <kbd>K</kbd> to move through applicants, <kbd>?</kbd> for all shortcuts.</p>
   </div></div>`;
-  if (D.querySelector(".ov") && D._ovHTML === html) return;
-  D._ovHTML = html; D.innerHTML = html; stackCols(D);
+  if (D.querySelector(".ov") && D._ovHTML === html) return placeRoster();
+  const rst = rosterState(); parkRoster();
+  D._ovHTML = html; D.innerHTML = html; stackCols(D); placeRoster(rst);
   const ov = D.querySelector(".ov"); if (ov) ov.scrollTop = keepScroll;
 }
 
@@ -628,7 +634,16 @@ function renderDetail(){
   [".roster", ".side"].forEach(s => { const el = $(s); if (el) el.inert = (!!S.sel || !!S.mOv) && narrow && $("#modal").hidden; });
   paintMnav();
 }
+// Desktop: the applicant list lives in a box on the dashboard. It's one element moved in and out, so search, filters,
+// sort and Select keep working; it must leave #detail before anything rewrites that pane.
+const isDesk = () => matchMedia("(min-width:861px)").matches;
+function rosterState(){ const R = $(".roster"), a = document.activeElement, keep = R && R.contains(a) ? a : null; return R ? { keep, caret: keep ? keep.selectionStart : 0, top: R.scrollTop } : null; }
+function parkRoster(){ const R = $(".roster"), main = $(".main"); if (R && R.parentElement !== main) main.insertBefore(R, $("#detail")); }
+function placeRoster(st){ const R = $(".roster"), slot = $("#ovRoster"); if (!R) return;
+  if (isDesk() && slot && !S.sel && !S.chatOn) { if (R.parentElement !== slot) slot.appendChild(R); } else parkRoster();
+  if (st) { R.scrollTop = st.top; if (st.keep && R.contains(st.keep)) { st.keep.focus({ preventScroll: true }); try { st.keep.setSelectionRange(st.caret, st.caret); } catch {} } } }
 function paintDetail(){
+  parkRoster();
   const D = $("#detail"), a = S.apps.get(S.sel);
   $("#app").classList.toggle("open", !!a);
   $("#overviewBtn").classList.toggle("on", !a && !S.chatOn);
@@ -638,7 +653,7 @@ function paintDetail(){
   if (!tabs.some(t => t[0] === S.tab)) S.tab = "app";
   // The header sticks to the top of the scrolling file and the tab bar floats at the bottom; content scrolls under both.
   D.innerHTML = `<div class="dbody" id="dbody"><div class="dhead">
-      <div class="drow"><button class="btn small back" type="button" id="backBtn" aria-label="Back to roster">‹ Roster</button>
+      <div class="drow"><button class="btn small back" type="button" id="backBtn" aria-label="Back to applicants">‹ Applicants</button>
         <span class="av" id="dAv" aria-hidden="true"></span>
         <div class="dname"><h2 id="dName"></h2><div class="sub" id="dSub"></div></div>
         ${S.admin ? `<div class="hacts">
@@ -1711,16 +1726,13 @@ function openMore(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("[data-notif]")) { closeModal(); setTimeout(openNotifications, 60); return; } const b = e.target.closest("[data-more]"); if (b) { closeModal(); setTimeout(() => $("#" + b.dataset.more).click(), 60); } };
 }
 function deselect(){ if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
+// Choosing a filter (sidebar or stage tile) shows the results in the dashboard's Applicants box.
 function setFilter(f, focusList){
-  S.filter = f; renderList();
-  peekList();
-  if (focusList) { const L = $("#list"); $(".roster").scrollTop = 0; const first = L.querySelector(".arow"); if (first && innerWidth > 860) first.focus(); }
-}
-// Desktop: the list lives as a strip on the left; choosing a filter slides it out to show the results until the pointer leaves it.
-function peekList(){
-  const R = $(".roster"); if (!R || innerWidth <= 860 || $("#app").classList.contains("pinned")) return;
-  R.classList.remove("nohover"); R.classList.add("peek");
-  clearTimeout(peekList.t); peekList.t = setTimeout(() => { if (!R.matches(":hover")) R.classList.remove("peek"); }, 6000);
+  S.filter = f;
+  if (isDesk()) { if (S.chatOn) { closeChat(); } if (S.sel) deselect(); else renderDetail(); }
+  renderList();
+  const slot = $("#ovRoster"); if (slot && isDesk()) slot.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion:reduce)").matches ? "auto" : "smooth" });
+  if (focusList) { const L = $("#list"); $(".roster").scrollTop = 0; const first = L.querySelector(".arow"); if (first && innerWidth > 860) first.focus({ preventScroll: true }); }
 }
 function moveSel(dir){
   const ids = S.vis || []; if (!ids.length) return;
@@ -1788,7 +1800,7 @@ function onKeys(e){
   if (e.key === "j" || (e.key === "ArrowDown" && inList)) { e.preventDefault(); moveSel(1); }
   else if (e.key === "k" || (e.key === "ArrowUp" && inList)) { e.preventDefault(); moveSel(-1); }
   else if ((e.key === "n" || e.key === "N") && S.canEdit) { e.preventDefault(); openNew(); }
-  else if (e.key === "/") { e.preventDefault(); $("#q").focus(); }
+  else if (e.key === "/") { e.preventDefault(); if (isDesk() && (S.sel || S.chatOn)) { if (S.chatOn) closeChat(); if (S.sel) deselect(); else renderDetail(); } $("#q").focus(); }
   else if (e.key === "?") { e.preventDefault(); openShortcuts(); }
   else if (S.sel && /^[1-9]$/.test(e.key) && tabs[+e.key - 1]) { e.preventDefault(); switchTab(tabs[+e.key - 1]); }
   else if (S.sel && (e.key === "[" || e.key === "]")) { e.preventDefault(); const i = tabs.indexOf(S.tab); switchTab(tabs[(i + (e.key === "]" ? 1 : -1) + tabs.length) % tabs.length]); }
@@ -1806,18 +1818,7 @@ function bindEvents(){
   $("#chips").addEventListener("click", onFilter);
   $("#chipsMini").addEventListener("click", onFilter);
   $("#q").addEventListener("input", e => { S.q = e.target.value; renderList(); });
-  // While a file is open the list tucks away to a strip on the left; hover (or ⌘K) slides it out. Pin keeps it docked.
-  const setPinned = on => { $("#app").classList.toggle("pinned", on); $("#pinBtn").setAttribute("aria-pressed", on); $("#pinBtn").title = on ? "Let the list tuck away to a strip" : "Keep the list open"; prefs.set("pinned", on ? "1" : ""); };
-  setPinned(prefs.get("pinned") === "1");
-  $("#pinBtn").addEventListener("click", () => setPinned(!$("#app").classList.contains("pinned")));
-  // After picking someone from the slid-out list, let it tuck away again instead of holding it open by focus.
-  // and don't slide back out under the mouse until the pointer has left the list once.
-  const R = $(".roster");
-  $("#list").addEventListener("click", e => { if ($("#app").classList.contains("pinned") || !e.target.closest(".arow")) return;
-    R.classList.remove("peek"); R.classList.add("nohover"); setTimeout(() => { const f = document.activeElement; if (f && f.closest && f.closest(".roster") && f.id !== "q") f.blur(); }, 0); });
-  R.addEventListener("mouseleave", () => { R.classList.remove("nohover"); R.classList.remove("peek"); });
-  document.addEventListener("pointerdown", e => { if (R.classList.contains("peek") && !e.target.closest(".roster, #chips, #chipsMini, .stg, [data-filter]")) R.classList.remove("peek"); });
-  $(".rhandle").addEventListener("mouseenter", () => R.classList.remove("nohover"));
+  matchMedia("(min-width:861px)").addEventListener("change", () => { if (!S.sel && !S.chatOn) renderDetail(); placeRoster(); });
   const sortSel = $("#sort"); sortSel.value = S.sort; sortSel.addEventListener("change", e => { S.sort = e.target.value; prefs.set("sort", S.sort); renderList(); });
   $("#overviewBtn").addEventListener("click", () => { if (S.chatOn) { closeChat(); renderDetail(); return; } if (S.sel) deselect(); else { S.filter = "all"; renderList(); } });
   $("#mnav").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) mnavGo(b.dataset.m); });
@@ -2743,6 +2744,7 @@ function openChat(key){
   if (S.sel) { if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); }
   S.chatOn = true; S.mOv = false;
   if (!C.key && !matchMedia("(max-width:860px)").matches) { const { chans, apps } = chatItems(); C.key = (chans[0] || apps[0] || {}).key || null; }
+  parkRoster();
   const D = $("#detail"); D._chatKey = undefined; D.innerHTML = "";
   $("#app").classList.remove("open"); $("#app").classList.add("chatopen"); $("#overviewBtn").classList.remove("on"); $("#msgsBtn").classList.add("on");
   paintChat(); renderDetail();
@@ -2750,6 +2752,7 @@ function openChat(key){
 function closeChat(){
   if (!S.chatOn) return;
   S.chatOn = false; $("#app").classList.remove("chatopen"); $("#msgsBtn").classList.remove("on");
+  parkRoster();
   const D = $("#detail"); D._chatKey = undefined; D.innerHTML = "";
 }
 const chIcon = (it, big) => it.kind === "c"
@@ -2966,9 +2969,11 @@ function renderMyInterviews(D){
     <section class="ovcard"><h3>Coming up</h3><div class="olist">${up.map(a => row(a, whenText(a), true)).join("") || `<div class="oempty">Nothing booked yet.</div>`}</div></section>
     ${toSet.length ? `<section class="ovcard"><h3>Waiting on a time</h3><div class="olist">${toSet.map(a => row(a, a.phone || a.email || "Not booked yet", true)).join("")}</div></section>` : ""}
     ${!mine.length ? `<section class="ovcard"><div class="oempty">When the membership coordinator assigns you an applicant, or an applicant books a time you offered, they'll show up here.</div></section>` : ""}
-    ${done.length ? `<section class="ovcard"><h3>Done</h3><div class="olist">${done.map(a => row(a, "Completed " + longDate(get(a, "sched.completed")), false)).join("")}</div></section>` : ""}</div></div>`;
-  if (D.querySelector(".ov") && D._ovHTML === html) return;
-  D._ovHTML = html; D.innerHTML = html;
+    ${done.length ? `<section class="ovcard"><h3>Done</h3><div class="olist">${done.map(a => row(a, "Completed " + longDate(get(a, "sched.completed")), false)).join("")}</div></section>` : ""}
+    ${mine.length ? `<div id="ovRoster" class="ovroster"></div>` : ""}</div></div>`;
+  if (D.querySelector(".ov") && D._ovHTML === html) return placeRoster();
+  const rst = rosterState(); parkRoster();
+  D._ovHTML = html; D.innerHTML = html; placeRoster(rst);
 }
 
 /* ---------- duplicates: same email, phone or name ---------- */
@@ -3044,8 +3049,6 @@ async function mergeFiles(keepId, dropId){
 /* ---------- bulk actions on the applicant list (owner) ---------- */
 function bulkToggle(on){
   S.bulk = on ? new Set() : null;
-  const app = $("#app");
-  if (on) { S._bulkPinned = app.classList.contains("pinned"); app.classList.add("pinned"); } else if (!S._bulkPinned) app.classList.remove("pinned");
   $("#bulkBtn").setAttribute("aria-pressed", String(!!on)); $("#bulkBtn").textContent = on ? "Cancel" : "Select";
   renderList(); paintBulk();
 }
@@ -3191,11 +3194,13 @@ function orientDue(a){ const days = +S.settings.orientDays, st = get(a, "onb.ori
 const orientDaysLeft = a => { const d = orientDue(a); return d ? Math.round((new Date(d + "T12:00") - new Date(today() + "T12:00")) / 864e5) : null; };
 const orientSession = id => S.portal.get(id)?.orient || null;
 const orientItemKey = () => (onbItems().find(([, l]) => /orientation/i.test(l)) || [])[0] || "";
-const CERT_RE = /cpr|bls|evoc|ics-|hipaa|bloodborne|certif|training|card/i;
+// Items a new member can upload proof for; the application itself and the signed orientation form stay with you.
+const CERT_RE = /copy|card|verification|acceptance|statement|request|certif|training/i;
+const NOT_CERT_RE = /^completed application|^orientation/i;
 function orientPayload(a){
   if (!orientOpen(a)) return null;
   const c = orientCounts(a);
-  return { start: get(a, "onb.orientStarted"), due: orientDue(a), done: c.done, total: c.total, items: onbItems().map(([key, label]) => ({ key, label, date: get(a, `onb.items.${key}`) || "", link: onbLink(key), cert: CERT_RE.test(label) })) };
+  return { start: get(a, "onb.orientStarted"), due: orientDue(a), done: c.done, total: c.total, items: onbItems().map(([key, label]) => ({ key, label, date: get(a, `onb.items.${key}`) || "", link: onbLink(key), cert: CERT_RE.test(label) && !NOT_CERT_RE.test(label) })) };
 }
 function checkinDue(a){
   if (!orientOpen(a)) return null;
@@ -3235,10 +3240,12 @@ function orientToDo(){
   for (const f of certs) { const a = S.apps.get(f.appId); out.push({ id: a._id, a, pri: 1, text: `Review ${first(a.name) || a.name}'s certificate`, sub: f.label || "", tab: "onb", age: 0 }); }
   return out;
 }
+const SHORT_ONB = [[/completed application/i, "Application"], [/driver/i, "License"], [/training records/i, "Training records"], [/beneficiary/i, "Insurance card"], [/physical|hep b|ppd/i, "Health records"], [/is-100/i, "IS-100 / 700"], [/blood/i, "Blood borne"], [/sop|constitution/i, "SOP form"], [/confidential/i, "Confidentiality"], [/equipment/i, "Equipment"], [/orientation/i, "Orientation form"]];
+const shortOnb = l => (SHORT_ONB.find(([re]) => re.test(l)) || [])[1] || l;
 /* the board: everyone in orientation against every requirement */
 function openOrientBoard(){
   const cols = onbItems();
-  const M = openModal(`<div class="or-head"><h3>Orientation</h3><span style="flex:1"></span>${S.canEdit ? `<button class="btn small" type="button" data-otimes>Orientation times</button>` : ""}</div>
+  const M = openModal(`<div class="or-head"><h3>Orientation</h3><small class="help" style="margin:0">Required before issuing equipment or running calls</small><span style="flex:1"></span>${S.canEdit ? `<button class="btn small" type="button" data-otimes>Orientation times</button>` : ""}</div>
     <p class="help">${S.canEdit ? "Click a box to mark it done today; click again to undo." : "View only."} You move people in by hand once Sterling is complete and clear.</p><div id="orBoard"></div>
     <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`, true);
   M.classList.add("wide");
@@ -3251,7 +3258,7 @@ function openOrientBoard(){
           <small>${s ? esc(slotLong(s.start)) : "Not booked"}</small>
           <span class="or-acts">${S.canEdit ? `<button class="copy" type="button" data-obook="${esc(a._id)}">${s ? "Change" : "Book"}</button>` : ""}<button class="copy" type="button" data-orec="${esc(a._id)}">Record</button></span></th>
         ${cols.map(([k, l]) => { const d = get(a, `onb.items.${k}`); return `<td><button type="button" class="or-c${d ? " on" : ""}" ${S.canEdit ? "" : "disabled"} data-ocell="${esc(a._id)}" data-k="${esc(k)}" aria-pressed="${!!d}" title="${esc(l)}${d ? " · " + esc(fmtDate(d)) : ""}" aria-label="${esc(a.name || "")}: ${esc(l)}">${d ? "✓" : ""}</button></td>`; }).join("")}</tr>`; };
-    el.innerHTML = (now.length ? `<div class="or-scroll"><table class="or-grid"><thead><tr><th>New member</th>${cols.map(([, l]) => `<th><span>${esc(l)}</span></th>`).join("")}</tr></thead><tbody>${now.map(row).join("")}</tbody></table></div>` : `<div class="oempty">Nobody is in orientation right now.</div>`)
+    el.innerHTML = (now.length ? `<div class="or-scroll"><table class="or-grid"><thead><tr><th>New member</th>${cols.map(([, l]) => `<th title="${esc(l)}"><span>${esc(shortOnb(l))}</span></th>`).join("")}</tr></thead><tbody>${now.map(row).join("")}</tbody></table></div>` : `<div class="oempty">Nobody is in orientation right now.</div>`)
       + (ready.length ? `<div class="group"><h3><span>Ready to move to orientation</span></h3><div class="ios">${ready.map(a => `<div class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>Sterling complete ${esc(fmtDate(get(a, "bg.sterDone")))}</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-omove="${esc(a._id)}">Move to orientation</button>` : ""}</div>`).join("")}</div></div>` : "")
       + (wait.length ? `<div class="group"><h3><span>Waiting on Sterling</span></h3><div class="ios">${wait.map(a => `<div class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>${get(a, "bg.sterDone") ? "Sterling needs review" : get(a, "bg.sterReq") ? "Requested " + esc(fmtDate(get(a, "bg.sterReq"))) : "Not requested yet"}</small></span></div>`).join("")}</div></div>` : "")
       + (fin.length ? `<div class="group"><h3><span>Finished</span></h3><div class="ios">${fin.map(a => `<div class="row"><span class="lbl">${esc(a.name || "Unnamed")}<small>${get(a, "onb.memberSince") ? "Squad member since " + esc(fmtDate(get(a, "onb.memberSince"))) : "Not a squad member yet"}</small></span>${S.canEdit && !get(a, "onb.memberSince") ? `<button class="btn small primary" type="button" data-omember="${esc(a._id)}">Make squad member</button>` : ""}<button class="btn small" type="button" data-orec="${esc(a._id)}">Print record</button></div>`).join("")}</div></div>` : ""); };
@@ -3334,6 +3341,8 @@ function openMoveToOrientation(id){
     try {
       if (email !== lower(a.email)) edit(id, "email", email);
       edit(id, "onb.orientStarted", today());
+      const appKey = (onbItems().find(([, l]) => /^completed application/i.test(l)) || [])[0];   // already known from their file
+      if (appKey && get(a, "app.complete") === "yes" && !get(a, `onb.items.${appKey}`)) edit(id, `onb.items.${appKey}`, get(a, "app.received") || today());
       if (!get(a, "portal.invited")) await inviteToPortal(id, false);
       await addDoc(collection(db, "portal", id, "messages"), { text: `Hi ${first(a.name) || "there"}, your background check is complete, so you're moving on to orientation! Your dashboard now has your checklist. Please pick a time to come in and meet with me.`, from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() });
       closeModal(); toast(`${first(a.name) || "They"} moved to orientation.`);
@@ -3347,7 +3356,7 @@ function openMakeMember(id){
   const c = orientCounts(a), email = lower(a.email);
   if (!email) return toast("Add their email first.");
   const M = openModal(`<h3>Make ${esc(first(a.name) || "them")} a squad member?</h3>
-    ${orientAllDone(a) ? `<p class="help">Orientation is complete.</p>` : `<p class="help"><b>Orientation isn't finished: ${c.done} of ${c.total} done.</b> You can still go ahead.</p>`}
+    ${orientAllDone(a) ? `<p class="help">Orientation is complete.</p>` : `<p class="help"><b>Orientation isn't finished: ${c.done} of ${c.total} done.</b> These are required before issuing equipment or running calls. You can still go ahead.</p>`}
     <p class="help">${esc(email)} becomes a <b>Member</b>: their next sign-in opens the desk with Messages instead of the orientation dashboard. You can change their role in Settings → Team.</p>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="mmGo">Make squad member</button></div>`);
   M.onclick = async e => { if (e.target.closest("[data-x]")) return closeModal(); if (!e.target.closest("#mmGo")) return;
@@ -3364,8 +3373,8 @@ function printOrientRecord(id){
   const so = S.signoffs.get(id), s = orientSession(id), row = (k, v) => `<tr><th>${esc(k)}</th><td>${esc(v || "—")}</td></tr>`;
   printHTML(`<section class="pk"><header><img src="/img/logo.png" alt=""><div><div class="pk-k">Orientation record</div><h1>${esc(a.name || "New member")}</h1>
       <div class="pk-s">${esc([a.type ? a.type + " membership" : "", get(a, "board.date") ? "Board approved " + longDate(get(a, "board.date")) : "", get(a, "bg.sterDone") ? "Sterling complete " + longDate(get(a, "bg.sterDone")) : ""].filter(Boolean).join(" · "))}</div></div></header>
-    <h2>Orientation</h2><table>${row("Session", s ? slotLong(s.start) : "")}${row("Mentor", get(a, "onb.mentor"))}</table>
-    <h2>Checklist</h2><table>${onbItems().map(([k, l]) => row(l, get(a, `onb.items.${k}`) ? fmtDate(get(a, `onb.items.${k}`)) : "")).join("")}</table>
+    <h2>Orientation</h2><table>${row("Session", s ? slotLong(s.start) : "")}${row("Mentor", get(a, "onb.mentor"))}${row("EMT card number", get(a, "onb.emtCard"))}${row("EMT card expires", get(a, "onb.emtExpires") ? fmtDate(get(a, "onb.emtExpires")) : "")}</table>
+    <h2>Mandatory information, required before issuing any equipment and/or the ability to run calls</h2><table>${onbItems().map(([k, l]) => row(l, get(a, `onb.items.${k}`) ? fmtDate(get(a, `onb.items.${k}`)) : "")).join("")}</table>
     ${so ? `<h2>Trainer sign-offs</h2><table>${(so.items || []).map(i => { const d = (so.done || {})[i.key]; return row(i.label, d ? `${d.name || d.by} · ${new Date(d.at).toLocaleDateString()}` : ""); }).join("")}</table>` : ""}
     <h2>Sign-off</h2><table class="vote"><tr><th>Orientation chair</th><td></td><th>Date</th><td></td></tr><tr><th>New member</th><td></td><th>Date</th><td></td></tr></table>
     <footer>Potsdam Volunteer Rescue Squad · Printed ${esc(new Date().toLocaleDateString())}</footer></section>`);
