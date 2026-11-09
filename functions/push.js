@@ -65,6 +65,8 @@ exports.portalChanged = onDocumentUpdated({ document: "portal/{id}", ...OPTS }, 
   if (doneCount(a) > doneCount(b)) await sendApplicant(id, { title: "Your application moved forward", body: "Open your PVRS portal to see what's next." });
   if (!b.orientation && a.orientation) await sendApplicant(id, { title: "Orientation is open", body: "Your background check is complete. Pick your orientation time in your PVRS portal." });
   if (!b.checkin && a.checkin) await sendApplicant(id, { title: "Quick check-in", body: "How's it going so far? Tell us in your PVRS portal." });
+  const asked = pd => ((pd.orientation || {}).items || []).filter(i => i.req).length;
+  if (b.orientation && asked(a) > asked(b)) await sendApplicant(id, { title: "Document needed", body: "PVRS asked for an orientation document. Details are in your portal." });
   if ((a.docs || []).length > (b.docs || []).length) await sendApplicant(id, { title: "Document needed", body: "PVRS asked for a document. Details are in your portal." });
 });
 

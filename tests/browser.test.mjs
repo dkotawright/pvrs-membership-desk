@@ -784,6 +784,17 @@ try {
     if (!/Status: New member/.test(box) || !/One-on-one session/.test(box)) fail("onboard box: " + box); else ok("the Onboard tab shows their status and session");
     await page.locator('[data-oact="attend"]').click(); await wait(page, 1600);
     if (!(await page.evaluate(() => Object.keys(window.__mock.docs.get("applicants/o1/private/main").onb?.items || {}).some(k => k.startsWith("orientation_form"))))) fail("attended not saved"); else ok("Mark attended checks off orientation");
+    // Request documents from the Onboard tab: marks the checklist items as requested and opens the email
+    await page.locator('[data-oact="reqdocs"]').click(); await wait(page, 300);
+    const chips = await page.locator("#odChips [data-k]").allTextContents();
+    if (chips.length < 6 || chips.some(c => /Completed application|Orientation form/.test(c)) || !chips.some(c => /health physical.*🔒/.test(c))) fail("request chips: " + chips.join("|")); else ok("Request documents lists every outstanding checklist document");
+    await page.locator('#odChips [data-k^="equipment_request"]').click(); await page.locator("#odCustom").fill("Copy of AEMT card"); await page.locator("#odSave").click(); await wait(page, 2400);
+    const rq = await page.evaluate(() => { const m = window.__mock.docs; return { pv: m.get("applicants/o1/private/main"), pd: m.get("portal/o1"), mail: document.querySelector("#emBody")?.value || "", subj: document.querySelector("#emSubject")?.value || "" }; });
+    const reqd = rq.pd.orientation.items.filter(i => i.req).map(i => i.key);
+    if (!rq.pv.onb?.requested?.copy_of_training_records_emt_cpr_etc || rq.pv.onb.requested.equipment_request || !reqd.includes("copy_of_training_records_emt_cpr_etc") || reqd.includes("equipment_request")) fail("requested: " + JSON.stringify([rq.pv.onb?.requested, reqd])); else ok("the picked items are marked requested in their dashboard");
+    if (!(rq.pd.docs || []).some(d => d.label === "Copy of AEMT card")) fail("extra doc not requested: " + JSON.stringify(rq.pd.docs)); else ok("an extra document is requested alongside");
+    if (!/orientation/i.test(rq.subj) || !/Copy of training records/.test(rq.mail) || !/Copy of AEMT card/.test(rq.mail) || /Equipment request/.test(rq.mail)) fail("orientation docs email: " + rq.mail.slice(0, 300)); else ok("the orientation documents email lists what was asked for");
+    await page.locator("#emCancel").click(); await wait(page, 300);
     await page.locator('[data-oact="trainers"]').click(); await wait(page, 300); await page.locator('.cv-pick input[value="ivy@pvrs.org"]').check(); await page.locator("#trSave").click(); await wait(page, 400);
     const so = await page.evaluate(() => window.__mock.docs.get("signoffs/o1"));
     if (so?.trainers?.join() !== "ivy@pvrs.org" || (so.items || []).length < 3) fail("signoff doc: " + JSON.stringify(so)); else ok("assigning a trainer creates their sign-off list");
@@ -811,6 +822,14 @@ try {
       if (!/required before you can be issued equipment or run calls/.test(t)) fail("no requirement note"); else ok("new members see why the checklist matters");
       const medBtn = page.locator('[data-upload^="onb:copy_of_health"]');
       if (!/🔒/.test(await medBtn.textContent().catch(() => ""))) fail("medical item isn't marked secure"); else ok("the health physical item uploads through the secure route");
+      const lic = page.locator('.or-item:has([data-upload="onb:copy_of_training_records_emt_cpr_etc"])');
+      if (!/Requested/.test(await lic.textContent().catch(() => "")) || !(await lic.locator(".btn.primary").count())) fail("requested item not highlighted"); else ok("requested items stand out with an Upload button");
+      // a scan with no file type (some phones) still uploads, as a PDF
+      await page.locator('[data-upload="onb:copy_of_training_records_emt_cpr_etc"]').evaluate(b => { const i = document.querySelector('input[type="file"]'); i.click = () => {}; b.click(); });
+      await page.locator('input[type="file"]').setInputFiles({ name: "emt card scan.PDF", mimeType: "", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 800);
+      const upf = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/o1/files/")).map(([, v]) => v));
+      if (!upf.some(f => f.docKey === "onb:copy_of_training_records_emt_cpr_etc" && f.contentType === "application/pdf")) fail("typeless upload: " + JSON.stringify(upf)); else ok("a file with no type still uploads against its checklist item");
+      if (!/Under review/.test(await lic.textContent())) fail("no under-review badge"); else ok("an uploaded item shows as under review");
       if (!/Squad handbook/.test(t)) fail("no library doc in dashboard"); else ok("new members see documents meant for them");
       await page.locator("#orientCard").screenshot({ path: path.join(OUT, "71-orientation-dashboard.png") });
       await page.locator('[data-crate="4"]').click(); await page.locator("#ciGoing").fill("Going well"); await page.locator("[data-csend]").click(); await wait(page, 400);

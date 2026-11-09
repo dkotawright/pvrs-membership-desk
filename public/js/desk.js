@@ -1286,6 +1286,8 @@ const TEMPLATES = {
     body: `Hi ${first(a.name)},\n\nWelcome, and thank you for applying to the Potsdam Volunteer Rescue Squad! We've received your application. You can follow it, upload documents, message us and book your interview in your applicant portal:\n\n${location.origin}\n\nSign in with this email address (${lower(a.email)}). We just sent you a separate sign-in link, and you can request a new one from that page any time. No password needed.\n\nQuestions? Email ${S.settings.docsEmail || CONTACT_EMAIL}.\n\nThank you,\n${sig()}` }),
   docs: (a, list = []) => ({ subject: "PVRS application: documents needed",
     body: `Hi ${first(a.name)},\n\nTo keep your application moving, please upload the following in your applicant portal:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\n${location.origin}\n\nIf the upload gives you trouble, email them to ${S.settings.docsEmail || CONTACT_EMAIL} instead.\n\nThank you,\n${sig()}` }),
+  orientdocs: (a, list = []) => ({ subject: "PVRS orientation: documents needed",
+    body: `Hi ${first(a.name)},\n\nTo finish your orientation paperwork, please upload the following from your PVRS dashboard. Each one has its own Upload button on your checklist (a PDF or a clear photo is fine):\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\nSign in at ${location.origin}/signin with ${lower(a.email)}. The sign-in email often lands in spam or junk, so check there if you don't see it.\n\nAll of these are required before you can be issued equipment or run calls. If the upload gives you trouble, reply to this email and we'll sort it out.\n\nThank you,\n${sig()}` }),
   refs: (a, list = []) => ({ subject: "PVRS application: references still needed",
     body: `Hi ${first(a.name)},\n\nWe're still waiting to hear from ${list.length === 1 ? "one of your references" : "some of your references"}:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\nWe need ${REFS_NEEDED} references before your application can go to the board. If you can, please check in with them, or let us know if one of them is hard to reach and you'd like to suggest someone else.\n\nYou can see which references we've heard from in your applicant portal:\n${location.origin}\n\nThank you,\n${sig()}` }),
   interview: a => ({ subject: "PVRS interview: pick a time",
@@ -1294,7 +1296,7 @@ const TEMPLATES = {
 function openEmail(kind, extra, id = S.sel){
   const a = S.apps.get(id); if (!a) return;
   const t = TEMPLATES[kind](a, extra);
-  const titles = { portal: "Welcome email", docs: "Documents email", refs: "References email", interview: "Interview email" };
+  const titles = { portal: "Welcome email", docs: "Documents email", orientdocs: "Orientation documents email", refs: "References email", interview: "Interview email" };
   const M = openModal(`<h3>${titles[kind]}</h3><p class="help">Optional personal note to go with the portal. Copy it or open it in Mail.</p>
     <div class="ios"><div class="row"><span class="lbl">To<small>${esc(a.email || "No email on file")}</small></span>${a.email?`<button class="copy" type="button" id="cpTo">Copy</button>`:""}</div>
       <label class="row stack"><span class="lbl">Subject</span><input type="text" id="emSubject" value="${esc(t.subject)}"></label>
@@ -1837,7 +1839,7 @@ function bindEvents(){
     const tab = t.closest("[data-tab]");
     if (tab) { switchTab(tab.dataset.tab); return; }
     const po = t.closest("[data-printother]"); if (po) { const x = S.apps.get(S.sel)?.otherForms?.[+po.dataset.printother]; if (x) printForm(x); return; }
-    const oa = t.closest("[data-oact]"); if (oa && S.sel) { const k = oa.dataset.oact; if (k === "move") return openMoveToOrientation(S.sel); if (k === "member") return openMakeMember(S.sel); if (k === "back") return moveBackToApplicant(S.sel); if (k === "book") return openOrientBook(S.sel); if (k === "attend") return markAttended(S.sel); if (k === "record") return printOrientRecord(S.sel); if (k === "trainers") return openTrainers(S.sel); }
+    const oa = t.closest("[data-oact]"); if (oa && S.sel) { const k = oa.dataset.oact; if (k === "move") return openMoveToOrientation(S.sel); if (k === "member") return openMakeMember(S.sel); if (k === "back") return moveBackToApplicant(S.sel); if (k === "book") return openOrientBook(S.sel); if (k === "attend") return markAttended(S.sel); if (k === "record") return printOrientRecord(S.sel); if (k === "trainers") return openTrainers(S.sel); if (k === "reqdocs") return openOrientDocs(S.sel); }
     const oap = t.closest("[data-oapprove]"); if (oap) { edit(S.sel, `onb.items.${oap.dataset.oapprove}`, today()); toast("Approved"); return; }
     const ord = t.closest("[data-oread]"); if (ord) { edit(S.sel, `onb.checkinRead.${ord.dataset.oread}`, today()); return; }
     const si = t.closest("[data-startiv]"); if (si) { select(si.dataset.startiv); switchTab("iv"); enterIvMode(); return; }
@@ -3194,13 +3196,13 @@ function orientDue(a){ const days = +S.settings.orientDays, st = get(a, "onb.ori
 const orientDaysLeft = a => { const d = orientDue(a); return d ? Math.round((new Date(d + "T12:00") - new Date(today() + "T12:00")) / 864e5) : null; };
 const orientSession = id => S.portal.get(id)?.orient || null;
 const orientItemKey = () => (onbItems().find(([, l]) => /orientation/i.test(l)) || [])[0] || "";
-// Items a new member can upload proof for; the application itself and the signed orientation form stay with you.
-const CERT_RE = /copy|card|verification|acceptance|statement|request|certif|training/i;
+// A new member can upload proof for every checklist item (whatever it's called in Settings), except the
+// application itself and the signed orientation form, which stay with you. `req` = you asked for it (Request documents).
 const NOT_CERT_RE = /^completed application|^orientation/i;
 function orientPayload(a){
   if (!orientOpen(a)) return null;
   const c = orientCounts(a);
-  return { start: get(a, "onb.orientStarted"), due: orientDue(a), done: c.done, total: c.total, items: onbItems().map(([key, label]) => ({ key, label, date: get(a, `onb.items.${key}`) || "", link: onbLink(key), cert: CERT_RE.test(label) && !NOT_CERT_RE.test(label) })) };
+  return { start: get(a, "onb.orientStarted"), due: orientDue(a), done: c.done, total: c.total, items: onbItems().map(([key, label]) => ({ key, label, date: get(a, `onb.items.${key}`) || "", link: onbLink(key), cert: !NOT_CERT_RE.test(label), ...(get(a, `onb.requested.${key}`) && !get(a, `onb.items.${key}`) ? { req: true } : {}) })) };
 }
 function checkinDue(a){
   if (!orientOpen(a)) return null;
@@ -3349,6 +3351,39 @@ function openMoveToOrientation(id){
       if (mail) { const l = document.createElement("a"); l.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("PVRS orientation: you're cleared to start")}&body=${encodeURIComponent(`Hi ${first(a.name) || "there"},\n\nYour background check is complete, so you're moving on to orientation.\n\nSign in at ${location.origin}/signin with ${email} to see your checklist and pick a time to come in. The sign-in email often lands in spam or junk, so check there if you don't see it.\n\nThank you,\n${sig()}`)}`; l.click(); }
     } catch (err) { console.error(err); go.disabled = false; toast("Couldn't finish that. Try again."); } };
 }
+// Checklist items the new member can still send in (not dated yet, and not the application / orientation form).
+const orientDocItems = a => onbItems().filter(([k, l]) => !NOT_CERT_RE.test(l) && !get(a, `onb.items.${k}`));
+// Onboard tab → Request documents: marks the picked checklist items as requested (they're highlighted in the new
+// member's dashboard with an Upload button), adds anything extra as a normal document request, and opens the email.
+function openOrientDocs(id){
+  const a = S.apps.get(id); if (!S.canEdit || !a) return ownerOnlyToast();
+  if (!orientOpen(a)) return toast("Move them to orientation first.");
+  const items = orientDocItems(a), picked = new Set(items.map(([k]) => k)), custom = [];
+  const M = openModal(`<h3>Request orientation documents</h3><p class="help">${esc(first(a.name) || "They")} will see these marked <b>Requested</b> on the orientation dashboard, each with an Upload button. Tap any you don't need right now.</p>
+    <div class="chips" style="flex-wrap:wrap" id="odChips">${items.map(([k, l]) => `<button class="chip" type="button" data-k="${esc(k)}" aria-pressed="true">${esc(l)}${isConfidential(l) ? " 🔒" : ""}</button>`).join("") || `<span class="help">Every checklist item is already done.</span>`}</div>
+    <p class="help">🔒 Medical and Social Security items go through secure document upload to ${esc(PAPERWORK_EMAIL)}. You'll see that they arrived, not what's in them.</p>
+    <div class="ios"><div class="row"><input id="odCustom" class="inlinefield" type="text" placeholder="Something else…" aria-label="Another document" style="flex:1"><button class="btn small" type="button" id="odAdd">Add</button></div><div id="odCustomList"></div></div>
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="odSave">Request</button></div>`, true);
+  const paintCustom = () => { $("#odCustomList").innerHTML = custom.map((c, i) => `<div class="row"><span class="lbl">${esc(c)}</span><button class="copy" type="button" data-rmc="${i}">Remove</button></div>`).join(""); };
+  const addCustom = () => { const v = $("#odCustom").value.trim(); if (!v) return; custom.push(v); $("#odCustom").value = ""; paintCustom(); };
+  $("#odCustom").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } });
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    const c = e.target.closest("[data-k]"); if (c) { const k = c.dataset.k; picked.has(k) ? picked.delete(k) : picked.add(k); c.setAttribute("aria-pressed", picked.has(k)); return; }
+    if (e.target.id === "odAdd") return addCustom();
+    const rm = e.target.closest("[data-rmc]"); if (rm) { custom.splice(+rm.dataset.rmc, 1); paintCustom(); return; }
+    if (e.target.id !== "odSave") return;
+    if ($("#odCustom").value.trim()) addCustom();
+    const asked = items.filter(([k]) => picked.has(k));
+    if (!asked.length && !custom.length) return toast("Pick or type at least one document.");
+    const now = Date.now();
+    asked.forEach(([k]) => edit(id, `onb.requested.${k}`, today()));
+    custom.forEach((label, i) => edit(id, `docs.requested.d${now}${i}`, { label, requestedAt: now + i, received: "" }));
+    closeModal(); flushAll();
+    if (a.email && !get(a, "portal.invited")) await inviteToPortal(id, false); else schedulePortal(id, 300);
+    openEmail("orientdocs", [...asked.map(([, l]) => l), ...custom], id);
+  };
+}
 function moveBackToApplicant(id){ const a = S.apps.get(id); if (!S.canEdit || !a) return; edit(id, "onb.orientStarted", ""); toast(`${first(a.name) || "They"} moved back to the applicant view.`); }
 // New member → Squad member: gives them a Member account, so their next sign-in opens the desk (Messages) instead of the dashboard.
 function openMakeMember(id){
@@ -3391,6 +3426,7 @@ function renderOrientTab(a){
       <div class="row"><span class="lbl">One-on-one session<small>${s ? esc(slotLong(s.start)) + (s.location ? " · " + esc(s.location) : "") : "Not booked yet"}${att ? " · attended " + esc(fmtDate(att)) : ""}</small></span>
         ${S.canEdit ? `<button class="btn small" type="button" data-oact="book">${s ? "Change" : "Book"}</button>${att ? "" : `<button class="btn small primary" type="button" data-oact="attend">Mark attended</button>`}` : ""}</div>
       <div class="row"><span class="lbl">Progress<small>${c.done} of ${c.total} done${l === null ? "" : l < 0 ? ` · ${-l} days late` : ` · due ${esc(longDate(orientDue(a)))}`}</small></span><button class="btn small" type="button" data-oact="record">Print record</button></div>
+      ${(() => { const want = orientDocItems(a), asked = want.filter(([k]) => get(a, `onb.requested.${k}`)).length; return `<div class="row"><span class="lbl">Documents<small>${want.length ? `${want.length} still needed${asked ? ` · ${asked} requested` : ""}. They upload each one from their checklist.` : "Nothing outstanding."}</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-oact="reqdocs">Request documents</button>` : ""}</div>`; })()}
       ${files.map(f => { const k = f.docKey.slice(4), done = get(a, `onb.items.${k}`); return `<div class="row"><span class="lbl">${f.confidential ? "🔒 Secure document" : `<button class="filelink" type="button" data-file="${esc(f.id)}">${esc(f.name)}</button>`}<small>${esc(f.label || "Certificate")} · uploaded ${esc(new Date(f.uploadedAt).toLocaleDateString())}${f.confidential ? " · sent to " + esc(PAPERWORK_EMAIL) : ""}</small></span>${done ? `<span class="badge ok">Approved</span>` : S.canEdit ? `<button class="btn small primary" type="button" data-oapprove="${esc(k)}">Approve</button>` : ""}</div>`; }).join("")}`; }
   const sb = $("#trainBox"); if (sb) { const so = S.signoffs.get(id);
     sb.innerHTML = so ? `<div class="row"><span class="lbl">Trainers<small>${esc((so.trainers || []).map(e => memberName(e)).join(", ") || "None")}</small></span></div>` + (so.items || []).map(i => { const d = (so.done || {})[i.key]; return `<div class="row"><span class="lbl">${esc(i.label)}<small>${d ? `Signed off by ${esc(d.name || d.by)} · ${esc(new Date(d.at).toLocaleDateString())}` : "Not signed off yet"}</small></span>${d ? `<span class="badge ok">Done</span>` : ""}</div>`; }).join("")

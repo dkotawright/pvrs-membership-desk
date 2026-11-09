@@ -5,7 +5,15 @@ import { CONTACT_EMAIL, VAPID_KEY } from "./config.js";
 
 const DAY = 864e5, MAX = 15 * 1024 * 1024;
 const CONF_KEY = "_private";   // the "Secure document upload" button (not tied to a request)
-const okType = f => /^image\//.test(f.type) || f.type === "application/pdf";
+// Some phones and scanners hand over a file with no type at all, so fall back to the file's ending.
+const EXT_TYPE = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", heic: "image/heic", heif: "image/heif", webp: "image/webp", gif: "image/gif", tif: "image/tiff", tiff: "image/tiff", bmp: "image/bmp" };
+const typeOf = f => f.type || EXT_TYPE[String(f.name || "").split(".").pop().toLowerCase()] || "";
+const okType = f => /^image\//.test(typeOf(f)) || typeOf(f) === "application/pdf";
+// Say what actually went wrong, so "it won't upload" can be fixed from a single screenshot.
+const uploadWhy = e => { const c = String(e?.code || "");
+  return /unauthorized|permission-denied|unauthenticated/.test(c) ? "You may be signed in with a different email than the one we have for you. Sign out, then sign in with the address we emailed"
+    : /retry-limit|network|unavailable|canceled/.test(c) || !navigator.onLine ? "The connection dropped. Check your signal or Wi-Fi and try again"
+    : /quota/.test(c) ? "Our storage is full right now" : "Try again"; };
 
 const msgTime = ms => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 export function threadHTML(msgs, mine){
@@ -44,7 +52,7 @@ function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis 
         ${opick ? `<div style="display:flex;justify-content:flex-end"><button class="btn primary" type="button" data-obook ${obusy ? "disabled" : ""}>Book this time</button></div>` : ""}`
     : `<p class="info">Times will show up here soon. Questions? Email <b>${esc(CONTACT_EMAIL)}</b>.</p>`;
   const item = i => `<div class="or-item${i.date ? " done" : ""}"><span class="or-ck" aria-hidden="true">${i.date ? "✓" : ""}</span><span class="or-tx">${esc(i.label)}${i.link ? ` <a href="${esc(i.link)}" target="_blank" rel="noopener">Open</a>` : ""}</span>
-    ${i.date ? "" : uploaded(i.key) ? `<span class="badge wait">Under review</span>` : i.cert ? `<button class="btn small" type="button" data-upload="onb:${esc(i.key)}" ${dis}>${isConfidential(i.label) ? "🔒 " : ""}Upload</button>` : ""}</div>`;
+    ${i.date ? "" : `${uploaded(i.key) ? `<span class="badge wait">Under review</span>` : i.req ? `<span class="badge wait">Requested</span>` : ""}${i.cert || i.req ? `<button class="btn small${i.req && !uploaded(i.key) ? " primary" : ""}" type="button" data-upload="onb:${esc(i.key)}" ${dis}>${isConfidential(i.label) ? "🔒 " : ""}${uploaded(i.key) ? "Add file" : "Upload"}</button>` : ""}`}</div>`;
   const check = pd.checkin && !checkinDone ? `<div class="or-check"><h3>Your ${esc(pd.checkin)}-day check-in</h3><p class="info" style="margin:0">Goes to the orientation chair. It only takes a minute.</p>
       <label class="info">How's it going so far? (1 = not great, 5 = great)</label><div class="slotrow">${[1, 2, 3, 4, 5].map(n => `<button class="slotbtn" type="button" data-crate="${n}" ${dis}>${n}</button>`).join("")}</div>
       <textarea id="ciGoing" rows="2" maxlength="2000" placeholder="Tell us how it's going" aria-label="How it's going" ${dis}></textarea><textarea id="ciHelp" rows="2" maxlength="2000" placeholder="Anything that would help?" aria-label="Anything that would help" ${dis}></textarea>
@@ -270,6 +278,7 @@ export function startPortal(id, email){
     const label = docEntry ? docEntry.label : orItem ? orItem.label : uploadKey === CONF_KEY ? "Secure document" : "Other";
     const conf = uploadKey === CONF_KEY || isConfidential(label), docKey = uploadKey === CONF_KEY ? "" : uploadKey;
     for (const f of list) {
+      const type = typeOf(f);
       if (!okType(f)) { toast(`${f.name} isn't a PDF or photo.`); continue; }
       if (f.size > MAX) { toast(`${f.name} is over 15 MB.`); continue; }
       try {
@@ -278,17 +287,17 @@ export function startPortal(id, email){
         if (conf) {
           // Private: the file and its name go only to the paperwork account; the squad sees a nameless placeholder.
           const path = `confidential/${id}/${safe}`;
-          await uploadBytes(ref(storage, path), f, { contentType: f.type });
-          await addDoc(collection(db, "vault"), { appId: id, appName: P.pd.name || "", label, name: f.name, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: email, from: "applicant" });
-          await addDoc(collection(db, "portal", id, "files"), { docKey, label, name: "Private document", path: "", size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: email, confidential: true });
+          await uploadBytes(ref(storage, path), f, { contentType: type });
+          await addDoc(collection(db, "vault"), { appId: id, appName: P.pd.name || "", label, name: f.name, path, size: f.size, contentType: type, uploadedAt: Date.now(), uploadedBy: email, from: "applicant" });
+          await addDoc(collection(db, "portal", id, "files"), { docKey, label, name: "Private document", path: "", size: f.size, contentType: type, uploadedAt: Date.now(), uploadedBy: email, confidential: true });
           toast(`Sent ${f.name} securely`);
         } else {
           const path = `uploads/${id}/${safe}`;
-          await uploadBytes(ref(storage, path), f, { contentType: f.type });
-          await addDoc(collection(db, "portal", id, "files"), { docKey: uploadKey, label, name: f.name, path, size: f.size, contentType: f.type, uploadedAt: Date.now(), uploadedBy: email });
+          await uploadBytes(ref(storage, path), f, { contentType: type });
+          await addDoc(collection(db, "portal", id, "files"), { docKey: uploadKey, label, name: f.name, path, size: f.size, contentType: type, uploadedAt: Date.now(), uploadedBy: email });
           toast(`Uploaded ${f.name}`);
         }
-      } catch (e) { console.error(e); toast(`Couldn't upload ${f.name}. Try again or email ${CONTACT_EMAIL}.`); }
+      } catch (e) { console.error(e); toast(`Couldn't upload ${f.name}. ${uploadWhy(e)}, or email it to ${CONTACT_EMAIL}.`); }
     }
   });
 

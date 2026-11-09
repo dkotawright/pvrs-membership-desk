@@ -99,6 +99,12 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## Orientation document requests (Nov 9)
+- Dkota reported a new member who couldn't upload through the orientation dashboard; cause not confirmed (no access to production from the session). Hardened the likely ones: every checklist item now gets an Upload button except the application and the orientation form (`NOT_CERT_RE`; the old `CERT_RE` keyword guess hid the button for renamed items); files with no type (some phones/scanners) get one from the file ending (`typeOf`, portal.js); failed uploads say why (`uploadWhy`).
+- Onboard tab → Orientation box → **Request documents** (`openOrientDocs`, `orientDocItems`): outstanding checklist items as chips (all pre-picked) + "Something else". Sets `onb.requested.<key>` = date (portal item gets `req: true`, shown as "Requested" with a primary Upload button), extras go to `docs.requested`, then opens the email (`TEMPLATES.orientdocs`). Push: "Document needed" when the requested count rises (`portalChanged`).
+- A person already made a Squad member lands on the desk (Messages), not the dashboard, so they can't upload there. Open question for Dkota.
+- Tests: 296 browser, 31 push.
+
 ## Status model + orientation (Nov 4, Dkota's rules)
 - **One sign-in for everyone** (`#signin`): email link, Google, password. `startFor` already routes by status: owner → staff doc → portal. Spam/junk warning on the page, after sending, and in the move-to-orientation email.
 - **Status moves are manual**: Applicant → New member (`openMoveToOrientation`, sets `onb.orientStarted`) ONLY after board approved AND Sterling complete with result clear (`orientReady`); no override. New member → Squad member (`openMakeMember`, creates `staff/{email}` role member, `onb.memberSince`), warns if unfinished. "Move back" undoes the first move. Milestone 11 is now "Moved to orientation"; the separate "orientation chair notified" step is gone because Dkota is the chair.
