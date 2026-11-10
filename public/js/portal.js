@@ -139,7 +139,7 @@ function trackerHTML(steps){
   if (!steps.length) return "";
   const done = steps.filter(s => s.state === "done").length, cur = steps.findIndex(s => s.state === "now");
   const at = cur >= 0 ? cur : done >= steps.length ? steps.length - 1 : done;
-  const label = done >= steps.length ? "All steps complete" : `Step ${at + 1} of ${steps.length}: ${steps[at].label}`;
+  const label = done >= steps.length ? "All steps complete" : `Step ${at + 1} of ${steps.length}: ${steps[at].label}${steps[at].short ? " (" + steps[at].short + ")" : ""}`;
   return `<div class="tracker" role="img" aria-label="${esc(label)}"><div class="tk-top"><b>${esc(label)}</b><span>${Math.round(done / steps.length * 100)}%</span></div>
     <div class="tk-bar">${steps.map((s, i) => `<i class="${s.state === "done" ? "done" : i === at && done < steps.length ? "cur" : ""}"></i>`).join("")}</div></div>`;
 }

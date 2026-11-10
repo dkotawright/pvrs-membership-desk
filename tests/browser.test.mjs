@@ -668,6 +668,37 @@ try {
     await page.screenshot({ path: path.join(OUT, "52-coordinator.png") });
     await ctx.close();
   }
+  // ---- Progress: five labelled phases, and the Interview phase says outright whether a time is set
+  {
+    const d = n => localDay(Date.now() - n * 864e5), ref = { returned: d(3) };
+    const seed = [["applicants/p1", { name: "Pat Waiting", email: "pat@example.com", type: "Regular", app: { received: d(20), complete: "yes" }, updatedAt: Date.now() }],
+      ["applicants/p1/private/main", { mvr: { completed: d(10) }, dl: { date: d(9), valid: "yes" }, refs: { r1: { name: "A", ...ref }, r2: { name: "B", ...ref }, r3: { name: "C", ...ref } }, portal: { invited: d(15) } }],
+      ["portal/p1", { email: "pat@example.com", name: "Pat Waiting", firstName: "Pat", steps: [], docs: [], refs: [], bookingOpen: false }],
+      ["slots/ps1", { start: Date.now() + 4 * 864e5, duration: 30, location: "Station", bookedBy: null }]];
+    const { ctx, page } = await open(browser, { seed }); await wait(page, 900);
+    const row = await page.evaluate(() => [...document.querySelectorAll(".arow")].find(r => r.textContent.includes("Pat Waiting"))?.textContent || "");
+    if (!/Interview not scheduled/.test(row) || !/Interview isn't scheduled yet/.test(row) || /Next: Interview scheduled/.test(row)) fail("list row status: " + row.replace(/\s+/g, " ")); else ok("the list says the interview isn't scheduled, not just Interview");
+    if (!/1 not scheduled yet/.test(await page.locator('.stg[data-filter="int"]').textContent())) fail("Interview tile doesn't count unscheduled"); else ok("the Interview tile counts who still needs a time");
+    await pickApplicant(page, "Pat Waiting");
+    const ph = await page.locator("#dProg .ph").evaluateAll(l => l.map(x => x.className.replace("ph", "").trim() + ":" + x.textContent.replace(/\s+/g, " ").trim()));
+    if (ph.length !== 5 || !/^done:Screening ?Done/.test(ph[0]) || !/^cur:Interview ?0 of 2/.test(ph[1]) || /done|cur/.test(ph[2])) fail("phases: " + ph.join(" | ")); else ok("the header shows five labelled phases with the current one marked");
+    const st = (await page.locator("#dProg .t").textContent()).replace(/\s+/g, " ");
+    if (!/Interview isn't scheduled yet/.test(st) || !/Open booking so Pat can pick a time, or book it for them/.test(st) || !/Schedule it/.test(st) || !/5 of 14 steps/.test(st)) fail("status line: " + st); else ok("one sentence says where they stand and what to do");
+    await page.screenshot({ path: path.join(OUT, "54-progress-not-scheduled.png") });
+    const pd = await page.evaluate(() => window.__mock.docs.get("portal/p1").steps.find(x => x.label === "Interview"));
+    if (pd?.state !== "now" || pd.short !== "not scheduled yet" || !/Not scheduled yet/.test(pd.detail)) fail("portal interview step: " + JSON.stringify(pd)); else ok("the applicant's portal also says not scheduled yet");
+    await page.locator('#dProg [data-act="nextgo"]').click(); await wait(page, 500);
+    await page.locator('[data-bk="ps1"]').click(); await wait(page, 900);
+    const st2 = (await page.locator("#dProg .t").textContent()).replace(/\s+/g, " "), ph2 = await page.locator("#dProg .ph.cur").textContent();
+    if (!/Interview booked for /.test(st2) || !/1 of 2/.test(ph2) || !/Interview booked/.test(await page.locator("#dSub .pill").textContent())) fail("after booking: " + st2 + " | " + ph2); else ok("booking a time flips it to Interview booked with the date");
+    await page.screenshot({ path: path.join(OUT, "55-progress-booked.png") });
+    await ctx.close();
+    { const { ctx, page } = await open(browser, { seed, w: 390, h: 844 }); await wait(page, 900);
+      await pickApplicant(page, "Pat Waiting");
+      if (!(await page.locator("#dProg .t").isVisible()) || (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1))) fail("phone progress hidden or too wide"); else ok("phones show the phases and the status sentence");
+      await page.screenshot({ path: path.join(OUT, "56-progress-phone.png") });
+      await ctx.close(); }
+  }
   // ---- First-visit tour: once per person and role, with a way to see it again
   {
     const CORY = { email: "cory@pvrs.org", displayName: "Cory Reed" }, cs = [["staff/cory@pvrs.org", { role: "coordinator", name: "Cory Reed" }]];

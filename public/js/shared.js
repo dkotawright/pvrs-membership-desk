@@ -115,6 +115,13 @@ export const MILESTONES = [
   ["Chief notified for duty crew",  a => !!get(a,"notify.chief")],
   ["Tech chair notified (email)",   a => !!get(a,"notify.tech")],
 ];
+// What to do at each milestone, worded as an instruction. (The milestone names read as finished things: "Next:
+// Interview scheduled" looked like the interview was already scheduled.)
+export const NEXT_STEP = ["Enter the date the application came in", "Review the application", "Run the driving record (MVR)", "Verify the driver's license", "Collect the references",
+  "Schedule the interview", "Hold the interview", "Committee decision", "Board vote", "Run the Sterling background check", "Let the applicant know", "Move them to orientation",
+  "Notify the chief for duty crew", "Ask the tech chair for an email account"];
+// The five phases shown on the progress bar, with the milestones (first..last) each one covers.
+export const PHASES = [["screen", "Screening", 0, 4], ["int", "Interview", 5, 6], ["appr", "Approval", 7, 8], ["onb", "Onboarding", 9, 13]];
 export const STAGES = {
   screen:{label:"Screening",c:"--s-screen"}, int:{label:"Interview",c:"--s-int"}, appr:{label:"Approval",c:"--s-appr"},
   onb:{label:"Onboarding",c:"--s-onb"}, act:{label:"Active",c:"--s-act"}, hold:{label:"On hold",c:"--s-hold"},
@@ -130,7 +137,24 @@ export function progress(a){
   else if (a.status === "withdrawn") stage = "wd";
   else if (cur === -1) stage = "act";
   else stage = cur <= 4 ? "screen" : cur <= 6 ? "int" : cur <= 8 ? "appr" : "onb";
-  return { done, n, cur, stage, next: cur === -1 ? null : MILESTONES[cur][0] };
+  return { done, n, cur, stage, next: cur === -1 ? null : NEXT_STEP[cur] };
+}
+// Plain-language status: `pill` (short label), `head` (where they stand), `sub` (what that means or what to do).
+// The Interview phase says outright whether a time is set, so "Interview" never hides "not scheduled yet".
+export function statusOf(a, p = progress(a)){
+  const label = STAGES[p.stage].label, c = p.cur, fn = first(a.name) === "there" ? "them" : first(a.name);
+  if (p.stage === "act") return { pill: label, head: "Active member", sub: "Every step is done." };
+  if (!["screen", "int", "appr", "onb"].includes(p.stage)) return { pill: label, head: label, sub: p.next ? "Was at: " + p.next : "" };
+  const at = a._booked ? a._booked.start : 0, day = get(a, "sched.scheduled");
+  const when = at ? slotLong(at) : day ? `${longDate(day)}${get(a, "sched.time") ? " at " + get(a, "sched.time") : ""}` : "";
+  const past = at ? at < Date.now() : !!day && day < today();
+  if (c === 5) return { pill: "Interview not scheduled", head: "Interview isn't scheduled yet",
+    sub: get(a, "portal.bookingOpen") === "yes" && get(a, "portal.invited") ? `Booking is open: waiting for ${fn} to pick a time, or book it for them.` : `Open booking so ${fn} can pick a time, or book it for them.` };
+  if (c === 6) return past ? { pill: "Interview to mark done", head: `Interview was ${when}`, sub: "If it happened, enter the completed date." }
+    : { pill: "Interview booked", head: `Interview booked for ${when}`, sub: "Nothing to do until then." };
+  if (c === 7) return { pill: "Committee decision", head: "Interview done. Waiting on the committee's decision", sub: "" };
+  if (c === 8) return { pill: "Waiting on the board", head: get(a, "board.date") ? `Going to the board on ${longDate(get(a, "board.date"))}` : "Waiting on the board vote", sub: "" };
+  return { pill: label, head: "Next: " + p.next, sub: when && !get(a, "sched.completed") ? `Interview already ${past ? "was" : "booked for"} ${when}.` : "" };
 }
 export const isDeclined = a => a.status === "declined" || get(a,"appr.committee") === "no" || get(a,"board.result") === "denied";
 export const inBoardQueue = a => get(a,"appr.committee") === "yes" && !["approved","denied"].includes(get(a,"board.result")) && !["declined","withdrawn"].includes(a.status);
@@ -150,7 +174,9 @@ export function applicantSteps(a){
     { label:"References and driving record", done: checksDone,
       detail: checksStarted ? "In progress: we're hearing back from your references and checking your driving record." : "We contact your references and check your driving record." },
     { label:"Interview", done: !!g("sched.completed"),
-      detail: g("sched.completed") ? "Completed " + longDate(g("sched.completed")) : ivWhen ? "Scheduled for " + ivWhen : "Pick a time below once interview times open." },
+      short: g("sched.completed") ? "" : ivWhen ? ivWhen : "not scheduled yet",
+      detail: g("sched.completed") ? "Completed " + longDate(g("sched.completed")) : ivWhen ? "Scheduled for " + ivWhen
+        : g("portal.bookingOpen") === "yes" ? "Not scheduled yet. Interview times are open: pick one below." : "Not scheduled yet. We'll let you know when interview times open, and you'll pick one here." },
     { label:"Board review", done: g("board.result") === "approved",
       detail: g("board.result") === "approved" ? "Approved" + (g("board.date") ? " " + longDate(g("board.date")) : "") : g("board.date") ? "Your application goes to the board meeting on " + longDate(g("board.date")) + ". You'll hear back within about a week." : "Your application goes to the next board meeting. You'll hear back within about a week of it." },
     { label:"Background check", done: approved && !!g("bg.sterDone"),
@@ -162,7 +188,7 @@ export function applicantSteps(a){
   // A declined application is never announced in the portal (the administrator sends a letter): the current step
   // just reads as under review, and nothing else changes.
   if (isDeclined(a) && cur >= 0) steps[cur].detail = "Your application is with the membership committee. You'll receive a letter from the squad with next steps.";
-  return steps.map((s,i) => ({ label:s.label, detail:s.detail, state: s.done ? "done" : i === cur ? "now" : "todo" }));
+  return steps.map((s,i) => ({ label:s.label, detail:s.detail, state: s.done ? "done" : i === cur ? "now" : "todo", ...(s.short && i === cur && !isDeclined(a) ? { short: s.short } : {}) }));
 }
 const CHECK = `<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.3l2.6 2.6L10 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 export function timelineHTML(steps){

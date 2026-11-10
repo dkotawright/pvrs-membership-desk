@@ -4,7 +4,7 @@ import { app, auth, db, storage, doc, collection, collectionGroup, getDoc, setDo
   GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup, multiFactor, TotpMultiFactorGenerator } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
-  progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD } from "./shared.js";
+  progress, statusOf, PHASES, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
 import { showTour, maybeTour } from "./tour.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
@@ -271,13 +271,13 @@ function paintList(){
     const d = daysSince(get(a,"app.received"));
     const iv = a._booked ? `${slotDay(a._booked.start)} · ${slotTime(a._booked.start)}` : get(a,"sched.scheduled") ? `${fmtDate(get(a,"sched.scheduled"))}${get(a,"sched.time")?" · "+get(a,"sched.time"):""}` : "";
     const nextLine = S.admin
-      ? (p.next ? `Next: <strong>${esc(p.next)}</strong>` : "All steps complete")
+      ? `<strong>${esc(statusOf(a, p).head)}</strong>`
       : (get(a,"sched.completed") ? "Interview completed" : iv ? `Interview: <strong>${esc(iv)}</strong>` : "Interview not scheduled yet");
     const inProc = d != null && IN_PROCESS.includes(p.stage);
     return `<button class="arow${S.bulk?.has(a._id) ? " picked" : ""}" type="button" data-id="${esc(a._id)}" aria-current="${S.sel===a._id}"${S.bulk ? ` aria-pressed="${S.bulk.has(a._id)}"` : ""} style="--stage-c:${stageVar(p.stage)}">
       ${S.bulk ? `<span class="bulkck" aria-hidden="true">${S.bulk.has(a._id) ? "✓" : ""}</span>` : ""}<span class="av" aria-hidden="true">${esc(initials(a.name))}</span>
       <span class="ab">
-        <span class="r1"><span class="nm">${hl(a.name||"Unnamed applicant", q)}</span><span class="pill">${STAGES[p.stage].label}</span></span>
+        <span class="r1"><span class="nm">${hl(a.name||"Unnamed applicant", q)}</span><span class="pill">${esc(S.admin ? statusOf(a, p).pill : STAGES[p.stage].label)}</span></span>
         <span class="meta">${milestoneChip(a)}${get(a,"app.source") === "online" ? `<span class="srctag" title="Applied online">Online</span>` : ""}${[a.type,loc(a),inProc?`${d} day${d===1?"":"s"}`:null].filter(Boolean).map(esc).join(" · ")||"Details not entered"}</span>
         <span class="next">${nextLine}</span>
         ${S.admin?`<span class="bar" title="${p.n} of ${MILESTONES.length} steps"><span style="width:${(p.n/MILESTONES.length*100).toFixed(1)}%"></span></span>`:""}
@@ -558,13 +558,14 @@ function renderOverview(){
     return oitem(a, `<b>${esc(d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}))}</b>${esc(slotTime(s.start))}`, esc([a.type, s.location].filter(Boolean).join(" · ") || "Interview")); }).join("");
   // One strip of stage counts (replaces the separate count tiles and pipeline bar); each filters the list.
   const stage = (k, label, sub) => `<button class="stg" type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}"><span class="v">${c[k] || 0}</span><span class="k">${label}</span>${sub ? `<span class="s">${sub}</span>` : ""}</button>`;
+  const notSched = rows.filter(r => r.p.stage === "int" && r.p.cur === 5).length;
   const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.sched ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>`;
   const html = `<div class="ov"><div class="ovin">
     <div class="ovhead"><div><div class="eyebrow">${esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))}</div>
       <h2>${greet}${S.name ? ", " + esc(first(S.name)) : ""}</h2>
       <p>${rows.length ? `${inProc.length} applicant${inProc.length===1?"":"s"} in process${S.admin && c.board ? `, ${c.board} waiting on the board` : ""}${thisWeek ? `, ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet."}</p></div>
       <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
-    <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
+    <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview", S.admin && notSched ? `${notSched} not scheduled yet` : "")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
     ${S.role !== "member" ? `<div id="ovRoster" class="ovroster"></div>` : ""}
     ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
       ${unreadChatTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open messages</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => S.apps.has(m.appId) && unreadIn("a:" + m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
@@ -710,10 +711,19 @@ function syncDetail(){
   const av = $("#dAv"); av.textContent = initials(a.name); av.style.setProperty("--stage-c", stageVar(p.stage));
   const t = Math.max(a.updatedAt||0, a.secUpdatedAt||0), by = (a.secUpdatedAt||0) > (a.updatedAt||0) ? a.secUpdatedBy : a.updatedBy;
   const who = personName(by);
-  $("#dSub").innerHTML = `<span class="pill" style="--stage-c:${stageVar(p.stage)}">${STAGES[p.stage].label}</span>${[a.type,loc(a)].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join("")}${t?`<span class="upd">Updated ${ago(t)}${who?` by ${esc(who)}`:""}</span>`:""}`;
+  const stt = statusOf(a, p);
+  $("#dSub").innerHTML = `<span class="pill" style="--stage-c:${stageVar(p.stage)}">${esc(S.admin ? stt.pill : STAGES[p.stage].label)}</span>${[a.type,loc(a)].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join("")}${t?`<span class="upd">Updated ${ago(t)}${who?` by ${esc(who)}`:""}</span>`:""}`;
   const pr = $("#dProg");
-  if (pr) pr.innerHTML = `<div class="steps" style="--stage-c:${stageVar(p.stage)}">${MILESTONES.map((m,i) => `<button type="button" class="${p.done[i]?"done":""} ${i===p.cur?"cur":""}" data-step="${i}" title="${i+1}. ${esc(m[0])}${p.done[i]?" ✓":""}" aria-label="Step ${i+1}: ${esc(m[0])}${p.done[i]?", done":""}"></button>`).join("")}</div>
-    <div class="t"><strong>${p.n}/${MILESTONES.length}</strong> · ${p.next?`Next: <strong>${esc(p.next)}</strong> <button class="btn small nextgo" type="button" data-act="nextgo" title="Go to this step">Go to it →</button>`:"Checklist complete"}</div>`;
+  // Five labelled phases instead of fourteen anonymous dashes, and one plain sentence about where they stand.
+  if (pr) { const closed = !["screen", "int", "appr", "onb", "act"].includes(p.stage);
+    const ph = PHASES.map(([k, label, lo, hi]) => { const tot = hi - lo + 1, dn = p.done.slice(lo, hi + 1).filter(Boolean).length, cur = p.cur >= lo && p.cur <= hi, full = dn === tot;
+      const firstOpen = p.done.slice(lo, hi + 1).indexOf(false), go = lo + (firstOpen < 0 ? 0 : firstOpen);
+      const tip = MILESTONES.slice(lo, hi + 1).map((m, n) => `${p.done[lo + n] ? "✓" : "○"} ${m[0]}`).join("\n");
+      return `<button type="button" class="ph ${full ? "done" : cur && !closed ? "cur" : ""}" data-step="${go}" style="--stage-c:${stageVar(k)}" title="${esc(tip)}" aria-label="${esc(label)}: ${dn} of ${tot} done${cur ? ", current" : ""}">
+        <span class="phd" aria-hidden="true">${full ? checkSVG : ""}</span><span class="phl">${esc(label)}</span><span class="phn">${full ? "Done" : dn || cur ? `${dn} of ${tot}` : ""}</span></button>`; }).join("");
+    pr.innerHTML = `<div class="phases">${ph}<span class="ph ${p.cur === -1 && !closed ? "done" : ""}" style="--stage-c:${stageVar("act")}"><span class="phd" aria-hidden="true">${p.cur === -1 ? checkSVG : ""}</span><span class="phl">Active</span><span class="phn"></span></span></div>
+    <div class="t"><span class="tw"><strong>${esc(stt.head)}</strong>${stt.sub ? `<span class="ts">${esc(stt.sub)}</span>` : ""}</span>
+      ${p.next && !closed ? `<button class="btn small nextgo" type="button" data-act="nextgo" title="${esc(p.next)}">${p.cur === 5 ? "Schedule it" : p.cur === 6 ? "Open interview" : "Go to it"} →</button>` : ""}<span class="tc">${p.n} of ${MILESTONES.length} steps</span></div>`; }
   const ab = $("#aiBrief"); if (ab) { ab.innerHTML = briefHTML(get(a, "ai.brief")); const bb = document.querySelector("[data-aibrief]"); if (bb && !bb.disabled) bb.textContent = get(a, "ai.brief") ? "Redo brief" : "Make brief"; }
   const ist = $("#ivScoreTotal"); if (ist) ist.textContent = ivScoreText(a);
   const oc = $("#onbCount"); if (oc) { const its = onbItems(), n = its.filter(([k]) => get(a, `onb.items.${k}`)).length; oc.textContent = its.length ? `${n} of ${its.length} done` : ""; }
