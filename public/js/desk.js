@@ -226,10 +226,17 @@ const PSEUDO = {
 // Once the board approves someone they leave the applicant list for the Onboard list (sidebar "Onboard", phone menu
 // "Onboard") and stay there through Sterling, orientation and the hand-offs until every step is done (Dkota, Nov 11).
 // On hold / declined / withdrawn files stay with the applicants under their own filter.
-const inOrient = a => S.admin && get(a, "board.result") === "approved" && !["act", "hold", "dec", "wd"].includes(progress(a).stage);
+// Nov 11 (third pass, Dkota: "once the board has approved they need to be moved to onboard, for everyone"): nothing else
+// decides it. Not Sterling, not earlier steps left blank, not On hold, not being finished. Only a declined or withdrawn
+// file stays out. A file with no board result entered but with a later step already done (Sterling requested, moved
+// to orientation, made a member) counts as approved too, so older files aren't stranded with the applicants.
+const boardApproved = a => get(a, "board.result") === "approved"
+  || (get(a, "board.result") !== "denied" && !!(get(a, "bg.sterReq") || get(a, "bg.sterDone") || get(a, "onb.orientStarted") || get(a, "onb.memberSince") || get(a, "notify.orientation")));
+const inOrient = a => S.admin && boardApproved(a) && !isClosedFile(a);
 const orientStat = a => { const c = orientCounts(a), s = orientSession(a._id), l = orientDaysLeft(a);
   return { pill: "Orientation", head: `Orientation: ${c.done} of ${c.total} done`, sub: [s ? "Session " + slotLong(s.start) : "No session booked yet", l === null ? "" : l < 0 ? `${-l} days late` : `due ${longDate(orientDue(a))}`].filter(Boolean).join(" · ") }; };
-const stat = (a, p) => inOrient(a) && orientOpen(a) ? orientStat(a) : statusOf(a, p);
+const stat = (a, p) => { if (!inOrient(a)) return statusOf(a, p); if (orientOpen(a) && p.stage !== "act") return orientStat(a);
+  const s = statusOf(a, p); return ["screen", "int", "appr", "onb", "open"].includes(p.stage) ? { ...s, pill: "Onboard" } : s; };
 const filterLabel = k => k==="all" ? "All applicants" : k==="orient" ? "Onboard" : k==="board" ? "Board queue" : PSEUDO[k] ? PSEUDO[k].label : STAGES[k].label;
 const filterColor = k => k==="all" ? "var(--fg3)" : k==="board" ? "var(--s-appr)" : k==="orient" ? "var(--s-act)" : stageVar(k);
 const shortDate = d => d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});
@@ -247,7 +254,7 @@ function sorted(){
 }
 function renderChips(rows){
   rows.forEach(r => { r.or = inOrient(r.a); });
-  const counts = {all:0, board:0, orient:0}; rows.forEach(r => { if (r.or) { counts.orient++; return; } counts.all++; counts[r.p.stage] = (counts[r.p.stage]||0)+1; if (S.admin && inBoardQueue(r.a)) counts.board++; });
+  const counts = {all:0, board:0, orient:0}; rows.forEach(r => { if (r.or) { counts.orient++; if (r.p.stage === "act") counts.act = (counts.act||0)+1; return; } counts.all++; counts[r.p.stage] = (counts[r.p.stage]||0)+1; if (S.admin && inBoardQueue(r.a)) counts.board++; });
   const base = S.admin ? ["all","board","screen","int","appr","onb","act","hold","dec","wd"] : ["all","screen","int","appr","onb","act","hold","dec","wd","open"];
   const keys = base.filter(k => k==="all" || k==="board" || counts[k] || (S.admin && ["screen","int","appr"].includes(k)));
   if (!keys.includes(S.filter) && !PSEUDO[S.filter] && !(S.filter === "orient" && S.admin)) S.filter = "all";
@@ -269,7 +276,7 @@ function paintList(){
   const rows = sorted(); renderChips(rows);
   const q = S.q.trim().toLowerCase(), qd = q.replace(/\D/g, "");
   const match = a => !q || (a.name||"").toLowerCase().includes(q) || lower(a.email).includes(q) || (qd.length >= 3 && String(a.phone||"").replace(/\D/g,"").includes(qd));
-  const inFilter = r => S.filter==="orient" ? r.or : r.or ? (S.filter==="all" && !!q) : S.filter==="all" || (S.filter==="board" ? inBoardQueue(r.a) : PSEUDO[S.filter] ? PSEUDO[S.filter].test(r.a, r.p) : r.p.stage===S.filter);
+  const inFilter = r => S.filter==="orient" ? r.or : r.or ? ((S.filter==="all" && !!q) || (S.filter==="act" && r.p.stage==="act")) : S.filter==="all" || (S.filter==="board" ? inBoardQueue(r.a) : PSEUDO[S.filter] ? PSEUDO[S.filter].test(r.a, r.p) : r.p.stage===S.filter);
   const vis = rows.filter(r => inFilter(r) && match(r.a));
   if (SORTS[S.sort]) vis.sort((x,y) => SORTS[S.sort](x,y) || (x.a.name||"").localeCompare(y.a.name||""));
   S.vis = vis.map(r => r.a._id);
@@ -3596,8 +3603,9 @@ function printOrientRecord(id){
 /* Onboard tab */
 function renderOrientTab(a){
   const el = $("#orientBox"); if (!el) return; const id = a._id;
-  if (orientReady(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Applicant<small>Sterling is complete and clear, so they're ready for orientation.</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-oact="move">Move to orientation</button>` : ""}</div>`; }
-  else if (!orientOpen(a)) { el.innerHTML = `<div class="row"><span class="lbl" style="color:var(--fg2)">Locked until Sterling is complete and clear.<small>${get(a, "bg.sterDone") ? (get(a, "bg.sterResult") ? "Sterling is marked Needs review." : "Enter the Sterling result above.") : get(a, "bg.sterReq") ? "Requested " + esc(fmtDate(get(a, "bg.sterReq"))) + "." : "Not requested yet."}</small></span></div>`; }
+  if (orientReady(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Onboard<small>Approved by the board${get(a, "board.date") ? " " + esc(fmtDate(get(a, "board.date"))) : ""}. Sterling is complete and clear, so they're ready for orientation.</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-oact="move">Move to orientation</button>` : ""}</div>`; }
+  else if (!orientOpen(a) && !inOrient(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Applicant<small>Moves to Onboard as soon as the board result is saved as Approved.</small></span></div>`; }
+  else if (!orientOpen(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Onboard<small>Approved by the board${get(a, "board.date") ? " " + esc(fmtDate(get(a, "board.date"))) : ""}. Orientation opens once Sterling is complete and clear. ${get(a, "bg.sterDone") ? (get(a, "bg.sterResult") ? "Sterling is marked Needs review." : "Enter the Sterling result above.") : get(a, "bg.sterReq") ? "Sterling requested " + esc(fmtDate(get(a, "bg.sterReq"))) + "." : "Sterling not requested yet."}</small></span></div>`; }
   else { const s = orientSession(id), c = orientCounts(a), l = orientDaysLeft(a), key = orientItemKey(), att = key && get(a, `onb.items.${key}`);
     el.innerHTML = `<div class="row"><span class="lbl">Status: ${get(a, "onb.memberSince") ? "Squad member" : "New member"}<small>In orientation since ${esc(fmtDate(get(a, "onb.orientStarted")))}${get(a, "onb.memberSince") ? " · member since " + esc(fmtDate(get(a, "onb.memberSince"))) : ""}</small></span>
         ${S.canEdit && !get(a, "onb.memberSince") ? `<button class="copy" type="button" data-oact="back">Move back</button><button class="btn small" type="button" data-oact="member">Make squad member</button>` : ""}</div>
@@ -3616,7 +3624,7 @@ function renderOrientTab(a){
 const OR_LABEL = "Orientation: ", orLabel = l => OR_LABEL + l, isOrRec = r => String(r.label || "").startsWith(OR_LABEL);
 function renderOrientDocs(a){
   const g = $("#orDocsGroup"), el = $("#orDocs"); if (!g || !el) return;
-  g.hidden = !orientOpen(a); if (g.hidden) return;
+  g.hidden = !inOrient(a); if (g.hidden) return;   // from board approval on, so paperwork can be filed before orientation starts
   const day = ms => new Date(ms).toLocaleDateString();
   const fileRow = (f, mine) => f.confidential ? `<span class="orfile">🔒 Secure document · ${esc(day(f.uploadedAt))} · sent to ${esc(PAPERWORK_EMAIL)}</span>`
     : `<span class="orfile"><button class="filelink" type="button" ${mine ? `data-rec="${esc(f.id)}"` : `data-file="${esc(f.id)}"`}>${esc(f.name)}</button> · ${mine ? "you" : esc(first(a.name))} · ${esc(day(f.uploadedAt))}</span>`;

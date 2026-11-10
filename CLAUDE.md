@@ -99,6 +99,13 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## RULE (Dkota, Nov 11, asked three times): once the board approves someone, they are Onboard. Nothing else decides it.
+- A board-approved file still read as an applicant. Causes fixed: (1) the Onboard tab said "Status: Applicant" until Sterling cleared; (2) `inOrient` excluded On hold and finished (Active) files; (3) an approved file with earlier steps blank still wore an applicant stage pill ("Screening"); (4) older files with no board result entered but later steps done weren't counted.
+- `boardApproved(a)` = board result Approved, OR (not Denied and any later step exists: `bg.sterReq`, `bg.sterDone`, `onb.orientStarted`, `onb.memberSince`, `notify.orientation`). `inOrient(a)` = `boardApproved` and not declined/withdrawn. That is the only test: not Sterling, not earlier steps, not hold, not being finished.
+- Status line on the Onboard tab: Applicant → Onboard (from board approval) → New member (in orientation) → Squad member. Pill reads "Onboard" for approved files whatever their earlier steps say; finished ones keep "Active" and still count on the Active tile/filter.
+- The Orientation documents box shows from board approval on (not only once orientation starts). The new member's own orientation dashboard is still locked until Sterling is complete and clear (Nov 4 rule, unchanged).
+- Do NOT add conditions to `inOrient` again without asking Dkota. Tests: "Board approved = Onboard" block, 359 browser.
+
 ## Nov 11 batch (Dkota: "all but the big features" from the recommendations list)
 - **Naming**: the phase, list and tab are all **Onboard** (`STAGES.onb`, `PHASES`, tile, list title); "Orientation" now only means the orientation program; the sidebar grid tool is **Orientation board**.
 - **Coordinator's desk syncs too** (`coordSyncAll`, `coordBooking`): it writes `stage` on the shared doc and `steps` + `bookingOpen` on an invited applicant's portal page, so nothing waits for the owner's desk. Rules: coordinator may change only `stage` (to a known value) on applicants, and `interview`/`bookingOpen`/`steps`/`updatedAt` on portal.
