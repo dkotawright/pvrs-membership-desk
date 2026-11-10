@@ -775,6 +775,43 @@ try {
       if (!/Still needed: EMT certification card/.test(tt) || /CPR card/.test(tt)) fail("after-upload note: " + tt); else ok("after an upload the portal says what's still needed");
       await ctx.close(); }
   }
+  // ---- Board approved = Onboard, whatever else is true about the file (Dkota, Nov 11)
+  {
+    const d = n => localDay(Date.now() - n * 864e5), A = (id, name, shared, priv) => [["applicants/" + id, { name, email: id + "@example.com", app: { received: d(40) }, updatedAt: Date.now(), ...shared }], ["applicants/" + id + "/private/main", priv]];
+    const allDone = { mvr: { completed: d(30) }, dl: { date: d(30), valid: "yes" }, refs: { r1: { name: "A", returned: d(20) }, r2: { name: "B", returned: d(20) }, r3: { name: "C", returned: d(20) } }, appr: { committee: "yes" },
+      board: { result: "approved", date: d(10) }, bg: { sterReq: d(9), sterDone: d(5), sterResult: "clear" }, notify: { applicant: d(4), chief: d(2), tech: d(2) }, onb: { orientStarted: d(3) } };
+    const seed = [...A("b1", "Bea Blank", {}, { board: { result: "approved", date: d(2) } }),                          // approved, every earlier step left blank
+      ...A("b2", "Hal Hold", {}, { status: "hold", board: { result: "approved", date: d(2) } }),                      // approved, then put on hold
+      ...A("b3", "Lee Legacy", {}, { bg: { sterReq: d(5) } }),                                                         // older file: no board result entered, Sterling already requested
+      ...A("b4", "Fin Finished", { app: { received: d(40), complete: "yes" }, sched: { scheduled: d(25), completed: d(25) } }, allDone),   // every step done
+      ...A("b5", "Wes Withdrew", {}, { status: "withdrawn", board: { result: "approved", date: d(2) } }),
+      ...A("b6", "Nia NotYet", {}, { appr: { committee: "yes" } })];
+    const { ctx, page } = await open(browser, { seed }); await wait(page, 900);
+    const names = async () => (await page.locator(".arow").allTextContents()).join("|").replace(/\s+/g, " ");
+    const apps = await names();
+    if (/Bea Blank|Hal Hold|Lee Legacy|Fin Finished/.test(apps) || !/Nia NotYet/.test(apps) || !/Wes Withdrew/.test(apps)) fail("board-approved files still with applicants: " + apps.slice(0, 500)); else ok("every board-approved file leaves the applicant list; not-yet-approved and withdrawn ones stay");
+    await page.locator('#chips [data-f="orient"]').click(); await wait(page, 400);
+    const onb = await names();
+    if (!/Bea Blank/.test(onb) || !/Hal Hold/.test(onb) || !/Lee Legacy/.test(onb) || !/Fin Finished/.test(onb) || /Nia NotYet|Wes Withdrew/.test(onb)) fail("onboard list: " + onb.slice(0, 500)); else ok("Onboard has them all: blank earlier steps, on hold, an older file with no board result, and a finished one");
+    const beaRow = await page.locator(".arow", { hasText: "Bea Blank" }).textContent();
+    if (!/Onboard/.test(beaRow) || /Screening/.test(beaRow)) fail("approved file still labelled with an applicant stage: " + beaRow.replace(/\s+/g, " ")); else ok("an approved file is labelled Onboard even with earlier steps blank");
+    await pickApplicant(page, "Bea Blank"); await wait(page, 300);
+    const box = (await page.locator("#orientBox").textContent()).replace(/\s+/g, " ");
+    if (!/Status: Onboard/.test(box) || /Status: Applicant/.test(box) || !/Approved by the board/.test(box)) fail("status line: " + box); else ok("the file says Status: Onboard from the board approval on");
+    if (await page.locator("#orDocsGroup").isHidden() || !(await page.locator("#orDocs [data-orup]").count())) fail("no orientation documents before orientation"); else ok("orientation documents can be uploaded as soon as they're in Onboard");
+    await page.screenshot({ path: path.join(OUT, "60-status-onboard.png") });
+    // approving at the board moves the file at once
+    await page.locator('#chips [data-f="all"]').click(); await wait(page, 300);
+    await pickApplicant(page, "Nia NotYet"); await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
+    await page.locator('.seg[data-k="board.result"] button[data-v="approved"]').click(); await wait(page, 900);
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    await page.evaluate(() => document.querySelector('[data-act="back"], .backbtn')?.click()); await wait(page, 300);
+    await page.locator('#chips [data-f="all"]').click(); await wait(page, 400);
+    const after = await names(); await page.locator('#chips [data-f="orient"]').click(); await wait(page, 400); const after2 = await names();
+    if (/Nia NotYet/.test(after) || !/Nia NotYet/.test(after2)) fail("approving didn't move the file: " + after.slice(0, 200) + " // " + after2.slice(0, 200)); else ok("saving Approved moves the file to Onboard straight away");
+    if (!/1/.test(await page.locator('.stg[data-filter="act"]').textContent().catch(() => "1"))) fail("Active tile lost the finished member"); else ok("a finished member still counts on the Active tile");
+    await ctx.close();
+  }
   // ---- First-visit tour: once per person and role, with a way to see it again
   {
     const CORY = { email: "cory@pvrs.org", displayName: "Cory Reed" }, cs = [["staff/cory@pvrs.org", { role: "coordinator", name: "Cory Reed" }]];
