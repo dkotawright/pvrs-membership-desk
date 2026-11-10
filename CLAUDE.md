@@ -99,6 +99,19 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## Nov 11 batch (Dkota: "all but the big features" from the recommendations list)
+- **Naming**: the phase, list and tab are all **Onboard** (`STAGES.onb`, `PHASES`, tile, list title); "Orientation" now only means the orientation program; the sidebar grid tool is **Orientation board**.
+- **Coordinator's desk syncs too** (`coordSyncAll`, `coordBooking`): it writes `stage` on the shared doc and `steps` + `bookingOpen` on an invited applicant's portal page, so nothing waits for the owner's desk. Rules: coordinator may change only `stage` (to a known value) on applicants, and `interview`/`bookingOpen`/`steps`/`updatedAt` on portal.
+- **My paperwork**: a staff member whose email still has a portal page with `orientation` gets sidebar/More **My paperwork** (`#paperBtn`) → `/?paperwork=1` → main.js opens their orientation page (`startPortal(id, email, { backToDesk: true })`, "‹ Back to the desk"). Fixes squad members losing their upload page.
+- **No-show** (Interview tab, owner + coordinator, `markNoShow`): shows once a booked time has passed unmarked; releases the slot, sets `sched.noShow`, reopens booking, opens `TEMPLATES.noshow`.
+- **Applicant brief** (`openBrief`, Interview tab button, every role that can open the file): contact, type, interview time, interviewers, and every answered `iv.*` field; Print; Start interview mode.
+- **Private impressions** `applicants/{id}/impressions/{email}` {text, by, name, at}: one note per interviewer (`watchImpressions`, `renderImpressions`, `#impBox`). Rules: author writes their own if assigned or admin; only the author, owner and admins read. Admins/owner see everyone's.
+- **Reports** (`openReports`, `reportData`; button on Year at a glance, ⌘K; admins): average days between application → interview done → board vote → orientation, in-process counts by phase, stalled 14+ days, waiting longest; printable.
+- **Portal**: "What to bring" on a booked interview (`settings.ivBring`, default `DEFAULT_BRING`, sent as `portal.bring`); **I need to reschedule** inside 24 hours posts a message to the thread; after an upload a toast lists what's still needed.
+- Tour cards updated (member: My paperwork; interviewer: brief + impressions; coordinator: no-show; admin: Reports).
+- NOT done, needs Dkota: end-to-end test with a fake applicant (needs a personal email and him signing in); PVRS's real trainer skills list; fillable/signable orientation forms (needs PVRS's actual wording for the confidentiality statement, SOP/Constitution acceptance and equipment request). Not built by choice: week-grid calendar with drag, subscribe-able calendar feed (needs a public server endpoint), mentor view for members.
+- Tests: 352 browser, 35 push, rules +10 (all pass in the emulator apart from the 4 container-only storage ones).
+
 ## Onboard list = everyone the board approved (Nov 11, later; Dkota: "once they are approved by board we move onto that role")
 - The separate list from earlier today is renamed **Onboard** (sidebar heading "Onboard → New members", phone menu "Onboard", list title "Onboarding"; the internal filter key is still `orient`).
 - `inOrient(a)` now = board result Approved and not Active / on hold / declined / withdrawn. So a file moves to the Onboard list automatically the moment the board vote is saved as Approved, and stays through Sterling, orientation and the hand-offs. No separate "move" button: to move someone by hand, set Board result to Approved on their Board tab.

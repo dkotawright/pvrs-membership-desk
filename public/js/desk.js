@@ -83,7 +83,9 @@ function tabHTML(tab){
       F.seg(`refs.r${i}.method`,"Method",[["Phone","Phone"],["Email","Email"],["Text","Text"]]),F.date(`refs.r${i}.returned`,"Date received"),F.init(`refs.r${i}.init`)].join("")}</div></section>`).join("")}
   </div>`;
   if (tab === "iv") return `<div class="ivstart"><button class="btn primary" type="button" data-act="ivmode"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>Start interview mode</button>
+    <button class="btn" type="button" data-act="brief">Applicant brief</button>
     <span class="help">Full screen, one section at a time, big enough to read across the table. Answers save as you go.</span></div><div class="cols">
+    <section class="group noiv"><h3><span>${admin ? "Interviewers' impressions" : "My impressions"}</span></h3><div class="ios" id="impBox"></div></section>
     ${admin ? `<section class="group noiv"><h3><span>Interviewers</span>${S.sched ? `<button class="btn small" type="button" data-act="assigniv">Assign</button>` : ""}</h3><div class="ios" id="ivAssign"></div></section>` : ""}
     ${group("Scheduling",[
       `<div class="row"><span class="lbl">Booked time<small id="bookedEcho">—</small></span><span id="bookedActs" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"></span></div>`,
@@ -228,7 +230,7 @@ const inOrient = a => S.admin && get(a, "board.result") === "approved" && !["act
 const orientStat = a => { const c = orientCounts(a), s = orientSession(a._id), l = orientDaysLeft(a);
   return { pill: "Orientation", head: `Orientation: ${c.done} of ${c.total} done`, sub: [s ? "Session " + slotLong(s.start) : "No session booked yet", l === null ? "" : l < 0 ? `${-l} days late` : `due ${longDate(orientDue(a))}`].filter(Boolean).join(" · ") }; };
 const stat = (a, p) => inOrient(a) && orientOpen(a) ? orientStat(a) : statusOf(a, p);
-const filterLabel = k => k==="all" ? "All applicants" : k==="orient" ? "Onboarding" : k==="board" ? "Board queue" : PSEUDO[k] ? PSEUDO[k].label : STAGES[k].label;
+const filterLabel = k => k==="all" ? "All applicants" : k==="orient" ? "Onboard" : k==="board" ? "Board queue" : PSEUDO[k] ? PSEUDO[k].label : STAGES[k].label;
 const filterColor = k => k==="all" ? "var(--fg3)" : k==="board" ? "var(--s-appr)" : k==="orient" ? "var(--s-act)" : stageVar(k);
 const shortDate = d => d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});
 const hl = (text, q) => { const s = esc(text); if (!q) return s; const i = String(text).toLowerCase().indexOf(q); return i < 0 ? s : esc(text.slice(0,i)) + `<mark>${esc(text.slice(i, i+q.length))}</mark>` + esc(text.slice(i+q.length)); };
@@ -489,11 +491,42 @@ function statsData(){
   }
   return { funnel, declined, withdrew, heard: [...heard].sort((x, y) => y[1] - x[1]), months, apps, joined, avg: waits.length ? Math.round(waits.reduce((x, y) => x + y, 0) / waits.length) : null, yr };
 }
+// Reports (admins, read only): how long each stretch takes, who has been waiting longest, and who has stalled.
+function reportData(){
+  const days = (x, y) => x && y ? Math.round((new Date(y + "T12:00") - new Date(x + "T12:00")) / 864e5) : null;
+  const avg = l => l.length ? Math.round(l.reduce((s, n) => s + n, 0) / l.length) : null;
+  const all = [...S.apps.values()], g = get;
+  const span = (from, to) => { const l = all.map(a => days(g(a, from), g(a, to))).filter(n => n !== null && n >= 0); return { avg: avg(l), n: l.length }; };
+  const spans = [["Application to interview done", span("app.received", "sched.completed")], ["Interview to board vote", span("sched.completed", "board.date")],
+    ["Board approval to orientation", span("board.date", "onb.orientStarted")], ["Application to board vote", span("app.received", "board.date")]];
+  const open = all.map(a => ({ a, p: progress(a) })).filter(r => IN_PROCESS.includes(r.p.stage));
+  const waiting = open.map(r => ({ ...r, d: daysSince(g(r.a, "app.received")) || 0 })).sort((x, y) => y.d - x.d);
+  const stalled = open.map(r => ({ ...r, idle: lastTouched(r.a) ? Math.floor((Date.now() - lastTouched(r.a)) / 864e5) : 0 })).filter(r => r.idle >= 14).sort((x, y) => y.idle - x.idle);
+  const byPhase = PHASES.map(([k, label]) => { const l = waiting.filter(r => r.p.stage === k); return { label, n: l.length, avg: avg(l.map(r => r.d)) }; });
+  return { spans, waiting, stalled, byPhase };
+}
+function openReports(){
+  if (!S.admin) return;
+  const r = reportData(), d = n => n === null ? "—" : `${n} day${n === 1 ? "" : "s"}`;
+  const who = x => `<button class="filelink" type="button" data-rpopen="${esc(x.a._id)}">${esc(x.a.name || "Unnamed")}</button>`;
+  const body = `<h4>How long it takes<small> · averages across every file with both dates</small></h4>
+    <table class="rpt">${r.spans.map(([l, s]) => `<tr><th>${esc(l)}</th><td><b>${d(s.avg)}</b></td><td>${s.n ? `${s.n} file${s.n === 1 ? "" : "s"}` : "no data yet"}</td></tr>`).join("")}</table>
+    <h4>In process right now</h4>
+    <table class="rpt">${r.byPhase.map(p => `<tr><th>${esc(p.label)}</th><td><b>${p.n}</b></td><td>${p.n ? "applied " + d(p.avg) + " ago on average" : ""}</td></tr>`).join("")}</table>
+    <h4>No movement in 14 days or more</h4>
+    ${r.stalled.length ? `<table class="rpt">${r.stalled.map(x => `<tr><th>${who(x)}</th><td><b>${x.idle} days</b></td><td>${esc(stat(x.a, x.p).head)}</td></tr>`).join("")}</table>` : `<p class="help">Nobody is stalled. 🎉</p>`}
+    <h4>Waiting longest</h4>
+    ${r.waiting.length ? `<table class="rpt">${r.waiting.slice(0, 10).map(x => `<tr><th>${who(x)}</th><td><b>${d(x.d)}</b></td><td>${esc(stat(x.a, x.p).head)}</td></tr>`).join("")}</table>` : `<p class="help">Nobody is in process.</p>`}`;
+  const M = openModal(`<h3>Reports</h3><div class="rptwrap">${body}</div><div class="acts"><button class="btn" type="button" data-x>Close</button><button class="btn" type="button" id="rpPrint">Print</button></div>`, true);
+  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal();
+    const o = e.target.closest("[data-rpopen]"); if (o) { closeModal(); return select(o.dataset.rpopen); }
+    if (e.target.closest("#rpPrint")) printHTML(`<section class="pk"><header><img src="/img/logo.png" alt=""><div><div class="pk-k">Membership report</div><h1>${esc(new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }))}</h1></div></header>${body.replace(/<h4>/g, "<h2>").replace(/<\/h4>/g, "</h2>")}<footer>Potsdam Volunteer Rescue Squad · Confidential</footer></section>`); };
+}
 function statsCard(){
   if (!S.admin) return "";
   const st = statsData(), max = Math.max(1, ...st.months.map(m => m.n)), top = Math.max(...st.months.map(m => m.n));
   const mname = (d, f) => d.toLocaleDateString(undefined, { month: f });
-  return `<section class="ovcard stats"><h3>Year at a glance<small>${st.yr}</small></h3>
+  return `<section class="ovcard stats"><h3>Year at a glance<small>${st.yr}</small><button class="btn small" type="button" data-cmd="reports">Reports</button></h3>
     <div class="kpis"><div class="kpi"><b>${st.apps}</b><span>Applications this year</span></div><div class="kpi"><b>${st.joined}</b><span>Approved by the board this year</span></div>
       <div class="kpi"><b>${st.avg == null ? "—" : st.avg}</b><span>${st.avg == null ? "Days to board (no approvals yet)" : "Average days from application to board"}</span></div></div>
     ${funnelHTML(st)}
@@ -578,7 +611,7 @@ function renderOverview(){
       <h2>${greet}${S.name ? ", " + esc(first(S.name)) : ""}</h2>
       <p>${rows.length ? `${inProc.length} applicant${inProc.length===1?"":"s"} in process${S.admin && c.board ? `, ${c.board} waiting on the board` : ""}${thisWeek ? `, ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet."}</p></div>
       <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
-    <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview", S.admin && notSched ? `${notSched} not scheduled yet` : "")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${S.admin ? `<button class="stg" type="button" data-filter="orient" style="--stage-c:${stageVar("onb")}"><span class="v">${c.orient || 0}</span><span class="k">Onboarding</span>${inOrientation ? `<span class="s">${inOrientation} in orientation</span>` : ""}</button>` : stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
+    <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview", S.admin && notSched ? `${notSched} not scheduled yet` : "")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${S.admin ? `<button class="stg" type="button" data-filter="orient" style="--stage-c:${stageVar("onb")}"><span class="v">${c.orient || 0}</span><span class="k">Onboard</span>${inOrientation ? `<span class="s">${inOrientation} in orientation</span>` : ""}</button>` : stage("onb", "Onboard")}${stage("act", "Active members")}</div>
     ${S.role !== "member" ? `<div id="ovRoster" class="ovroster"></div>` : ""}
     ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
       ${unreadChatTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open messages</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => S.apps.has(m.appId) && unreadIn("a:" + m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
@@ -753,9 +786,9 @@ function syncDetail(){
   if (be) {
     be.textContent = a._booked ? `${slotLong(a._booked.start)}${a._booked.location ? " · " + a._booked.location : ""}` : "Not booked";
     const cal = a._booked ? `<button class="btn small" type="button" data-act="ics" title="Add to Calendar">${ICON.cal}<span class="tl">Calendar</span></button>` : "";
-    $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
+    $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `${S.sched && a._booked.start < Date.now() && !get(a, "sched.completed") ? `<button class="btn small" type="button" data-act="noshow" title="They didn't come: reopen booking and write to them">No-show</button>` : ""}<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
-  renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges(); renderInterviewers(a); renderDupeNote(a); renderOrientTab(a);
+  renderImpressions(); renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges(); renderInterviewers(a); renderDupeNote(a); renderOrientTab(a);
   if (S.tab === "msgs" && !$("#dThread")?.childElementCount) renderMessages();
   syncSignoff(a);
   const dlr = $("#dlFromApp"); if (dlr) { const n = get(a, "form.person.dlNumber"); dlr.hidden = !n; if (n) { $("#dlNum").textContent = n; $("#dlFromAppNote").textContent = `Issued in ${get(a, "form.person.dlState") || "—"} · admins only`; } }
@@ -896,16 +929,26 @@ function edit(id, path, value){
     if (!wasActive && st === "act") celebrate(`🎉 ${first(a.name) || "They"} ${a.name ? "is" : "are"} now an active member!`);
     else if (!wasApproved && get(a, "board.result") === "approved") celebrate(`🎉 ${a.name || "Applicant"} approved by the board!`);
   }
-  else if (S.coord && path === "portal.bookingOpen") coordBooking(id);
+  else if (S.coord) { if (path === "portal.bookingOpen") coordBooking(id); coordSyncAll(); }
   setSave("Editing…");
   renderList(); syncDetail();
 }
 // The coordinator's desk can't rewrite an applicant's whole portal page (only the owner's does), so it flips just the
 // booking switch on it. Applicants who haven't been welcomed have no page yet; the owner's desk fills it in then.
 function coordBooking(id){
-  const a = S.apps.get(id); if (!a || !S.portal.has(id)) return;
-  updateDoc(doc(db, "portal", id), { bookingOpen: get(a, "portal.bookingOpen") === "yes" && !isDeclined(a), updatedAt: Date.now() }).catch(e => console.error(e));
+  const a = S.apps.get(id), cur = S.portal.get(id); if (!a || !cur || !get(a, "portal.invited")) return;
+  const steps = applicantSteps(a), bookingOpen = get(a, "portal.bookingOpen") === "yes" && !isDeclined(a);
+  if (JSON.stringify(cur.steps || []) === JSON.stringify(steps) && !!cur.bookingOpen === bookingOpen) return;
+  updateDoc(doc(db, "portal", id), { steps, bookingOpen, updatedAt: Date.now() }).catch(e => console.error(e));
 }
+// So nothing waits for the owner's desk to be open: after the coordinator's own changes (a booking, a completed date)
+// their desk updates the stage label everyone sees and the steps on that applicant's portal page.
+let coordT;
+function coordSyncAll(){ if (!S.coord) return; clearTimeout(coordT); coordT = setTimeout(() => {
+  for (const [id, a] of S.apps) { const st = progress(a).stage, sh = S.shared.get(id);
+    if (sh && sh.stage !== st) { sh.stage = st; updateDoc(doc(db, "applicants", id), { stage: st }).catch(e => console.error(e)); }
+    coordBooking(id); }
+}, 2500); }
 async function flush(key){
   if (inflight[key] || !pending[key]) return;
   const [kind, id] = key.split("|");
@@ -986,15 +1029,16 @@ function renderHistory(){
 }
 
 /* ---------- applicant portal sync (admins) ---------- */
+const DEFAULT_BRING = "A photo ID, your driver's license, and any EMT or CPR cards you hold.";
 function portalPayload(a){
-  return { email: lower(a.email), name: a.name || "", firstName: first(a.name), type: a.type || "",
+  return { bring: S.settings.ivBring || DEFAULT_BRING, email: lower(a.email), name: a.name || "", firstName: first(a.name), type: a.type || "",
     steps: applicantSteps(a), docs: requestedDocs(a).map(d => ({ key: d.key, label: d.label, received: d.received })),
     refs: refList(a).map(r => ({ slot: r.i, name: r.name, received: r.received, ...(r.replace ? { replace: true } : {}) })),
     refReplace: refList(a).filter(r => r.replace).map(r => r.i),
     bookingOpen: get(a,"portal.bookingOpen") === "yes" && !isDeclined(a),
     orientation: orientPayload(a), checkin: checkinDue(a) };
 }
-const portalKey = p => JSON.stringify([p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.refReplace || [], p.bookingOpen, p.orientation || null, p.checkin || null]);
+const portalKey = p => JSON.stringify([p.bring || "", p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.refReplace || [], p.bookingOpen, p.orientation || null, p.checkin || null]);
 const portalTimers = {};
 function schedulePortal(id, delay = 1500){ if (!S.canEdit) return; clearTimeout(portalTimers[id]); portalTimers[id] = setTimeout(() => syncPortal(id), delay); }
 async function syncPortal(id, force = false){
@@ -1037,6 +1081,17 @@ async function releaseFor(id){
   b.update(doc(db, "slots", a._booked.slotId), { bookedBy: null });
   b.set(doc(db, "portal", id), { interview: null }, { merge: true });
   await b.commit();
+}
+// They didn't come: free the time, note it, reopen booking so they can pick again, and draft the follow-up.
+async function markNoShow(id){
+  if (!S.sched) return ownerOnlyToast();
+  const a = S.apps.get(id); if (!a || !a._booked) return;
+  const was = slotLong(a._booked.start);
+  try { await releaseFor(id); } catch (e) { console.error(e); return toast("Couldn't release that time."); }
+  edit(id, "sched.noShow", today()); edit(id, "sched.scheduled", ""); edit(id, "sched.time", "");
+  if (get(a, "portal.invited")) edit(id, "portal.bookingOpen", "yes");
+  flushAll(); toast("Marked as a no-show. Booking is open again.");
+  setTimeout(() => openEmail("noshow", was, id), 300);
 }
 function openBook(id){
   if (!S.sched) return ownerOnlyToast();
@@ -1229,6 +1284,47 @@ function watchMessages(){
   }, e => console.error(e));
 }
 
+// Private impressions (applicants/{id}/impressions/{email}): each interviewer writes one note that only they, the
+// owner and admins can read. Interviewers load their own; the owner and admins load everyone's.
+let impUnsub = null, impT = null;
+function watchImpressions(id){
+  if (impUnsub) { impUnsub(); impUnsub = null; }
+  S.imps = [];
+  if (!id || S.member) return;
+  const done = list => { S.imps = list; if (S.sel === id) renderImpressions(); };
+  impUnsub = S.admin ? onSnapshot(collection(db, "applicants", id, "impressions"), s => done(s.docs.map(d => ({ who: d.id, ...d.data() }))), () => {})
+    : onSnapshot(doc(db, "applicants", id, "impressions", S.me), d => done(d.exists() ? [{ who: S.me, ...d.data() }] : []), () => {});
+}
+function renderImpressions(){
+  const el = $("#impBox"); if (!el) return;
+  const ta = $("#impText"); if (ta && document.activeElement === ta) return;   // don't yank the box while they're typing
+  const mine = (S.imps || []).find(x => x.who === S.me), others = (S.imps || []).filter(x => x.who !== S.me && x.text);
+  el.innerHTML = `<label class="row stack"><span class="lbl">${S.admin ? "Your own note" : "How did it go? Anything the committee should know?"}<small>Private: only you, the membership coordinator and the committee can read this. Other interviewers and the applicant can't.</small></span>
+      <textarea id="impText" rows="4" maxlength="4000" placeholder="Your honest read on this applicant">${esc(mine?.text || "")}</textarea></label>`
+    + others.map(x => `<div class="row stack"><span class="lbl">${esc(x.name || memberName(x.who))}<small>${esc(new Date(x.at).toLocaleDateString())}</small></span><p class="cv-note" style="white-space:pre-wrap">${esc(x.text)}</p></div>`).join("")
+    + (S.admin && !others.length ? `<div class="row"><span class="lbl" style="color:var(--fg2)">No interviewer has left a note yet.</span></div>` : "");
+  $("#impText").addEventListener("input", e => { const id = S.sel, text = e.target.value; clearTimeout(impT); setSave("Editing…");
+    impT = setTimeout(() => setDoc(doc(db, "applicants", id, "impressions", S.me), { text: text.slice(0, 4000), by: S.me, name: S.name || "", at: Date.now() })
+      .then(() => { if (S.sel === id) setSave("Saved"); }).catch(err => { console.error(err); toast("Couldn't save your note."); }), 700); });
+}
+// One page to read before the interview: who they are, when and where, and what's already on file from their application.
+function openBrief(id){
+  const a = S.apps.get(id); if (!a) return;
+  LABELS = LABELS || fieldLabels();
+  const when = a._booked ? `${slotLong(a._booked.start)}${a._booked.location ? " · " + a._booked.location : ""}` : get(a, "sched.scheduled") ? `${longDate(get(a, "sched.scheduled"))}${get(a, "sched.time") ? " at " + get(a, "sched.time") : ""}` : "Not scheduled yet";
+  const crew = (Array.isArray(a.interviewers) ? a.interviewers : []).map(memberName).join(", ");
+  const flat = (o, pre, out = []) => { for (const [k, v] of Object.entries(o || {})) { if (isObj(v)) flat(v, pre + k + ".", out); else if (v !== "" && v != null) out.push([pre + k, v]); } return out; };
+  const ans = flat(a.iv, "iv.").filter(([k]) => LABELS[k] && !k.startsWith("iv.score.")).map(([k, v]) => [LABELS[k].replace(/^\d+\.\s*/, ""), histVal(String(v), k)]);
+  const row = (k, v) => v ? `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>` : "";
+  const body = `<table>${row("Membership type", a.type)}${row("Lives in", loc(a))}${row("Phone", a.phone)}${row("Email", a.email)}${row("Applied", get(a, "app.received") ? longDate(get(a, "app.received")) : "")}${row("Heard about PVRS", [get(a, "app.heard"), get(a, "app.heardDetail")].filter(Boolean).join(": "))}
+      ${row("Interview", when)}${row("Interviewing", crew)}</table>
+    <h2>Already on file</h2>${ans.length ? `<table>${ans.map(([k, v]) => row(k, v)).join("")}</table>` : `<p>Nothing has been filled in on the Interview tab yet.</p>`}`;
+  const M = openModal(`<h3>Applicant brief: ${esc(a.name || "Applicant")}</h3><div class="brief">${body}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Close</button><button class="btn" type="button" id="brPrint">Print</button><button class="btn primary" type="button" id="brStart">Start interview mode</button></div>`, true);
+  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal();
+    if (e.target.closest("#brPrint")) return printHTML(`<section class="pk"><header><img src="/img/logo.png" alt=""><div><div class="pk-k">Applicant brief</div><h1>${esc(a.name || "Applicant")}</h1></div></header>${body}<footer>Potsdam Volunteer Rescue Squad · Confidential · Printed ${esc(new Date().toLocaleDateString())}</footer></section>`);
+    if (e.target.closest("#brStart")) { closeModal(); if (S.tab !== "iv") switchTab("iv"); enterIvMode(); } };
+}
 let recUnsub = null;
 function watchRecords(id){
   if (recUnsub) { recUnsub(); recUnsub = null; }
@@ -1351,13 +1447,15 @@ const TEMPLATES = {
     body: `Hi ${first(a.name)},\n\nTo finish your orientation paperwork, please upload the following from your PVRS dashboard. Each one has its own Upload button on your checklist (a PDF or a clear photo is fine):\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\nSign in at ${location.origin}/signin with ${lower(a.email)}. The sign-in email often lands in spam or junk, so check there if you don't see it.\n\nAll of these are required before you can be issued equipment or run calls. If the upload gives you trouble, reply to this email and we'll sort it out.\n\nThank you,\n${sig()}` }),
   refs: (a, list = []) => ({ subject: "PVRS application: references still needed",
     body: `Hi ${first(a.name)},\n\nWe're still waiting to hear from ${list.length === 1 ? "one of your references" : "some of your references"}:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\nWe need ${REFS_NEEDED} references before your application can go to the board. If you can, please check in with them, or let us know if one of them is hard to reach and you'd like to suggest someone else.\n\nYou can see which references we've heard from in your applicant portal:\n${location.origin}\n\nThank you,\n${sig()}` }),
+  noshow: (a, was) => ({ subject: "PVRS interview: let's find a new time",
+    body: `Hi ${first(a.name)},\n\nWe missed you at your interview${was ? " on " + was : ""}. Things come up, so no worries.\n\nIf you'd still like to join the squad, sign in to your applicant portal and pick a new time:\n\n${location.origin}\n\nIf none of the times work, reply to this email and we'll find another.\n\nThank you,\n${sig()}` }),
   interview: a => ({ subject: "PVRS interview: pick a time",
     body: `Hi ${first(a.name)},\n\nThe next step in your application is an interview with the Membership Committee. Interview times are now open in your applicant portal. Sign in and pick the one that works best for you:\n\n${location.origin}\n\nIf none of the times work, reply to this email and we'll find another.\n\nThank you,\n${sig()}` }),
 };
 function openEmail(kind, extra, id = S.sel){
   const a = S.apps.get(id); if (!a) return;
   const t = TEMPLATES[kind](a, extra);
-  const titles = { portal: "Welcome email", docs: "Documents email", orientdocs: "Orientation documents email", refs: "References email", interview: "Interview email" };
+  const titles = { portal: "Welcome email", docs: "Documents email", noshow: "Missed interview email", orientdocs: "Orientation documents email", refs: "References email", interview: "Interview email" };
   const M = openModal(`<h3>${titles[kind]}</h3><p class="help">Optional personal note to go with the portal. Copy it or open it in Mail.</p>
     <div class="ios"><div class="row"><span class="lbl">To<small>${esc(a.email || "No email on file")}</small></span>${a.email?`<button class="copy" type="button" id="cpTo">Copy</button>`:""}</div>
       <label class="row stack"><span class="lbl">Subject</span><input type="text" id="emSubject" value="${esc(t.subject)}"></label>
@@ -1432,7 +1530,8 @@ function openSettings(){
       <label class="row stack"><span class="lbl">Email signature<small>Printed at the end of every email</small></span><textarea id="sSig" rows="4" placeholder="Name, credentials">${esc(s.signature||"")}</textarea></label>
       <label class="row stack"><span class="lbl">Documents and questions go to</span><input type="text" id="sDocs" placeholder="${esc(CONTACT_EMAIL)}" value="${esc(s.docsEmail||"")}"></label>
       <label class="row stack"><span class="lbl">Board emails<small>For "Email the board" in Board meeting mode; separate with commas</small></span><input type="text" id="sBoard" placeholder="president@pvrs.org, secretary@pvrs.org" value="${esc(s.boardEmails||"")}"></label>
-      <label class="row stack"><span class="lbl">Default interview location</span><input type="text" id="sLoc" placeholder="PVRS building" value="${esc(s.defaultLocation||"")}"></label></div></div>
+      <label class="row stack"><span class="lbl">Default interview location</span><input type="text" id="sLoc" placeholder="PVRS building" value="${esc(s.defaultLocation||"")}"></label>
+      <label class="row stack"><span class="lbl">What to bring to the interview<small>Shown to applicants once their interview is booked</small></span><input type="text" id="sBring" maxlength="300" placeholder="${esc(DEFAULT_BRING)}" value="${esc(s.ivBring||"")}"></label></div></div>
     <div class="group"><h3><span>Saved replies</span><button class="btn small" type="button" id="qrAdd">Add reply</button></h3><div class="ios" id="qrList">${savedReplies().map(replyRowHTML).join("")}</div>
       <p class="help" style="margin:4px 4px 0">Buttons above the reply box on the Messages tab. <b>{first}</b> becomes the applicant's first name.</p></div>
     <div class="group"><h3><span>Med Control (AI assistant)</span></h3><div class="ios">
@@ -1485,7 +1584,7 @@ function openSettings(){
       try { await deleteDoc(doc(db, "staff", rm.dataset.rmstaff)); toast("Removed"); } catch { toast("Couldn't remove."); } }
     if (id === "sSave") {
       const idle = parseInt($("#sIdle").value, 10);
-      const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), boardEmails: $("#sBoard").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now(),
+      const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), ivBring: $("#sBring").value.trim().slice(0, 300), boardEmails: $("#sBoard").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now(),
         ai: $("#sAi .on")?.dataset.v === "on",
         retentionYears: parseInt($("#sRet").value, 10) > 0 ? Math.min(20, parseInt($("#sRet").value, 10)) : null,
         onbItems: [...new Set($("#sOnb").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
@@ -1651,13 +1750,14 @@ function openPalette(){
     { label: "Recruiting flyer (print)", show: S.admin, words: "flyer poster qr recruit print", run: go(printFlyer) },
     { label: "Year-end report (print)", show: S.admin, words: "year end annual report stats print", run: go(printYearReport) },
     { label: S.canEdit ? "Interview times" : "My interview times", show: canHostSlots(), words: "interview times slots schedule calendar", run: go(openSlots) },
-    { label: "Orientation", show: S.admin || S.owner, words: "orientation new members board checklist", run: go(openOrientBoard) },
+    { label: "Orientation board", show: S.admin || S.owner, words: "orientation new members board checklist", run: go(openOrientBoard) },
     { label: "Orientation times", show: S.canEdit, words: "orientation times schedule slots", run: go(openOrientTimes) },
     { label: "Sign-offs", show: !$("#trainBtn").hidden, words: "sign offs trainer skills", run: go(openSignoffs) },
     { label: "Documents", show: true, words: "documents library handbook policies forms", run: go(openLibrary) },
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(() => openChat()) },
     { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
     { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
+    { label: "Reports", show: S.admin, words: "reports how long days stage stalled waiting average", run: go(openReports) },
     { label: "Notifications", show: true, words: "notifications alerts push bell phone", run: go(openNotifications) },
     { label: "Show the tour", show: !S.owner, words: "tour tutorial help how guide welcome what can i do", run: go(() => showTour(S.role, tourOpts())) },
     ...(S.owner ? [["admin", "an Admin"], ["coordinator", "the Interview coordinator"], ["interviewer", "an Interviewer"], ["member", "a Member"], ["applicant", "an applicant"], ["newmember", "a new member in orientation"]]
@@ -1786,7 +1886,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation"], ["trainBtn", "Sign-offs"], ["libBtn", "Documents"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation board"], ["trainBtn", "Sign-offs"], ["paperBtn", "My paperwork"], ["libBtn", "Documents"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div>
@@ -1938,7 +2038,7 @@ function bindEvents(){
       if (k === "ivmail") return openEmail("interview", undefined, id);
       if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
       return; }
-    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openChat(); return; }
+    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "reports") return openReports(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openChat(); return; }
     const om = t.closest("[data-openmsg]"); if (om) return openChat("a:" + om.dataset.openmsg);
     const qr = t.closest("[data-qr]"); if (qr) return useQuickReply(+qr.dataset.qr);
     const air = t.closest("[data-aireply]"); if (air) return aiDraftReply(air);
@@ -1967,6 +2067,8 @@ function bindEvents(){
       if (k === "book") return openBook(S.sel);
       if (k === "packet") { flushAll(); return printPacket([S.apps.get(S.sel)]); }
       if (k === "ics") { const a = S.apps.get(S.sel); if (a && a._booked) { download(`PVRS-interview-${(a.name||"applicant").replace(/\W+/g,"-")}.ics`, icsFile([icsEvent(a, a._booked)]), "text/calendar"); toast("Calendar file downloaded. Open it to add the interview."); } return; }
+      if (k === "noshow") return markNoShow(S.sel);
+      if (k === "brief") return openBrief(S.sel);
       if (k === "release") { try { await releaseFor(S.sel); toast("Interview time released"); } catch { toast("Couldn't release that time."); } return; }
     }
     const sg = t.closest("[data-sign]");
@@ -2037,7 +2139,7 @@ function select(id){
   if (S.chatOn) closeChat();
   flushAll(); const same = S.sel === id; S.sel = id;
   if (!same && S.admin && inOrient(S.apps.get(id))) S.tab = "onb";   // someone the board approved opens on their Onboard page
-  if (!same) { watchFiles(id); watchHistory(id); watchRecords(id); }
+  if (!same) { watchFiles(id); watchHistory(id); watchRecords(id); watchImpressions(id); }
   renderList(); renderDetail();
   const b = $("#dbody"); if (b && !same) b.scrollTop = 0;
   if (S.canEdit) schedulePortal(id, 200);
@@ -3727,7 +3829,7 @@ function startIdleLock(){
 }
 
 /* ---------- start ---------- */
-export function startDesk({ email, role, owner, name }){
+export function startDesk({ email, role, owner, name, paperwork = false }){
   S.me = email; S.admin = role === "admin" || role === "coordinator"; S.owner = !!owner; S.canEdit = !!owner;
   // Interview coordinator: sees what an admin sees and runs scheduling. S.sched = may schedule (owner or coordinator).
   S.coord = !owner && role === "coordinator"; S.sched = !!owner || S.coord; S.name = name || "";
@@ -3747,6 +3849,8 @@ export function startDesk({ email, role, owner, name }){
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
   startIdleLock();
   startPushToasts(); refreshPush();
+  // A squad member who still owes orientation paperwork gets a way back to their orientation page.
+  if (paperwork) { const pb = $("#paperBtn"); pb.hidden = false; pb.addEventListener("click", () => { location.href = "/?paperwork=1"; }); paintMnav(); }
   if (!S.owner) maybeTour(S.role, tourOpts());   // first visit only: what this role can do
   watchOrientation(); watchChat(); startPresence(); $("#msgsBtn").hidden = false; paintMnav();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
@@ -3762,13 +3866,13 @@ export function startDesk({ email, role, owner, name }){
     renderList(); if (S.sel) syncDetail();
     if (S.role === "interviewer" && !S.sel) renderOverview();
     openFromLink();
-    if (S.canEdit) { syncAllPortals(); mirrorStages(); }
+    if (S.canEdit) { syncAllPortals(); mirrorStages(); } else if (S.coord) coordSyncAll();
   }, lost);
   onSnapshot(collection(db, "slots"), snap => {
     S.slots = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
     rebuildAll(); renderList(); if (S.sel) syncDetail(); if (S._slotPaint && !$("#modal").hidden) S._slotPaint();
     if (S.role === "interviewer" && !S.sel) renderOverview();
-    if (S.canEdit) { syncAllPortals(); mirrorStages(); }
+    if (S.canEdit) { syncAllPortals(); mirrorStages(); } else if (S.coord) coordSyncAll();
   }, () => {});
   if (S.admin) {
     onSnapshot(collectionGroup(db, "private"), snap => {

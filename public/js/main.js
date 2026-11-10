@@ -253,7 +253,11 @@ async function startFor(user){
     if (email === lower(PAPERWORK_EMAIL)) { homeView = "vault"; show("vault"); return startVault(email); }
     if (email === lower(OWNER_EMAIL)) { homeView = "app"; show("app"); return startDesk({ email, role: "admin", owner: true, name: user.displayName || "" }); }
     const staff = await getDoc(doc(db, "staff", email));
-    if (staff.exists()) { homeView = "app"; show("app"); return startDesk({ email, role: ["admin", "coordinator", "interviewer"].includes(staff.data().role) ? staff.data().role : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
+    // A squad member who still has an orientation page can open it from the desk ("My paperwork" → /?paperwork=1).
+    let mine = null;
+    if (staff.exists()) { try { const mp = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1))); if (!mp.empty && mp.docs[0].data().orientation) mine = mp.docs[0].id; } catch {} }
+    if (staff.exists() && mine && new URLSearchParams(location.search).has("paperwork")) { homeView = "portal"; show("portal"); return startPortal(mine, email, { backToDesk: true }); }
+    if (staff.exists()) { homeView = "app"; show("app"); return startDesk({ paperwork: !!mine, email, role: ["admin", "coordinator", "interviewer"].includes(staff.data().role) ? staff.data().role : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
     const p = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1)));
     if (!p.empty) { homeView = "portal"; show("portal"); return startPortal(p.docs[0].id, email); }
     const req = await getDoc(doc(db, "accessRequests", email));

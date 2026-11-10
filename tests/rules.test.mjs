@@ -265,10 +265,20 @@ await t("but can't touch notes", updateDoc(doc(cory, "applicants/c1/private/main
 await t("or the portal invite", updateDoc(doc(cory, "applicants/c1/private/main"), { "portal.invited": "", secUpdatedAt: now(), secUpdatedBy: "cory@pvrs.org" }), false);
 await t("or board votes", updateDoc(doc(cory, "applicants/c1/private/main"), { board: { result: "approved" }, secUpdatedAt: now(), secUpdatedBy: "cory@pvrs.org" }), false);
 await t("a coordinator opens booking on the applicant's page", updateDoc(doc(cory, "portal/c1"), { bookingOpen: true, updatedAt: now() }), true);
-await t("but can't change what else the applicant sees", updateDoc(doc(cory, "portal/c1"), { steps: [{ label: "Board", state: "done" }] }), false);
+await t("but can't change what else the applicant sees", updateDoc(doc(cory, "portal/c1"), { docs: [{ key: "x", label: "Anything", received: true }], refs: [] }), false);
 await t("or whose page it is", updateDoc(doc(cory, "portal/c1"), { email: "cory@pvrs.org" }), false);
 await t("a coordinator reads every applicant conversation", getDocs(collectionGroup(cory, "messages")), true);
 await t("and replies", setDoc(doc(cory, "portal/c1/messages/m1"), { text: "You're booked", from: "staff", by: "cory@pvrs.org", name: "Cory", at: now() }), true);
+await t("a coordinator's desk updates the stage label", updateDoc(doc(cory, "applicants/c1"), { stage: "int" }), true);
+await t("but not to something made up", updateDoc(doc(cory, "applicants/c1"), { stage: "vip" }), false);
+await t("an admin can't change the stage", updateDoc(doc(admin, "applicants/c1"), { stage: "appr" }), false);
+await t("a coordinator's desk refreshes the applicant's steps", updateDoc(doc(cory, "portal/c1"), { steps: [{ label: "Interview", state: "now" }], updatedAt: now() }), true);
+await t("an interviewer writes a private impression of someone they interview", setDoc(doc(iv, "applicants/a2/impressions/iv@pvrs.org"), { text: "Good fit", by: "iv@pvrs.org", name: "Ivy", at: now() }), true);
+await t("not under someone else's name", setDoc(doc(iv, "applicants/a2/impressions/admin@pvrs.org"), { text: "x", by: "iv@pvrs.org", name: "Ivy", at: now() }), false);
+await t("not for an applicant they aren't assigned", setDoc(doc(iv, "applicants/c1/impressions/iv@pvrs.org"), { text: "x", by: "iv@pvrs.org", name: "Ivy", at: now() }), false);
+await t("they read their own", getDoc(doc(iv, "applicants/a2/impressions/iv@pvrs.org")), true);
+await t("an admin reads every impression", getDocs(collection(admin, "applicants/a2/impressions")), true);
+await t("a member can't read impressions", getDoc(doc(member, "applicants/a2/impressions/iv@pvrs.org")), false);
 await t("a coordinator can't change roles", setDoc(doc(cory, "staff/cory@pvrs.org"), { role: "admin" }), false);
 await t("or settings", setDoc(doc(cory, "settings/main"), { signature: "x" }, { merge: true }), false);
 

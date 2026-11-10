@@ -175,7 +175,9 @@ service cloud.firestore {
     match /applicants/{id} {
       allow read: if isAdmin() || assignedTo(resource.data);
       allow create, delete: if isOwner();
-      allow update: if isOwner() || ((isAdmin() || assignedTo(resource.data)) && interviewOnly()) || (isCoord() && coordOnly());
+      allow update: if isOwner() || ((isAdmin() || assignedTo(resource.data)) && interviewOnly()) || (isCoord() && coordOnly())
+        // the coordinator's desk keeps the stage label current (the owner's desk does the same)
+        || (isCoord() && onlyChanged(['stage']) && request.resource.data.stage in ['screen', 'int', 'appr', 'onb', 'act', 'hold', 'dec', 'wd', 'open']);
 
       // Screening, board, onboarding, notes (admins only)
       match /private/{doc} {
@@ -205,6 +207,20 @@ service cloud.firestore {
                && request.resource.data.path.matches('records/.*'))   // a combined file keeps the other file's folder
               || confidentialStub());
         allow update, delete: if isOwner();
+      }
+
+      // An interviewer's private impressions of an applicant: one note each. Only its author, the owner and admins
+      // (the committee) can read it; other interviewers on the same applicant can't.
+      match /impressions/{who} {
+        allow read: if isAdmin() || (verified() && who == myEmail());
+        allow create, update: if verified() && who == myEmail()
+          && (isAdmin() || assignedTo(get(/databases/$(database)/documents/applicants/$(id)).data))
+          && request.resource.data.keys().hasOnly(['text', 'by', 'name', 'at'])
+          && request.resource.data.by == myEmail()
+          && request.resource.data.text is string && request.resource.data.text.size() <= 4000
+          && request.resource.data.get('name', '') is string && request.resource.data.get('name', '').size() <= 100
+          && request.resource.data.at is int;
+        allow delete: if isOwner() || (verified() && who == myEmail());
       }
 
       // Change history: append-only. Any staff member's edits are logged under their own email; only admins read it.
@@ -247,8 +263,9 @@ service cloud.firestore {
       allow create: if isOwner() || (isCoord() && request.resource.data.keys().hasOnly(['interview']));
       allow update: if isOwner() || (
         // the coordinator books or releases a time for an applicant, and opens or closes their booking
-        isCoord() && onlyChanged(['interview', 'bookingOpen', 'updatedAt'])
+        isCoord() && onlyChanged(['interview', 'bookingOpen', 'steps', 'updatedAt'])
         && request.resource.data.get('bookingOpen', false) is bool
+        && request.resource.data.get('steps', []) is list && request.resource.data.get('steps', []).size() <= 20
       ) || (
         // orientation booking: only once the owner's desk has opened orientation (Sterling complete and clear)
         verified() && resource.data.email == myEmail()

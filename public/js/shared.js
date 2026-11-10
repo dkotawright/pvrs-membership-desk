@@ -121,10 +121,10 @@ export const NEXT_STEP = ["Enter the date the application came in", "Review the 
   "Schedule the interview", "Hold the interview", "Committee decision", "Board vote", "Run the Sterling background check", "Let the applicant know", "Move them to orientation",
   "Notify the chief for duty crew", "Ask the tech chair for an email account"];
 // The five phases shown on the progress bar, with the milestones (first..last) each one covers.
-export const PHASES = [["screen", "Screening", 0, 4], ["int", "Interview", 5, 6], ["appr", "Approval", 7, 8], ["onb", "Onboarding", 9, 13]];
+export const PHASES = [["screen", "Screening", 0, 4], ["int", "Interview", 5, 6], ["appr", "Approval", 7, 8], ["onb", "Onboard", 9, 13]];
 export const STAGES = {
   screen:{label:"Screening",c:"--s-screen"}, int:{label:"Interview",c:"--s-int"}, appr:{label:"Approval",c:"--s-appr"},
-  onb:{label:"Onboarding",c:"--s-onb"}, act:{label:"Active",c:"--s-act"}, hold:{label:"On hold",c:"--s-hold"},
+  onb:{label:"Onboard",c:"--s-onb"}, act:{label:"Active",c:"--s-act"}, hold:{label:"On hold",c:"--s-hold"},
   dec:{label:"Declined",c:"--s-dec"}, wd:{label:"Withdrawn",c:"--s-hold"}, open:{label:"In process",c:"--s-screen"}
 };
 export const stageVar = st => `var(${(STAGES[st] || STAGES.open).c})`;
