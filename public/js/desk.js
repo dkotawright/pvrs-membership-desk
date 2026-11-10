@@ -221,12 +221,14 @@ const PSEUDO = {
   inproc:    { label: "In process", test: (a,p) => IN_PROCESS.includes(p.stage) },
   ivweek:    { label: "Interviews this week", test: a => !!a._booked && a._booked.start > Date.now() - 2*36e5 && a._booked.start < Date.now() + 7*864e5 },
 };
-// People moved to orientation are listed apart from applicants (sidebar "Orientation", phone menu "Orientation").
-const inOrient = a => S.admin && orientOpen(a) && progress(a).stage !== "act";
+// Once the board approves someone they leave the applicant list for the Onboard list (sidebar "Onboard", phone menu
+// "Onboard") and stay there through Sterling, orientation and the hand-offs until every step is done (Dkota, Nov 11).
+// On hold / declined / withdrawn files stay with the applicants under their own filter.
+const inOrient = a => S.admin && get(a, "board.result") === "approved" && !["act", "hold", "dec", "wd"].includes(progress(a).stage);
 const orientStat = a => { const c = orientCounts(a), s = orientSession(a._id), l = orientDaysLeft(a);
   return { pill: "Orientation", head: `Orientation: ${c.done} of ${c.total} done`, sub: [s ? "Session " + slotLong(s.start) : "No session booked yet", l === null ? "" : l < 0 ? `${-l} days late` : `due ${longDate(orientDue(a))}`].filter(Boolean).join(" · ") }; };
-const stat = (a, p) => inOrient(a) ? orientStat(a) : statusOf(a, p);
-const filterLabel = k => k==="all" ? "All applicants" : k==="orient" ? "In orientation" : k==="board" ? "Board queue" : PSEUDO[k] ? PSEUDO[k].label : STAGES[k].label;
+const stat = (a, p) => inOrient(a) && orientOpen(a) ? orientStat(a) : statusOf(a, p);
+const filterLabel = k => k==="all" ? "All applicants" : k==="orient" ? "Onboarding" : k==="board" ? "Board queue" : PSEUDO[k] ? PSEUDO[k].label : STAGES[k].label;
 const filterColor = k => k==="all" ? "var(--fg3)" : k==="board" ? "var(--s-appr)" : k==="orient" ? "var(--s-act)" : stageVar(k);
 const shortDate = d => d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});
 const hl = (text, q) => { const s = esc(text); if (!q) return s; const i = String(text).toLowerCase().indexOf(q); return i < 0 ? s : esc(text.slice(0,i)) + `<mark>${esc(text.slice(i, i+q.length))}</mark>` + esc(text.slice(i+q.length)); };
@@ -245,10 +247,10 @@ function renderChips(rows){
   rows.forEach(r => { r.or = inOrient(r.a); });
   const counts = {all:0, board:0, orient:0}; rows.forEach(r => { if (r.or) { counts.orient++; return; } counts.all++; counts[r.p.stage] = (counts[r.p.stage]||0)+1; if (S.admin && inBoardQueue(r.a)) counts.board++; });
   const base = S.admin ? ["all","board","screen","int","appr","onb","act","hold","dec","wd"] : ["all","screen","int","appr","onb","act","hold","dec","wd","open"];
-  const keys = base.filter(k => k==="all" || k==="board" || counts[k] || (S.admin && ["screen","int","appr","onb"].includes(k)));
+  const keys = base.filter(k => k==="all" || k==="board" || counts[k] || (S.admin && ["screen","int","appr"].includes(k)));
   if (!keys.includes(S.filter) && !PSEUDO[S.filter] && !(S.filter === "orient" && S.admin)) S.filter = "all";
   $("#chips").innerHTML = keys.map(k => `<button class="nav-i" type="button" data-f="${k}" aria-pressed="${S.filter===k}" style="--stage-c:${filterColor(k)}"><span class="ndot"></span><span class="nl">${k==="all"?"All":filterLabel(k)}</span><b>${counts[k]||0}</b></button>`).join("")
-    + (S.admin ? `<div class="navh navh2">Orientation</div><button class="nav-i" type="button" data-f="orient" aria-pressed="${S.filter==="orient"}" style="--stage-c:${filterColor("orient")}"><span class="ndot"></span><span class="nl">New members</span><b>${counts.orient}</b></button>` : "");
+    + (S.admin ? `<div class="navh navh2">Onboard</div><button class="nav-i" type="button" data-f="orient" aria-pressed="${S.filter==="orient"}" style="--stage-c:${filterColor("orient")}"><span class="ndot"></span><span class="nl">New members</span><b>${counts.orient}</b></button>` : "");
   if (S.admin) keys.push("orient");
   { const mo = $('#mnav [data-m="orient"]'); if (mo) { mo.hidden = !S.admin; const nb = mo.querySelector(".navbadge"); if (nb) { nb.textContent = counts.orient || ""; nb.hidden = !counts.orient; } } }
   $("#chipsMini").innerHTML = keys.map(k => `<button class="chip" type="button" data-f="${k}" aria-pressed="${S.filter===k}">${k==="all"?"All":filterLabel(k)} <b>${counts[k]||0}</b></button>`).join("");
@@ -568,6 +570,7 @@ function renderOverview(){
     return oitem(a, `<b>${esc(d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}))}</b>${esc(slotTime(s.start))}`, esc([a.type, s.location].filter(Boolean).join(" · ") || "Interview")); }).join("");
   // One strip of stage counts (replaces the separate count tiles and pipeline bar); each filters the list.
   const stage = (k, label, sub) => `<button class="stg" type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}"><span class="v">${c[k] || 0}</span><span class="k">${label}</span>${sub ? `<span class="s">${sub}</span>` : ""}</button>`;
+  const inOrientation = rows.filter(r => inOrient(r.a) && orientOpen(r.a)).length;
   const notSched = rows.filter(r => r.p.stage === "int" && r.p.cur === 5).length;
   const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.sched ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>`;
   const html = `<div class="ov"><div class="ovin">
@@ -575,7 +578,7 @@ function renderOverview(){
       <h2>${greet}${S.name ? ", " + esc(first(S.name)) : ""}</h2>
       <p>${rows.length ? `${inProc.length} applicant${inProc.length===1?"":"s"} in process${S.admin && c.board ? `, ${c.board} waiting on the board` : ""}${thisWeek ? `, ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet."}</p></div>
       <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
-    <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview", S.admin && notSched ? `${notSched} not scheduled yet` : "")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
+    <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview", S.admin && notSched ? `${notSched} not scheduled yet` : "")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${S.admin ? `<button class="stg" type="button" data-filter="orient" style="--stage-c:${stageVar("onb")}"><span class="v">${c.orient || 0}</span><span class="k">Onboarding</span>${inOrientation ? `<span class="s">${inOrientation} in orientation</span>` : ""}</button>` : stage("onb", "Onboarding")}${stage("act", "Active members")}</div>
     ${S.role !== "member" ? `<div id="ovRoster" class="ovroster"></div>` : ""}
     ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
       ${unreadChatTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open messages</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => S.apps.has(m.appId) && unreadIn("a:" + m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
@@ -1768,7 +1771,7 @@ function mnavGo(k){
   if (S.chatOn) closeChat();
   if (k === "more") return openMore();
   S.mOv = k === "ov";
-  if (k === "orient") S.filter = "orient"; else if (k === "list" && S.filter === "orient") S.filter = "all";   // Applicants and Orientation are separate lists
+  if (k === "orient") S.filter = "orient"; else if (k === "list" && S.filter === "orient") S.filter = "all";   // Applicants and Onboard are separate lists
   if (S.sel) deselect(); else { renderList(); renderDetail(); }
   if (k === "list") { const l = $("#list"); if (l) l.scrollTop = 0; }
   paintMnav();
@@ -2033,7 +2036,7 @@ function select(id){
   if (!S.apps.has(id)) return;
   if (S.chatOn) closeChat();
   flushAll(); const same = S.sel === id; S.sel = id;
-  if (!same && S.admin && inOrient(S.apps.get(id))) S.tab = "onb";   // someone in orientation opens on their orientation page
+  if (!same && S.admin && inOrient(S.apps.get(id))) S.tab = "onb";   // someone the board approved opens on their Onboard page
   if (!same) { watchFiles(id); watchHistory(id); watchRecords(id); }
   renderList(); renderDetail();
   const b = $("#dbody"); if (b && !same) b.scrollTop = 0;

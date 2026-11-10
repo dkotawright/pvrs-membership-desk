@@ -39,7 +39,10 @@ async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark 
 const wait = (page, ms = 250) => page.waitForTimeout(ms);
 const snap = (page, name) => page.screenshot({ path: path.join(OUT, name + ".png") });
 const priv = (page, id) => page.evaluate(i => window.__mock.docs.get(`applicants/${i}/private/main`), id);
-const pickApplicant = async (page, name) => { await page.evaluate(n => [...document.querySelectorAll(".arow")].find(r => r.textContent.includes(n))?.click(), name); await wait(page, 400); };
+// Board-approved people live in the Onboard list, so look there when the applicant list doesn't have them.
+const pickApplicant = async (page, name) => { const find = n => [...document.querySelectorAll(".arow")].find(r => r.textContent.includes(n));
+  if (!(await page.evaluate(n => !![...document.querySelectorAll(".arow")].find(r => r.textContent.includes(n)), name))) { await page.evaluate(() => (document.querySelector('#chips [data-f="orient"]') || document.querySelector('#chipsMini [data-f="orient"]'))?.click()); await wait(page, 300); }
+  await page.evaluate(n => [...document.querySelectorAll(".arow")].find(r => r.textContent.includes(n))?.click(), name); await wait(page, 400); };
 
 const browser = await chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});   // PW_CHROME: use a preinstalled Chromium
 try {
@@ -283,7 +286,7 @@ try {
     { const fit = await page.evaluate(() => { const r = document.querySelector("#mnav").getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; });
       if (!fit) fail("phone menu wider than the screen"); else ok("the five-item phone menu fits the screen");
       await page.click('#mnav [data-m="orient"]'); await wait(page, 400);
-      if (!/In orientation/.test(await page.locator("#rosterTitle").textContent()) || !(await page.locator('#mnav [data-m="orient"].on').count())) fail("phone Orientation menu"); else ok("the phone Orientation menu opens the orientation list");
+      if (!/Onboarding/.test(await page.locator("#rosterTitle").textContent()) || !/Onboard/.test(await page.locator('#mnav [data-m="orient"]').textContent()) || !(await page.locator('#mnav [data-m="orient"].on').count())) fail("phone Onboard menu"); else ok("the phone Onboard menu opens the onboarding list");
       await page.click('#mnav [data-m="list"]'); await wait(page, 400);
       if (!/All applicants/.test(await page.locator("#rosterTitle").textContent())) fail("Applicants menu didn't go back to applicants"); else ok("Applicants goes back to the applicant list"); }
     await page.click('#mnav [data-m="ov"]'); await wait(page, 500);
@@ -909,10 +912,11 @@ try {
     await page.keyboard.press("Escape"); await wait(page, 300);
     const allNames = (await page.locator(".arow").allTextContents()).join("|");
     const orBtn = page.locator('#chips [data-f="orient"]');
-    if (/Sam Ready/.test(allNames) || !/1/.test(await orBtn.textContent())) fail("orientation person still listed with applicants: " + allNames.slice(0, 200)); else ok("someone in orientation leaves the applicant list for the Orientation list");
+    if (/Sam Ready|Una Waiting|Rae Review/.test(allNames) || !/3/.test(await orBtn.textContent()) || !/Onboard/.test(await page.locator("#chips .navh2").textContent())) fail("board-approved people still listed with applicants: " + allNames.slice(0, 200)); else ok("once the board approves someone they leave the applicant list for the Onboard list");
+    if (await page.locator('#chips [data-f="onb"]').count()) fail("old Onboarding stage filter still in the applicant filters"); else ok("the applicant filters no longer have an Onboarding stage");
     await orBtn.click(); await wait(page, 400);
     const orRow = (await page.locator(".arow").allTextContents()).join("|");
-    if (!/Sam Ready/.test(orRow) || !/Orientation: \d+ of \d+ done/.test(orRow) || /Una Waiting/.test(orRow)) fail("orientation list: " + orRow.slice(0, 300)); else ok("the Orientation list shows only new members, with their checklist progress");
+    if (!/Sam Ready/.test(orRow) || !/Orientation: \d+ of \d+ done/.test(orRow) || !/Una Waiting/.test(orRow) || !/Rae Review/.test(orRow)) fail("onboard list: " + orRow.replace(/\s+/g, " ").slice(0, 400)); else ok("the Onboard list has everyone the board approved: those not yet in orientation, and those in it with their progress");
     await pickApplicant(page, "Sam Ready");
     if ((await page.locator('.tabdock [data-tab][aria-selected="true"], .tabdock [data-tab].on').first().getAttribute("data-tab")) !== "onb") fail("orientation file didn't open on Onboard"); else ok("an orientation file opens on its orientation page");
     await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
@@ -1158,6 +1162,7 @@ try {
       await page.screenshot({ path: path.join(OUT, "17-celebrate.png") });
       await page.locator('#boardMtg [data-bm="close"]').click(); await wait(page, 2600);
       if (await page.locator("canvas.confetti").count()) fail("confetti not cleaned up"); else ok("confetti clears itself");
+      await page.locator('#chips [data-f="orient"]').click(); await wait(page, 300);
       if (!/🎉 Approved/.test(await page.locator(".arow", { hasText: "Georgia Thurmond" }).textContent())) fail("no Approved badge on the card"); else ok("approved applicant gets a 🎉 Approved badge in the list");
     }
     await ctx.close();
