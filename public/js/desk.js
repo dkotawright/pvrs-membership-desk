@@ -478,6 +478,44 @@ function todoCard(){
     ${items.length > 6 ? `<button class="oitem showall" type="button" data-cmd="todoall">${S.todoAll ? "Show fewer" : `Show all ${items.length}`}</button>` : ""}</div></section>`;
 }
 
+/* ---------- Lanes design (Nov 11, Dkota's pick from mockups): Start here + the board ---------- */
+// Which lane a file is in: Onboard from board approval on, otherwise its stage.
+const laneOf = (a, p) => inOrient(a) ? "onb" : (p || progress(a)).stage;
+const PING = `<span class="ping" aria-hidden="true"><i></i><i></i></span>`;
+// The dark band at the top of the Overview: the one thing to do first, then what comes after.
+function startHereHTML(greet, c){
+  const items = S.coord ? coordItems() : todoItems(), top = items[0], rest = items.slice(1, 4);
+  const who = S.name ? ", " + esc(first(S.name)) : "", fn = top ? first(top.a.name) : "";
+  const date = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  return `<section class="starthere" aria-label="Start here"><div class="sh-main">
+      <div class="sh-eye">${top ? PING : ""}<span>${top ? "Start here" : "All caught up"} · ${esc(date)}</span></div>
+      <h2>${greet}${who}. ${top ? (fn && fn !== "there" ? `Start with ${esc(fn)}.` : "Start here.") : "Nothing needs you right now."}</h2>
+      ${top ? `<p><b>${esc(top.text)}</b>${top.sub ? ". " + esc(top.sub) : ""}</p>` : `<p>New work shows up here as it comes in.</p>`}
+      <div class="sh-acts">${top && top.act && (S.canEdit || (S.sched && COORD_ACTS.has(top.act))) ? `<button class="btn sh-go" type="button" data-todoact="${esc(top.act)}" data-id="${esc(top.id)}">${esc(top.btn)}</button>` : ""}
+        ${top ? `<button class="btn sh-alt" type="button" data-todo="${esc(top.id)}" data-totab="${esc(top.tab)}">Open ${esc(fn && fn !== "there" ? fn + "'s" : "the")} file</button>` : ""}
+        <button class="btn sh-alt" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>
+        <button class="btn sh-ghost" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
+    ${rest.length ? `<div class="sh-next"><b>After that</b>${rest.map(x => `<button type="button" class="sh-item" data-todo="${esc(x.id)}" data-totab="${esc(x.tab)}"><i style="--stage-c:${stageVar(laneOf(x.a))}"></i><span>${esc(x.text)}<small>${esc(x.a.name || "Applicant")}</small></span></button>`).join("")}
+      ${items.length > 4 ? `<span class="sh-more">${items.length - 4} more in To do below</span>` : ""}</div>` : ""}</section>`;
+}
+// The board: one column per lane, a card per person, most-waiting first. Column headers filter the list below.
+function boardHTML(rows, c, notSched, inOrientation){
+  const need = new Set((S.coord ? coordItems() : todoItems()).filter(x => x.pri <= 2).map(x => x.id));
+  const cols = [["screen", "Screening", c.screen || 0, ""], ["int", "Interview", c.int || 0, notSched ? `${notSched} not scheduled yet` : ""],
+    ["appr", "Approval", c.appr || 0, c.board ? `${c.board} on the board queue` : ""], ["orient", "Onboard", c.orient || 0, inOrientation ? `${inOrientation} in orientation` : ""]];
+  const inCol = (r, k) => { const or = inOrient(r.a); return k === "orient" ? or && r.p.stage !== "act" : !or && (r.p.stage === k || (k === "screen" && r.p.stage === "open")); };
+  const card = r => { const a = r.a, st = stat(a, r.p), d = daysSince(get(a, "app.received")), pct = Math.round(r.p.n / MILESTONES.length * 100);
+    return `<button class="lcard${need.has(a._id) ? " need" : ""}" type="button" data-open="${esc(a._id)}"><span class="lc-top"><span class="av" aria-hidden="true">${esc(initials(a.name))}</span>
+        <span class="lc-who"><b>${esc(a.name || "Unnamed applicant")}</b><small>${d != null ? `Day ${d}` : esc(a.type || "")}</small></span>${need.has(a._id) ? PING : ""}</span>
+      <span class="lc-st">${esc(st.head.replace(/^Next: /, ""))}</span><span class="lc-bar" aria-hidden="true"><i style="width:${pct}%"></i></span></button>`; };
+  return `<div class="lanes" role="group" aria-label="The board">${cols.map(([k, label, n, sub]) => { const lane = k === "orient" ? "onb" : k, list = rows.filter(r => inCol(r, k));
+    return `<section class="lane" style="--stage-c:${stageVar(lane)}" aria-label="${label}">
+      <button class="stg lhead" type="button" data-filter="${k}"><span class="k">${label}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ""}<span class="v">${n}</span></button>
+      ${list.slice(0, 5).map(card).join("") || `<div class="lempty">${k === "orient" ? "Approve at the board and the file moves here on its own." : "Nobody here right now."}</div>`}
+      ${list.length > 5 ? `<button class="lmore" type="button" data-filter="${k}">${list.length - 5} more</button>` : ""}</section>`; }).join("")}
+    <button class="stg lact" type="button" data-filter="act" style="--stage-c:${stageVar("act")}"><span class="k">Active members</span><span class="v">${c.act || 0}</span></button></div>`;
+}
+
 /* ---------- year at a glance (overview) ---------- */
 // Three headline numbers and one single-hue column chart (applications per month, last 12 months).
 // Every value is also in a screen-reader table; hovering or focusing a column shows its value.
@@ -614,16 +652,16 @@ function renderOverview(){
   const notSched = rows.filter(r => r.p.stage === "int" && r.p.cur === 5).length;
   const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.sched ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>`;
   const html = `<div class="ov"><div class="ovin">
-    <div class="ovhead"><div><div class="eyebrow">${esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))}</div>
+    ${S.admin ? startHereHTML(greet, c) + boardHTML(rows, c, notSched, inOrientation) : `    <div class="ovhead"><div><div class="eyebrow">${esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))}</div>
       <h2>${greet}${S.name ? ", " + esc(first(S.name)) : ""}</h2>
       <p>${rows.length ? `${inProc.length} applicant${inProc.length===1?"":"s"} in process${S.admin && c.board ? `, ${c.board} waiting on the board` : ""}${thisWeek ? `, ${thisWeek} interview${thisWeek===1?"":"s"} this week` : ""}.` : "No applicants yet."}</p></div>
       <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
-    <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview", S.admin && notSched ? `${notSched} not scheduled yet` : "")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${S.admin ? `<button class="stg" type="button" data-filter="orient" style="--stage-c:${stageVar("onb")}"><span class="v">${c.orient || 0}</span><span class="k">Onboard</span>${inOrientation ? `<span class="s">${inOrientation} in orientation</span>` : ""}</button>` : stage("onb", "Onboard")}${stage("act", "Active members")}</div>
+    <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview", S.admin && notSched ? `${notSched} not scheduled yet` : "")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${S.admin ? `<button class="stg" type="button" data-filter="orient" style="--stage-c:${stageVar("onb")}"><span class="v">${c.orient || 0}</span><span class="k">Onboard</span>${inOrientation ? `<span class="s">${inOrientation} in orientation</span>` : ""}</button>` : stage("onb", "Onboard")}${stage("act", "Active members")}</div>`}
     ${S.role !== "member" ? `<div id="ovRoster" class="ovroster"></div>` : ""}
     ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
       ${unreadChatTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open messages</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => S.apps.has(m.appId) && unreadIn("a:" + m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
         return `<button class="oitem" type="button" data-openmsg="${esc(id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name)}</b><small>${esc(last.text.slice(0, 80))}</small></span><span class="when"><span class="newdot"></span>${esc(ago(last.at))}</span></button>`; }).join("")}</div></section>` : ""}
-      ${S.owner && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="settings">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}</div>
+      ${S.owner && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="team">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}</div>
       <div class="ovcol ovside">${comingUp}${activityCard()}${statsCard()}</div></div>`
     : `<div class="ovmain single"><div class="ovcol">${comingUp}</div></div>`}
     <p class="kbdhint">Tip: press <kbd>⌘K</kbd> to find anyone or run a command, <kbd>J</kbd> <kbd>K</kbd> to move through applicants, <kbd>?</kbd> for all shortcuts.</p>
@@ -761,7 +799,9 @@ function syncDetail(){
   const a = S.apps.get(S.sel); if (!a || !$("#dName")) return;
   const p = view(a);
   $("#dName").textContent = a.name || "Unnamed applicant";
-  const av = $("#dAv"); av.textContent = initials(a.name); av.style.setProperty("--stage-c", stageVar(p.stage));
+  const lane = S.admin ? laneOf(a, p) : p.stage;
+  const av = $("#dAv"); av.textContent = initials(a.name); av.style.setProperty("--stage-c", stageVar(lane));
+  { const dh = document.querySelector(".dhead"); if (dh) dh.style.setProperty("--stage-c", stageVar(lane)); }
   const t = Math.max(a.updatedAt||0, a.secUpdatedAt||0), by = (a.secUpdatedAt||0) > (a.updatedAt||0) ? a.secUpdatedBy : a.updatedBy;
   const who = personName(by);
   const stt = stat(a, p);
@@ -1521,18 +1561,14 @@ function teamHTML(){
     <span class="teamact"><select class="rolesel" data-rolesel="${esc(email)}" aria-label="Role for ${esc(s.name || email)}">${[["member","Member"],["interviewer","Interviewer"],["coordinator","Interview coordinator"],["admin","Admin"]].map(([v,l]) => `<option value="${v}"${(ROLE_LABEL[s.role] ? s.role : "member")===v?" selected":""}>${l}</option>`).join("")}</select>
     <button class="copy" type="button" data-rmstaff="${esc(email)}">Remove</button></span></div>`).join("");
   return `<div class="row"><span class="lbl">${esc(OWNER_EMAIL)}<small>Owner · full access</small></span></div>${rows}
-    <p class="help" style="margin:6px 12px">Admin: sees every file (view only). Coordinator: sees every file and runs the interviews (posts times, books and reschedules, opens booking, assigns interviewers, messages applicants). Interviewer: only the applicants assigned on their Interview tab. Member: Messages only.</p>
     <div class="row" style="flex-wrap:wrap"><input id="tmEmail" type="email" placeholder="member@pvrs.org" class="inlinefield" style="flex:2 1 180px">
       <input id="tmName" type="text" placeholder="Name" class="inlinefield" style="flex:1 1 120px">
       <button class="btn small primary" type="button" id="tmAdd">Add member</button></div>`;
 }
 function openSettings(){
   const s = S.settings;
-  $("#modal").onchange = async e => { const rs = e.target.closest?.("[data-rolesel]"); if (!rs) return;
-    try { await setDoc(doc(db, "staff", rs.dataset.rolesel), { role: rs.value }, { merge: true }); toast(`${S.staff.get(rs.dataset.rolesel)?.name || rs.dataset.rolesel} is now ${/^[AEIOU]/.test(roleLabel(rs.value)) ? "an" : "a"} ${roleLabel(rs.value)}.`); } catch { toast("Couldn't change the role."); } };
   const M = openModal(`<h3>Settings</h3>
-    <div class="group"><h3><span>Team</span></h3><div class="ios" id="reqList">${requestsHTML()}</div><div class="ios" id="teamList">${teamHTML()}</div>
-      <p class="help" style="margin:4px 4px 0"><b>Members</b> can view the Application and Interview tabs. <b>Admins</b> can view every tab except Settings. Both can only fill in and complete the interview questionnaire; everything else is yours to change. They sign in on the Squad member tab with this address.</p></div>
+    <div class="group"><h3><span>Team</span></h3><div class="ios"><div class="row"><span class="lbl">Squad members and roles<small>${S.staff.size} on the desk${S.requests.length ? ` · ${S.requests.length} access request${S.requests.length === 1 ? "" : "s"} waiting` : ""}. Team has its own menu now.</small></span><button class="btn small" type="button" id="sTeam">Open Team</button></div></div></div>
     <div class="group"><h3><span>Emails</span></h3><div class="ios">
       <label class="row stack"><span class="lbl">Email signature<small>Printed at the end of every email</small></span><textarea id="sSig" rows="4" placeholder="Name, credentials">${esc(s.signature||"")}</textarea></label>
       <label class="row stack"><span class="lbl">Documents and questions go to</span><input type="text" id="sDocs" placeholder="${esc(CONTACT_EMAIL)}" value="${esc(s.docsEmail||"")}"></label>
@@ -1570,6 +1606,7 @@ function openSettings(){
     const id = e.target.id;
     if (id === "sCancel") closeModal();
     if (id === "sPreview") openPreview(S.sel);
+    if (id === "sTeam") return openTeam();
     if (id === "sRetReview") return openRetention();
     const sa = e.target.closest("#sAi button"); if (sa) { $("#sAi").querySelectorAll("button").forEach(b => { b.classList.toggle("on", b === sa); b.setAttribute("aria-pressed", b === sa); }); return; }
     if (id === "qrAdd") { $("#qrList").insertAdjacentHTML("beforeend", replyRowHTML()); $("#qrList .qredit:last-child .qrTitle").focus(); return; }
@@ -1577,18 +1614,6 @@ function openSettings(){
     if (id === "sCopyApply") { const u = location.origin + "/apply"; toast((await copyText(u)) ? "Copied " + u : u); }
     if (id === "sFull") exportFull();
     if (id === "sSummary") exportSummary();
-    if (id === "tmAdd") {
-      const email = lower($("#tmEmail").value), name = $("#tmName").value.trim();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Enter a valid email.");
-      if (email === lower(OWNER_EMAIL)) return toast("That's the owner account.");
-      try { await setDoc(doc(db, "staff", email), { role: "member", name, addedAt: Date.now(), addedBy: S.me }); toast(`Added ${email} as a member`); } catch { toast("Couldn't add that member."); }
-    }
-    const ap = e.target.closest("[data-approve]"); if (ap) { ap.disabled = true; return decideRequest(ap.dataset.approve, ap.dataset.v); }
-    const dn = e.target.closest("[data-deny]"); if (dn) { if (dn.dataset.confirm !== "1") { dn.dataset.confirm = "1"; dn.textContent = "Confirm deny"; return; } dn.disabled = true; return decideRequest(dn.dataset.deny, null); }
-
-    const rm = e.target.closest("[data-rmstaff]"); if (rm) {
-      if (rm.dataset.confirm !== "1") { rm.dataset.confirm = "1"; rm.textContent = "Confirm remove"; return; }
-      try { await deleteDoc(doc(db, "staff", rm.dataset.rmstaff)); toast("Removed"); } catch { toast("Couldn't remove."); } }
     if (id === "sSave") {
       const idle = parseInt($("#sIdle").value, 10);
       const next = { signature: $("#sSig").value.trim(), docsEmail: $("#sDocs").value.trim(), defaultLocation: $("#sLoc").value.trim(), ivBring: $("#sBring").value.trim().slice(0, 300), boardEmails: $("#sBoard").value.trim(), idleMinutes: idle ? Math.min(240, Math.max(5, idle)) : null, updatedAt: Date.now(),
@@ -1601,9 +1626,37 @@ function openSettings(){
       try { await setDoc(doc(db, "settings", "main"), next, { merge: true }); closeModal(); toast("Settings saved"); } catch { toast("Couldn't save settings."); }
     }
   };
-  S._teamPaint = () => { const el = $("#teamList"); if (el) el.innerHTML = teamHTML(); const rq = $("#reqList"); if (rq) { rq.innerHTML = requestsHTML(); rq.hidden = !S.requests.length; } };
-  $("#reqList").hidden = !S.requests.length;
+}
+// Team (owner): who can sign in to the desk and what each can do. Its own menu, apart from Settings (Dkota, Nov 11).
+const ROLE_HELP = [["Member", "Messages, squad documents and their own paperwork. No applicant files."], ["Interviewer", "Only the applicants assigned to them: Application and Interview tabs, and the interview itself."],
+  ["Interview coordinator", "Sees every file and runs the interviews: posts times, books and reschedules, opens booking, assigns interviewers, messages applicants."], ["Admin", "Sees every file, view only. Can fill in an interview and run reports."]];
+function openTeam(){
+  if (!S.owner) return;
+  $("#modal").onchange = async e => { const rs = e.target.closest?.("[data-rolesel]"); if (!rs) return;
+    try { await setDoc(doc(db, "staff", rs.dataset.rolesel), { role: rs.value }, { merge: true }); toast(`${S.staff.get(rs.dataset.rolesel)?.name || rs.dataset.rolesel} is now ${/^[AEIOU]/.test(roleLabel(rs.value)) ? "an" : "a"} ${roleLabel(rs.value)}.`); } catch { toast("Couldn't change the role."); } };
+  const M = openModal(`<h3>Team</h3><p class="help">Everyone on the squad who can sign in to the desk, and what each of them can do. Applicants and new members aren't listed here; they're on the board.</p>
+    <div class="ios" id="reqList">${requestsHTML()}</div>
+    <div class="group"><h3><span>Squad members</span><small id="teamCount" style="font-weight:500;color:var(--fg3)"></small></h3><div class="ios" id="teamList">${teamHTML()}</div></div>
+    <div class="group"><h3><span>What each role can do</span></h3><div class="ios">${ROLE_HELP.map(([r, t]) => `<div class="row"><span class="lbl">${r}<small>${t}</small></span></div>`).join("")}</div></div>
+    <div class="acts"><button class="btn primary" type="button" data-x>Done</button></div>`, true);
+  S._teamPaint = () => { const el = $("#teamList"); if (el) el.innerHTML = teamHTML(); const rq = $("#reqList"); if (rq) { rq.innerHTML = requestsHTML(); rq.hidden = !S.requests.length; }
+    const tc = $("#teamCount"); if (tc) tc.textContent = `${S.staff.size + 1} people`; };
+  S._teamPaint();
   M._cleanup = () => { S._teamPaint = null; };
+  M.onclick = async e => {
+    if (e.target.closest("[data-x]")) return closeModal();
+    if (e.target.id === "tmAdd") {
+      const email = lower($("#tmEmail").value), name = $("#tmName").value.trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Enter a valid email.");
+      if (email === lower(OWNER_EMAIL)) return toast("That's the owner account.");
+      try { await setDoc(doc(db, "staff", email), { role: "member", name, addedAt: Date.now(), addedBy: S.me }); toast(`Added ${email} as a member`); } catch { toast("Couldn't add that member."); }
+      return; }
+    const ap = e.target.closest("[data-approve]"); if (ap) { ap.disabled = true; return decideRequest(ap.dataset.approve, ap.dataset.v); }
+    const dn = e.target.closest("[data-deny]"); if (dn) { if (dn.dataset.confirm !== "1") { dn.dataset.confirm = "1"; dn.textContent = "Confirm deny"; return; } dn.disabled = true; return decideRequest(dn.dataset.deny, null); }
+    const rm = e.target.closest("[data-rmstaff]"); if (rm) {
+      if (rm.dataset.confirm !== "1") { rm.dataset.confirm = "1"; rm.textContent = "Confirm remove"; return; }
+      try { await deleteDoc(doc(db, "staff", rm.dataset.rmstaff)); toast("Removed"); } catch { toast("Couldn't remove."); } }
+  };
 }
 
 /* ---------- exports / import ---------- */
@@ -1762,7 +1815,8 @@ function openPalette(){
     { label: "Sign-offs", show: !$("#trainBtn").hidden, words: "sign offs trainer skills", run: go(openSignoffs) },
     { label: "Documents", show: true, words: "documents library handbook policies forms", run: go(openLibrary) },
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(() => openChat()) },
-    { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
+    { label: "Team", show: S.owner, words: "team squad members roles access requests staff people", run: go(openTeam) },
+    { label: "Settings", show: S.owner, words: "settings signature emails checklist backups", run: go(gateSettings) },
     { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
     { label: "Reports", show: S.admin, words: "reports how long days stage stalled waiting average", run: go(openReports) },
     { label: "Notifications", show: true, words: "notifications alerts push bell phone", run: go(openNotifications) },
@@ -1893,7 +1947,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation board"], ["trainBtn", "Sign-offs"], ["paperBtn", "My paperwork"], ["libBtn", "Documents"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation board"], ["trainBtn", "Sign-offs"], ["paperBtn", "My paperwork"], ["libBtn", "Documents"], ["teamBtn", "Team"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div>
@@ -2045,7 +2099,7 @@ function bindEvents(){
       if (k === "ivmail") return openEmail("interview", undefined, id);
       if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
       return; }
-    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "reports") return openReports(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openChat(); return; }
+    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "reports") return openReports(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "team") openTeam(); if (cmd.dataset.cmd === "inbox") openChat(); return; }
     const om = t.closest("[data-openmsg]"); if (om) return openChat("a:" + om.dataset.openmsg);
     const qr = t.closest("[data-qr]"); if (qr) return useQuickReply(+qr.dataset.qr);
     const air = t.closest("[data-aireply]"); if (air) return aiDraftReply(air);
@@ -2129,6 +2183,7 @@ function bindEvents(){
   setInterval(() => { if (S.sel && !document.hidden) syncDetail(); }, 60000);
   $("#modal").addEventListener("mousedown", e => { if (e.target.id === "modal") closeModal(); });
   $("#settingsBtn").addEventListener("click", gateSettings);
+  $("#teamBtn").addEventListener("click", openTeam);
   $("#aiBtn").addEventListener("click", openMedControl);
   $("#slotsBtn").addEventListener("click", openSlots);
   $("#newBtn").addEventListener("click", openNew);
@@ -3850,7 +3905,7 @@ export function startDesk({ email, role, owner, name, paperwork = false }){
   $("#meName").textContent = S.name || email;
   $("#meName").title = email;
   $("#meAv").textContent = initials(S.name || email);
-  if (S.owner) $("#settingsBtn").hidden = false;
+  if (S.owner) { $("#settingsBtn").hidden = false; $("#teamBtn").hidden = false; }
   if (canHostSlots()) $("#slotsBtn").hidden = false;
   $("#newBtn").hidden = !S.canEdit; paintMnav();
   if (!S.canEdit) document.body.classList.add("viewonly-user");
@@ -3905,11 +3960,11 @@ export function startDesk({ email, role, owner, name, paperwork = false }){
         const before = new Set(S.requests.map(q => q.email));
         S.requests = snap.docs.map(d => d.data()).filter(q => q.status === "pending").sort((x,y) => (x.requestedAt||0) - (y.requestedAt||0));
         const fresh = S.requests.filter(q => !before.has(q.email));
-        if (primed && fresh.length) toast(`${fresh[0].name || fresh[0].email} asked for team access. Review it in Settings.`);
+        if (primed && fresh.length) toast(`${fresh[0].name || fresh[0].email} asked for team access. Review it in Team.`);
         primed = true;
-        const n = S.requests.length, sb = $("#settingsBtn");
+        const n = S.requests.length, sb = $("#teamBtn");
         let badge = sb.querySelector(".navbadge"); if (!badge) { badge = document.createElement("b"); badge.className = "navbadge"; sb.appendChild(badge); }
-        badge.textContent = n || ""; badge.hidden = !n; sb.title = n ? `Settings · ${n} access request${n===1?"":"s"}` : "Settings";
+        badge.textContent = n || ""; badge.hidden = !n; sb.title = n ? `Team · ${n} access request${n===1?"":"s"}` : "Team";
         if (S._teamPaint && !$("#modal").hidden) S._teamPaint();
         if (!S.sel) renderOverview();
       }, e => console.error(e));

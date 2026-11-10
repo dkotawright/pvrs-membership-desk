@@ -66,6 +66,9 @@ function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis 
 }
 export function portalHTML({ back = false, pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "", oslots = [], opick = null, obusy = false, lib = [], checkinDone = false }){
   const now = Date.now(), nm = !!pd.orientation;   // nm: moved to orientation, so only the orientation dashboard shows
+  // The header takes the colour of the lane they're in (same four lanes as the desk's board).
+  const stepNow = (pd.steps || []).findIndex(x => x.state === "now"), stepsDone = (pd.steps || []).length && (pd.steps || []).every(x => x.state === "done");
+  const lane = nm || stepsDone ? "onb" : stepNow <= 2 ? "screen" : stepNow === 3 ? "int" : stepNow === 4 ? "appr" : "onb";
   const docs = pd.docs || [];
   const byKey = k => files.filter(f => f.docKey === k);
   const other = files.filter(f => !f.docKey || !docs.some(d => d.key === f.docKey));
@@ -99,7 +102,7 @@ export function portalHTML({ back = false, pd, files = [], slots = [], msgs = []
   else ivBody = slotPicker(days, pick, dis, busy);
 
   return `<div class="wrap">
-    <section class="card glass"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
+    <section class="card glass phead" style="--stage-c:var(--s-${lane})"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
       <div class="ptop"><div><div class="eyebrow">${nm ? "New member" : "Applicant portal"}</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
       <div class="info">${nm ? "Welcome to the squad. Here's your orientation." : esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div>
       ${preview ? `<span class="badge wait">Preview</span>` : `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${back ? `<a class="btn small primary" href="/">‹ Back to the desk</a>` : ""}<button class="btn small" type="button" data-tour>How this works</button><button class="btn small" type="button" data-signout>Sign out</button></span>`}</div></section>

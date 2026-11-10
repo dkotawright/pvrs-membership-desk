@@ -592,6 +592,9 @@ try {
   {
     const { ctx, page } = await open(browser, { seed: [["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Interviewer" }]] }); await wait(page, 700);
     await page.locator("#settingsBtn").click(); await wait(page, 500);
+    if (await page.locator("#teamList").count() || !(await page.locator("#sTeam").count())) fail("Team is still inside Settings"); else ok("Settings no longer holds the team list; it points to Team");
+    await page.locator("#sTeam").click(); await wait(page, 400);
+    if (!/What each role can do/.test(await page.locator("#modal").textContent()) || !(await page.locator("#teamList").count())) fail("Team menu didn't open"); else ok("Team is its own menu with the roles explained");
     const seg = page.locator('[data-rolesel="alex@pvrs.org"]');
     if (!(await seg.count())) fail("Team has no role picker"); else { await seg.selectOption("interviewer"); await wait(page, 400);
       if ((await page.evaluate(() => window.__mock.docs.get("staff/alex@pvrs.org").role)) !== "interviewer") fail("role not saved"); else ok("Settings → Team offers Member, Interviewer, Admin"); }
@@ -642,7 +645,7 @@ try {
     const { ctx, page } = await open(browser, { user: CORY, seed: [["staff/cory@pvrs.org", { role: "coordinator", name: "Cory Reed" }], ["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Lane" }]] }); await wait(page, 900);
     if (!/Interview coordinator/.test(await page.locator("#conn").textContent())) fail("coordinator label: " + await page.locator("#conn").textContent()); else ok("the sidebar shows the Interview coordinator role");
     if ((await page.locator("#list .arow, #ovRoster .arow").count()) < 2) fail("coordinator can't see every file"); else ok("a coordinator sees every applicant");
-    if (!(await page.locator("#settingsBtn").isHidden()) || !(await page.locator("#newBtn").isHidden())) fail("coordinator got Settings / New applicant"); else ok("Settings and New applicant stay with the owner");
+    if (!(await page.locator("#settingsBtn").isHidden()) || !(await page.locator("#teamBtn").isHidden()) || !(await page.locator("#newBtn").isHidden())) fail("coordinator got Settings / Team / New applicant"); else ok("Settings and New applicant stay with the owner");
     const todo = await page.locator(".ovcard.todo").textContent();
     if (!/Interviews to do/.test(todo) || !/Post interview times|Add more interview times/.test(todo)) fail("coordinator to do: " + todo.slice(0, 300)); else ok("the coordinator's To do is the interview work");
     // post a time, hosted by Ivy
@@ -811,6 +814,43 @@ try {
     if (/Nia NotYet/.test(after) || !/Nia NotYet/.test(after2)) fail("approving didn't move the file: " + after.slice(0, 200) + " // " + after2.slice(0, 200)); else ok("saving Approved moves the file to Onboard straight away");
     if (!/1/.test(await page.locator('.stg[data-filter="act"]').textContent().catch(() => "1"))) fail("Active tile lost the finished member"); else ok("a finished member still counts on the Active tile");
     await ctx.close();
+  }
+  // ---- Lanes design: Start here band, the board, lane-coloured headers, sign-in steps
+  {
+    const d = n => localDay(Date.now() - n * 864e5), ref = { returned: d(3) };
+    const seed = [["applicants/p1", { name: "Pat Waiting", email: "pat@example.com", type: "Regular", app: { received: d(20), complete: "yes" }, updatedAt: Date.now() }],
+      ["applicants/p1/private/main", { mvr: { completed: d(10) }, dl: { date: d(9), valid: "yes" }, refs: { r1: { name: "A", ...ref }, r2: { name: "B", ...ref }, r3: { name: "C", ...ref } }, portal: { invited: d(15) } }],
+      ["applicants/p2", { name: "Ona Board", email: "ona@example.com", app: { received: d(30) }, updatedAt: Date.now() }], ["applicants/p2/private/main", { board: { result: "approved", date: d(2) } }]];
+    const { ctx, page } = await open(browser, { seed }); await wait(page, 900);
+    const sh = (await page.locator(".starthere").textContent()).replace(/\s+/g, " ");
+    if (!/Start here/.test(sh) || !/Start with \w+\./.test(sh) || !(await page.locator(".starthere [data-todo]").count())) fail("Start here band: " + sh.slice(0, 300)); else ok("the Overview opens with Start here and the first thing to do");
+    const heads = await page.locator(".lanes .lhead").evaluateAll(l => l.map(x => x.dataset.filter + ":" + x.querySelector(".v").textContent));
+    if (heads.map(h => h.split(":")[0]).join() !== "screen,int,appr,orient") fail("board columns: " + heads); else ok("the board has four lanes: Screening, Interview, Approval, Onboard");
+    const intLane = (await page.locator('.lane:has([data-filter="int"])').textContent()).replace(/\s+/g, " "), onbLane = (await page.locator('.lane:has([data-filter="orient"])').textContent()).replace(/\s+/g, " ");
+    if (!/Pat Waiting/.test(intLane) || !/isn't scheduled/.test(intLane) || !/Ona Board/.test(onbLane) || /Ona Board/.test(intLane)) fail("cards in the wrong lane: " + intLane.slice(0, 200) + " // " + onbLane.slice(0, 200)); else ok("each person's card sits in their lane, and a board-approved file is in Onboard");
+    if (!(await page.locator('.lcard.need:has-text("Pat Waiting") .ping').count())) fail("no indicator on the card that needs action"); else ok("the card that needs you carries a live indicator");
+    const fit = await page.evaluate(() => document.querySelector(".ov").scrollWidth <= document.querySelector(".ov").clientWidth + 1);
+    if (!fit) fail("Overview scrolls sideways on a computer"); else ok("the board fits the screen on a computer");
+    await page.screenshot({ path: path.join(OUT, "61-lanes-overview.png") });
+    await page.locator('.lcard:has-text("Pat Waiting")').click(); await wait(page, 400);
+    const laneC = await page.evaluate(() => [getComputedStyle(document.querySelector(".dhead")).getPropertyValue("--stage-c").trim(), getComputedStyle(document.documentElement).getPropertyValue("--s-int").trim()]);
+    if (!laneC[0] || laneC[0] !== laneC[1]) fail("file header isn't in its lane colour: " + laneC); else ok("an open file's header takes its lane's colour");
+    await page.screenshot({ path: path.join(OUT, "62-lanes-file.png") });
+    await ctx.close();
+    { const { ctx, page } = await open(browser, { seed, w: 390, h: 844 }); await wait(page, 900);
+      await page.click('#mnav [data-m="ov"]'); await wait(page, 500);
+      if (!(await page.locator(".starthere").isVisible()) || (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1))) fail("phone Overview: Start here hidden or page too wide"); else ok("phones get Start here and a board that swipes sideways without widening the page");
+      await page.screenshot({ path: path.join(OUT, "63-lanes-phone.png") });
+      await ctx.close(); }
+    { const { ctx, page } = await open(browser, { url: "/signin", user: null }); await wait(page, 700);
+      const steps = await page.locator(".lanesteps span b").allTextContents();
+      if (steps.join() !== "Screening,Interview,Approval,Onboard") fail("sign-in lane steps: " + steps); else ok("the sign-in page shows the four lanes of the journey");
+      await page.screenshot({ path: path.join(OUT, "64-lanes-signin.png") });
+      await ctx.close(); }
+    { const { ctx, page } = await open(browser, { user: { email: "marcus.bell@example.com", displayName: "" }, w: 390, h: 844 }); await wait(page, 900);
+      if (!(await page.locator(".portal .card.phead").count())) fail("portal header has no lane colour"); else ok("the applicant portal's header is in their lane's colour");
+      await page.screenshot({ path: path.join(OUT, "65-lanes-portal.png") });
+      await ctx.close(); }
   }
   // ---- First-visit tour: once per person and role, with a way to see it again
   {
