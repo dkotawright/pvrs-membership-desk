@@ -99,6 +99,14 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## Progress display (Nov 10; Dkota: "a guy on Interview but it isn't scheduled" was confusing)
+- File header `#dProg`: the 14 unlabeled dashes are replaced by five labelled phases (`PHASES` in shared.js: Screening 0–4, Interview 5–6, Approval 7–8, Onboarding 9–13, then Active) with Done / "n of m", plus one sentence from `statusOf(a, p)` → {pill, head, sub} and the Go button ("Schedule it" at step 5). Clicking a phase opens its first unfinished step (`data-step`).
+- `statusOf` spells out the Interview phase: "Interview isn't scheduled yet" (step 5) / "Interview booked for …" / "Interview was …" (past, not marked). The list pill and line and the header pill use it; the Overview Interview tile shows "N not scheduled yet".
+- `progress().next` is now an instruction (`NEXT_STEP`), not the milestone name ("Next: Interview scheduled" read as already scheduled). Milestone names are unchanged in the full checklist.
+- Portal: the Interview step says "Not scheduled yet…" and the tracker reads "Step 4 of 7: Interview (not scheduled yet)" (`steps[].short`).
+- Pushed to the branch; waiting for Dkota's OK on the look before merging (screenshots tests/shots/54–56).
+- Tests: 328 browser.
+
 ## Notifications fix + first-visit tour (Nov 10)
 - **Why alerts died after ~2 days on the Home Screen app**: the Firebase service worker shows nothing when the app is open in front (it hands the push to the page), and iOS switches push off for an app that receives pushes without showing a notification. Also nothing ever re-saved a device's registration, and the server deletes a registration the first time a send fails, so one hiccup was permanent.
 - `public/firebase-messaging-sw.js` is now plain (NO Firebase code, no importScripts): its own `push` handler ALWAYS calls `showNotification`, then posts `{type:"pvrs-push"}` to open windows (desk toasts it). Don't put the Firebase messaging library back in the worker.

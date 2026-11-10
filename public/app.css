@@ -1780,3 +1780,32 @@ body.member-user nav:has(#chips),body.member-user #overviewBtn{display:none}
 .tourdots{display:flex;gap:6px;margin-top:auto;padding-top:6px}
 .tourdots i{width:7px;height:7px;border-radius:50%;background:var(--fg3);opacity:.35}
 .tourdots i.on{opacity:1;background:var(--accent);width:18px;border-radius:4px}
+
+/* File header progress (Nov 10): five labelled phases + one plain status sentence */
+.prog{flex-direction:column;align-items:stretch;gap:10px}
+.phases{display:flex;gap:6px;min-width:0}
+.ph{appearance:none;flex:1;min-width:0;display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid var(--glass-edge);border-radius:12px;background:var(--box);color:var(--fg2);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}
+span.ph{cursor:default}
+.ph .phd{flex:none;width:16px;height:16px;border-radius:50%;border:2px solid color-mix(in srgb,var(--fg3) 55%,transparent);display:grid;place-items:center}
+.ph .phl{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph .phn{margin-left:auto;font-size:11.5px;color:var(--fg3);white-space:nowrap}
+.ph.done{color:var(--fg);border-color:color-mix(in srgb,var(--stage-c) 35%,transparent);background:color-mix(in srgb,var(--stage-c) 9%,var(--box))}
+.ph.done .phd{border-color:var(--stage-c);background:var(--stage-c)}
+.ph.cur{color:var(--fg);border-color:var(--stage-c);box-shadow:0 0 0 2px color-mix(in srgb,var(--stage-c) 22%,transparent);background:color-mix(in srgb,var(--stage-c) 12%,var(--box))}
+.ph.cur .phd{border-color:var(--stage-c);box-shadow:inset 0 0 0 3px var(--box);background:var(--stage-c)}
+.ph.cur .phn{color:var(--fg2);font-weight:600}
+button.ph:hover{filter:brightness(1.04)}
+.prog .t{display:flex;align-items:center;gap:10px;white-space:normal;font-size:13.5px;min-width:0}
+.prog .t .tw{flex:1;min-width:0;display:flex;flex-wrap:wrap;column-gap:8px;align-items:baseline}
+.prog .t .ts{color:var(--fg2)}
+.prog .t .tc{flex:none;font-size:12px;color:var(--fg3);white-space:nowrap}
+.prog .t .nextgo{flex:none;margin-left:0}
+@media (max-width:860px){
+  .prog .t{display:flex}
+  .prog .t .nextgo{display:inline-flex}
+  .prog .t .tc{display:none}
+  .phases{gap:4px}
+  .ph{flex-direction:column;align-items:center;gap:3px;padding:6px 2px;font-size:10.5px;text-align:center}
+  .ph .phn{margin:0;font-size:10px}
+  .ph .phl{max-width:100%}
+}
