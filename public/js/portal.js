@@ -64,7 +64,7 @@ function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis 
     <h3 class="or-h">Your session</h3>${session}<h3 class="or-h">Checklist</h3><p class="info" style="margin:0">All of these are required before you can be issued equipment or run calls.</p><div class="or-list">${(o.items || []).map(item).join("")}</div>
     ${lib.length ? `<h3 class="or-h">Documents</h3><div class="docbtns">${lib.map(d => `<button class="btn small" type="button" data-olib="${esc(d.id)}">${esc(d.name)}</button>`).join("")}</div>` : ""}${check}</section>`;
 }
-export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "", oslots = [], opick = null, obusy = false, lib = [], checkinDone = false }){
+export function portalHTML({ back = false, pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "", oslots = [], opick = null, obusy = false, lib = [], checkinDone = false }){
   const now = Date.now(), nm = !!pd.orientation;   // nm: moved to orientation, so only the orientation dashboard shows
   const docs = pd.docs || [];
   const byKey = k => files.filter(f => f.docKey === k);
@@ -91,7 +91,8 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
     ivBody = `<div class="booked"><div class="cal"><b>${esc(d.toLocaleDateString(undefined,{month:"short"}))}</b><span>${d.getDate()}</span></div>
       <div class="dt" style="min-width:0"><strong>${esc(slotDay(iv.start))}</strong><div class="info">${esc(slotTime(iv.start))}${iv.duration?` · ${iv.duration} min`:""}${iv.location?`<br>${esc(iv.location)}`:""}</div></div></div>
       ${canChange ? `<div class="acts" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn small" type="button" data-ics ${dis}>Add to my calendar</button><button class="btn small" type="button" data-cancel ${dis}>Cancel interview</button>${pd.bookingOpen && open.length?`<button class="btn small" type="button" data-change ${dis}>Change time</button>`:""}</div>`
-        : `<div style="display:flex;justify-content:flex-end"><button class="btn small" type="button" data-ics ${dis}>Add to my calendar</button></div><p class="info">Need to change it? It's less than 24 hours away, so email <b>${esc(CONTACT_EMAIL)}</b>.</p>`}`;
+        : `<div class="acts" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn small" type="button" data-ics ${dis}>Add to my calendar</button>${iv.start > now ? `<button class="btn small" type="button" data-resched ${dis}>I need to reschedule</button>` : ""}</div><p class="info">It's less than 24 hours away, so it can't be changed here. Tap <b>I need to reschedule</b> and we'll get your message right away.</p>`}
+      ${pd.bring ? `<p class="info bring"><b>What to bring:</b> ${esc(pd.bring)}</p>` : ""}`;
   }
   else if (!pd.bookingOpen) ivBody = `<p class="info">Interview times will open here once your application review is underway. We'll let you know.</p>`;
   else if (!open.length) ivBody = `<p class="info">No interview times are open right now. Check back soon, or email <b>${esc(CONTACT_EMAIL)}</b>.</p>`;
@@ -101,7 +102,7 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
     <section class="card glass"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
       <div class="ptop"><div><div class="eyebrow">${nm ? "New member" : "Applicant portal"}</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
       <div class="info">${nm ? "Welcome to the squad. Here's your orientation." : esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div>
-      ${preview ? `<span class="badge wait">Preview</span>` : `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn small" type="button" data-tour>How this works</button><button class="btn small" type="button" data-signout>Sign out</button></span>`}</div></section>
+      ${preview ? `<span class="badge wait">Preview</span>` : `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${back ? `<a class="btn small primary" href="/">‹ Back to the desk</a>` : ""}<button class="btn small" type="button" data-tour>How this works</button><button class="btn small" type="button" data-signout>Sign out</button></span>`}</div></section>
 
 ${nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checkinDone, dis }) : `${ivSoonHTML(iv, ivDone, now, dis)}
     <section class="card glass"><h2>Your application</h2>${trackerHTML(pd.steps || [])}${timelineHTML(pd.steps || [])}</section>`}
@@ -202,7 +203,7 @@ function slotPicker(days, pick, dis, busy){
     ${pick ? `<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn" type="button" data-unpick>Back</button><button class="btn primary" type="button" data-book ${busy?"disabled":""}>Book ${esc(slotTime((Object.values(days).flat().find(s => s.id === pick) || {}).start || 0))}</button></div>` : ""}`;
 }
 
-export function startPortal(id, email){
+export function startPortal(id, email, { backToDesk = false } = {}){
   const P = { oslots: [], opick: null, obusy: false, lib: [], checkins: [], orientOn: false, crate: 0, pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false, refUps: [], refForm: null, refDraft: {}, refSending: false };
   const seen = new Set();
   const root = $("#portal");
@@ -213,7 +214,7 @@ export function startPortal(id, email){
     const ta = $("#msgText"), focused = !!ta && document.activeElement === ta, caret = ta ? ta.selectionStart : 0, scroll = root.scrollTop;
     const rf = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.rf ? document.activeElement : null, rfCaret = rf ? rf.selectionStart : 0;
     if (ta) P.draft = ta.value;
-    root.innerHTML = portalHTML({ pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending, push: P.push, oslots: P.oslots, opick: P.opick, obusy: P.obusy, lib: P.lib, checkinDone: !!P.pd.checkin && P.checkins.includes(P.pd.checkin) });
+    root.innerHTML = portalHTML({ back: backToDesk, pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending, push: P.push, oslots: P.oslots, opick: P.opick, obusy: P.obusy, lib: P.lib, checkinDone: !!P.pd.checkin && P.checkins.includes(P.pd.checkin) });
     if (rf) { const back = root.querySelector(`[data-rf="${rf.dataset.rf}"]`); if (back) { back.focus({ preventScroll: true }); try { back.setSelectionRange(rfCaret, rfCaret); } catch {} } }
     const t2 = $("#msgText"); if (t2) { t2.value = P.draft; if (focused) { t2.focus({ preventScroll: true }); t2.setSelectionRange(caret, caret); } }
     const th = $("#thread"); if (th) th.scrollTop = th.scrollHeight;
@@ -289,6 +290,7 @@ export function startPortal(id, email){
     const docEntry = (P.pd.docs || []).find(d => d.key === uploadKey), orItem = (P.pd.orientation?.items || []).find(i => "onb:" + i.key === uploadKey);
     const label = docEntry ? docEntry.label : orItem ? orItem.label : uploadKey === CONF_KEY ? "Secure document" : "Other";
     const conf = uploadKey === CONF_KEY || isConfidential(label), docKey = uploadKey === CONF_KEY ? "" : uploadKey;
+    const sent = new Set();
     for (const f of list) {
       const type = typeOf(f);
       if (!okType(f)) { toast(`${f.name} isn't a PDF or photo.`); continue; }
@@ -309,8 +311,13 @@ export function startPortal(id, email){
           await addDoc(collection(db, "portal", id, "files"), { docKey: uploadKey, label, name: f.name, path, size: f.size, contentType: type, uploadedAt: Date.now(), uploadedBy: email });
           toast(`Uploaded ${f.name}`);
         }
+        sent.add(docKey);
       } catch (e) { console.error(e); toast(`Couldn't upload ${f.name}. ${uploadWhy(e)}, or email it to ${CONTACT_EMAIL}.`); }
     }
+    // Thank them and say what's still outstanding, so nobody wonders whether they're done.
+    if (sent.size) { const has = k => sent.has(k) || P.files.some(f => f.docKey === k);
+      const left = [...(P.pd.docs || []).filter(d => !d.received && !has(d.key)).map(d => d.label), ...((P.pd.orientation || {}).items || []).filter(i => !i.date && (i.cert || i.req) && !has("onb:" + i.key)).map(i => i.label)];
+      setTimeout(() => toast(left.length ? `Thank you! Still needed: ${left.slice(0, 3).join("; ")}${left.length > 3 ? ` and ${left.length - 3} more` : ""}.` : "Thank you! That's everything we've asked for so far."), 1800); }
   });
 
   root.addEventListener("click", async e => {
@@ -330,6 +337,10 @@ export function startPortal(id, email){
       try { await setDoc(doc(db, "portal", id, "checkins", String(P.pd.checkin)), { rating: P.crate, going: $("#ciGoing").value.trim(), help: $("#ciHelp").value.trim(), at: Date.now() }); toast("Thanks! That helps a lot."); }
       catch (err) { console.error(err); toast("Couldn't send that. Try again."); } return; }
     if (t.closest("[data-tour]")) return showTour(tourRole(), tourOpts());
+    if (t.closest("[data-resched]")) { const iv = P.pd.interview; if (!iv) return; const b = t.closest("[data-resched]"); b.disabled = true;
+      try { await addDoc(collection(db, "portal", id, "messages"), { text: `I need to reschedule my interview on ${slotLong(iv.start)}. Could you help me find another time?`, from: "applicant", by: email, name: (P.pd && P.pd.name) || "", at: Date.now() });
+        toast("Sent. We'll reply under Messages as soon as we can."); $("#msgCard")?.scrollIntoView({ behavior: "smooth" }); }
+      catch (err) { console.error(err); b.disabled = false; toast(`Couldn't send. Email ${CONTACT_EMAIL}.`); } return; }
     if (t.closest("[data-send]")) return send();
     if (t.closest("[data-pushon]")) { try { await pushOn(); } catch (err) { console.error(err); toast(Notification.permission === "denied" ? "Alerts were blocked. You can allow them in your browser's settings." : "Couldn't turn on alerts. Try again."); } return; }
     if (t.closest("[data-pushoff]")) return pushOff();

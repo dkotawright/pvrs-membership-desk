@@ -1828,3 +1828,13 @@ button.ph:hover{filter:brightness(1.04)}
 }
 @media (max-width:860px){ .mnav button{min-width:56px;padding:4px 6px} .mnav button[hidden]{display:none} }
 @media (max-width:380px){ .mnav button{min-width:50px;padding:4px 2px} }
+
+/* Nov 11 batch: applicant brief, reports, what to bring */
+.brief table,.rptwrap table{width:100%;border-collapse:collapse;font-size:13.5px}
+.brief th,.brief td,.rpt th,.rpt td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--glass-edge);vertical-align:top}
+.brief th{width:38%;color:var(--fg2);font-weight:600}
+.brief h2{font-size:14px;margin:16px 0 4px}
+.rpt th{font-weight:600}.rpt td:nth-child(2){white-space:nowrap}.rpt td:last-child{color:var(--fg2)}
+.rptwrap h4{margin:16px 0 4px;font-size:14px}.rptwrap h4 small{font-weight:500;color:var(--fg3)}
+.ivstart{flex-wrap:wrap}
+.bring{margin:8px 0 0}

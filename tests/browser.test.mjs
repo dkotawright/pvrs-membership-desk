@@ -286,7 +286,7 @@ try {
     { const fit = await page.evaluate(() => { const r = document.querySelector("#mnav").getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; });
       if (!fit) fail("phone menu wider than the screen"); else ok("the five-item phone menu fits the screen");
       await page.click('#mnav [data-m="orient"]'); await wait(page, 400);
-      if (!/Onboarding/.test(await page.locator("#rosterTitle").textContent()) || !/Onboard/.test(await page.locator('#mnav [data-m="orient"]').textContent()) || !(await page.locator('#mnav [data-m="orient"].on').count())) fail("phone Onboard menu"); else ok("the phone Onboard menu opens the onboarding list");
+      if (!/^Onboard$/.test((await page.locator("#rosterTitle").textContent()).trim()) || !/Onboard/.test(await page.locator('#mnav [data-m="orient"]').textContent()) || !(await page.locator('#mnav [data-m="orient"].on').count())) fail("phone Onboard menu"); else ok("the phone Onboard menu opens the onboarding list");
       await page.click('#mnav [data-m="list"]'); await wait(page, 400);
       if (!/All applicants/.test(await page.locator("#rosterTitle").textContent())) fail("Applicants menu didn't go back to applicants"); else ok("Applicants goes back to the applicant list"); }
     await page.click('#mnav [data-m="ov"]'); await wait(page, 500);
@@ -712,6 +712,69 @@ try {
       await page.screenshot({ path: path.join(OUT, "56-progress-phone.png") });
       await ctx.close(); }
   }
+  // ---- Nov 11 batch: My paperwork, coordinator sync + no-show, brief, impressions, reports, portal extras
+  {
+    const d = n => localDay(Date.now() - n * 864e5), ref = { returned: d(3) }, past = Date.now() - 3 * 36e5;
+    const seed = [["applicants/q1", { name: "Quinn Late", email: "quinn@example.com", type: "Regular", app: { received: d(20), complete: "yes" }, iv: { about: "To help my neighbors" }, interviewers: ["ivy@pvrs.org"], updatedAt: Date.now() - 20 * 864e5, stage: "screen" }],
+      ["applicants/q1/private/main", { mvr: { completed: d(10) }, dl: { date: d(9), valid: "yes" }, refs: { r1: { name: "A", ...ref }, r2: { name: "B", ...ref }, r3: { name: "C", ...ref } }, portal: { invited: d(15), bookingOpen: "no" }, secUpdatedAt: Date.now() - 20 * 864e5 }],
+      ["portal/q1", { email: "quinn@example.com", name: "Quinn Late", firstName: "Quinn", steps: [], docs: [{ key: "d1", label: "CPR card", received: false }, { key: "d2", label: "EMT certification card", received: false }], refs: [], bookingOpen: false, bring: "A photo ID.", interview: { slotId: "qs1", start: Date.now() + 5 * 36e5, duration: 30, location: "Station" } }],
+      ["portalEmails/quinn@example.com", { id: "q1" }],
+      ["slots/qs1", { start: past, duration: 30, location: "Station", bookedBy: "q1" }],
+      ["staff/cory@pvrs.org", { role: "coordinator", name: "Cory Reed" }], ["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Lane" }],
+      ["staff/mel@pvrs.org", { role: "member", name: "Mel Member" }],
+      ["portal/m9", { email: "mel@pvrs.org", name: "Mel Member", firstName: "Mel", steps: [], docs: [], refs: [], bookingOpen: false, orientation: { total: 2, done: 1, items: [{ key: "confidentiality_statement", label: "Confidentiality statement", date: "", cert: true }] } }]];
+    // the coordinator: stage and portal steps follow their desk, and No-show reopens booking
+    { const { ctx, page } = await open(browser, { user: { email: "cory@pvrs.org", displayName: "Cory Reed" }, seed }); await wait(page, 3600);
+      const sy = await page.evaluate(() => [window.__mock.docs.get("applicants/q1").stage, (window.__mock.docs.get("portal/q1").steps || []).length]);
+      if (sy[0] !== "int" || sy[1] < 5) fail("coordinator desk didn't refresh stage/steps: " + JSON.stringify(sy)); else ok("the coordinator's desk keeps the stage and the applicant's steps current");
+      await pickApplicant(page, "Quinn Late"); await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
+      await page.locator('#bookedActs [data-act="noshow"]').click(); await wait(page, 1500);
+      const ns = await page.evaluate(() => { const m = window.__mock.docs; return [m.get("slots/qs1").bookedBy, m.get("applicants/q1").sched?.noShow, m.get("applicants/q1/private/main").portal.bookingOpen, m.get("portal/q1").bookingOpen, document.querySelector("#emSubject")?.value || ""]; });
+      if (ns[0] !== null || !ns[1] || ns[2] !== "yes" || ns[3] !== true || !/new time/.test(ns[4])) fail("no-show: " + JSON.stringify(ns)); else ok("No-show frees the time, reopens booking and drafts the follow-up");
+      await ctx.close(); }
+    // an interviewer: brief and a private impression
+    { const { ctx, page } = await open(browser, { user: { email: "ivy@pvrs.org", displayName: "Ivy Lane" }, seed }); await wait(page, 900);
+      await pickApplicant(page, "Quinn Late"); await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
+      await page.locator('[data-act="brief"]').click(); await wait(page, 300);
+      const br = await page.locator("#modal .brief").textContent();
+      if (!/quinn@example\.com/.test(br) || !/To help my neighbors/.test(br) || !/Ivy|You/.test(br)) fail("brief: " + br.replace(/\s+/g, " ").slice(0, 300)); else ok("the applicant brief shows who they are and what's already on file");
+      await page.locator("#modal [data-x]").click(); await wait(page, 200);
+      await page.locator("#impText").fill("Strong candidate, a little quiet."); await wait(page, 1200);
+      const im = await page.evaluate(() => window.__mock.docs.get("applicants/q1/impressions/ivy@pvrs.org"));
+      if (im?.text !== "Strong candidate, a little quiet." || im.by !== "ivy@pvrs.org") fail("impression: " + JSON.stringify(im)); else ok("an interviewer saves a private impression under their own name");
+      await ctx.close(); }
+    // the owner: sees the impression, and Reports lists the stalled file
+    { const { ctx, page } = await open(browser, { seed: [...seed, ["applicants/q1/impressions/ivy@pvrs.org", { text: "Strong candidate, a little quiet.", by: "ivy@pvrs.org", name: "Ivy Lane", at: Date.now() }]] }); await wait(page, 900);
+      await page.locator('[data-cmd="reports"]').click(); await wait(page, 300);
+      const rp = (await page.locator("#modal .rptwrap").textContent()).replace(/\s+/g, " ");
+      if (!/How long it takes/.test(rp) || !/Quinn Late/.test(rp) || !/20 days/.test(rp) || !/Onboard/.test(rp)) fail("reports: " + rp.slice(0, 400)); else ok("Reports shows timings, who is stalled and who has waited longest");
+      await page.screenshot({ path: path.join(OUT, "59-reports.png") });
+      await page.locator("#modal [data-rpopen]").first().click(); await wait(page, 400);
+      await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
+      if (!/Strong candidate/.test(await page.locator("#impBox").textContent()) || !/Ivy Lane/.test(await page.locator("#impBox").textContent())) fail("owner can't see impressions"); else ok("the owner reads each interviewer's impression");
+      if (!/Orientation board/.test(await page.locator("#orientBtn").textContent()) || !/Onboard/.test(await page.locator("#chips .navh2").textContent()) || !/Onboard\b/.test(await page.locator("#dProg .ph").nth(3).textContent())) fail("naming not consistent"); else ok("Onboard is the phase, list and tab; Orientation board is the checklist tool");
+      await ctx.close(); }
+    // a squad member who still owes paperwork
+    { const { ctx, page } = await open(browser, { user: { email: "mel@pvrs.org", displayName: "Mel" }, seed }); await wait(page, 900);
+      if (await page.locator("#paperBtn").isHidden()) fail("member has no My paperwork"); else ok("a squad member with orientation paperwork left gets My paperwork");
+      await ctx.close(); }
+    { const { ctx, page } = await open(browser, { url: "/?paperwork=1", user: { email: "mel@pvrs.org", displayName: "Mel" }, seed }); await wait(page, 900);
+      const t = await page.locator("#portal").textContent().catch(() => "");
+      if (!/Back to the desk/.test(t) || !/Confidentiality statement/.test(t) || !(await page.locator('[data-upload="onb:confidentiality_statement"]').count())) fail("member paperwork page: " + t.replace(/\s+/g, " ").slice(0, 300)); else ok("My paperwork opens their orientation checklist with uploads and a way back");
+      await ctx.close(); }
+    // the applicant: what to bring, reschedule inside 24 hours, and what's still needed after an upload
+    { const { ctx, page } = await open(browser, { user: { email: "quinn@example.com", displayName: "" }, seed: [...seed.filter(([k]) => k !== "slots/qs1"), ["slots/qs1", { start: Date.now() + 5 * 36e5, duration: 30, location: "Station", bookedBy: "q1" }]] }); await wait(page, 900);
+      const iv = await page.locator("#ivCard").textContent();
+      if (!/What to bring: A photo ID\./.test(iv) || !(await page.locator("[data-resched]").count())) fail("portal interview card: " + iv.replace(/\s+/g, " ").slice(0, 300)); else ok("a booked interview shows what to bring and a reschedule button inside 24 hours");
+      await page.locator("[data-resched]").click(); await wait(page, 500);
+      const m = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/q1/messages/")).map(([, v]) => v));
+      if (!m.some(x => x.from === "applicant" && /need to reschedule my interview/.test(x.text))) fail("reschedule message: " + JSON.stringify(m)); else ok("the reschedule button sends the squad a message");
+      await page.locator('[data-upload="d1"]').evaluate(b => { const i = document.querySelector('input[type="file"]'); i.click = () => {}; b.click(); });
+      await page.locator('input[type="file"]').setInputFiles({ name: "cpr.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 2600);
+      const tt = await page.locator("#toast").textContent();
+      if (!/Still needed: EMT certification card/.test(tt) || /CPR card/.test(tt)) fail("after-upload note: " + tt); else ok("after an upload the portal says what's still needed");
+      await ctx.close(); }
+  }
   // ---- First-visit tour: once per person and role, with a way to see it again
   {
     const CORY = { email: "cory@pvrs.org", displayName: "Cory Reed" }, cs = [["staff/cory@pvrs.org", { role: "coordinator", name: "Cory Reed" }]];
@@ -747,7 +810,7 @@ try {
     { const { ctx, page } = await open(browser, { tour: true }); await wait(page, 1900);
       if (await page.locator("#modal .tour").count()) fail("owner got a tour"); else ok("the owner isn't shown a tour");
       await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await page.locator("#palQ").fill("tour interviewer"); await wait(page, 150); await page.keyboard.press("Enter"); await wait(page, 400);
-      if (!/Interviewer · 1 of 6/.test(await page.locator("#modal .tour").textContent().catch(() => ""))) fail("owner can't preview a tour"); else ok("the owner can preview any role's tour from search");
+      if (!/Interviewer · 1 of 7/.test(await page.locator("#modal .tour").textContent().catch(() => ""))) fail("owner can't preview a tour"); else ok("the owner can preview any role's tour from search");
       await ctx.close(); }
   }
   // ---- Nov 4 batch: interviewer times + home, applicant alerts, duplicates, bulk, channel extras, search
