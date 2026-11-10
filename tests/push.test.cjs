@@ -125,6 +125,21 @@ const last = () => sent[sent.length - 1];
   check(last().tokens.join() === "ivTok" && /trainer for New One/.test(last().notification.body), "new trainer alert: " + JSON.stringify(last()));
   await P.signoffChanged({ data: { before: { data: () => ({ trainers: ["iv@pvrs.org"], done: {} }) }, after: { data: () => ({ name: "New One", trainers: ["iv@pvrs.org"], items: [{ key: "rig", label: "Rig walkthrough" }], done: { rig: { by: "iv@pvrs.org", name: "Ivy" } } }) } }, params: { id: "o1" } });
   check(last().tokens.join() === "ownerTok" && /Ivy signed off Rig walkthrough for New One/.test(last().notification.body), "sign-off alert: " + JSON.stringify(last()));
+  // The service worker: every push becomes a notification, even with the app open in front (iPhones switch alerts
+  // off for an app that receives pushes without showing anything), and it contains no Firebase code.
+  { const vm = require("vm"), fs = require("fs"), src = fs.readFileSync(path.join(__dirname, "..", "public", "firebase-messaging-sw.js"), "utf8");
+    const handlers = {}, shown = [], posted = [];
+    const client = { url: "https://pvrs-membership.web.app/", visibilityState: "visible", focused: true, postMessage: m => posted.push(m) };
+    const self = { addEventListener: (k, f) => { handlers[k] = f; }, skipWaiting() {}, clients: { claim: async () => {}, matchAll: async () => [client] },
+      registration: { showNotification: async (title, o) => { shown.push({ title, ...o }); } }, location: { origin: "https://pvrs-membership.web.app" } };
+    vm.runInNewContext(src, { self, clients: self.clients, URL, importScripts() { throw new Error("the service worker must not load Firebase"); } });
+    let waited = null;
+    handlers.push({ data: { json: () => ({ notification: { title: "Interview booked", body: "Jack G · Tue 6:30 PM" }, fcmOptions: { link: "https://pvrs-membership.web.app/?open=a1" } }) }, waitUntil: p => { waited = p; } });
+    await waited;
+    check(shown.length === 1 && shown[0].title === "Interview booked" && shown[0].body === "Jack G · Tue 6:30 PM" && shown[0].data.link.endsWith("?open=a1"), "push shown with the app open: " + JSON.stringify(shown));
+    check(posted.length === 1 && posted[0].type === "pvrs-push", "an open desk is told too: " + JSON.stringify(posted));
+    handlers.push({ data: { json: () => { throw new Error("not json"); } }, waitUntil: p => { waited = p; } }); await waited;
+    check(shown.length === 2 && shown[1].title === "PVRS", "an unreadable push still shows something: " + JSON.stringify(shown[1])); }
   console.log(errors.length ? "ERRORS:\n" + errors.join("\n") : `${n} notification checks, no errors`);
   process.exit(errors.length ? 1 : 0);
 })();

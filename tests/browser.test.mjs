@@ -14,8 +14,9 @@ const fail = m => errors.push("[check] " + m), ok = m => notes.push("ok: " + m);
 const localDay = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const OWNER = { email: "dkota@pvrs.org", displayName: "Dkota Wright" };
 
-async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark = false, seed = null, files = {} } = {}){
+async function open(browser, { url = "/", user = OWNER, w = 1440, h = 900, dark = false, seed = null, files = {}, tour = false } = {}){
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: dark ? "dark" : "light" });
+  if (!tour) await ctx.addInitScript(() => { try { localStorage.setItem("pvrsTourOff", "1"); } catch {} });   // the first-visit tour would cover the page in every other test
   if (seed) await ctx.addInitScript(list => { window.__mock = { docs: new Map(list), listeners: new Set(), seq: 0 }; }, seed);   // extra docs on top of the usual test data
   await ctx.addInitScript(u => { window.__MOCK_USER = u; HTMLAnchorElement.prototype.click = function(){ (window.__clicked = window.__clicked || []).push(this.href); }; }, user);
   await ctx.route("**/*", route => {
@@ -667,6 +668,44 @@ try {
     await page.screenshot({ path: path.join(OUT, "52-coordinator.png") });
     await ctx.close();
   }
+  // ---- First-visit tour: once per person and role, with a way to see it again
+  {
+    const CORY = { email: "cory@pvrs.org", displayName: "Cory Reed" }, cs = [["staff/cory@pvrs.org", { role: "coordinator", name: "Cory Reed" }]];
+    const { ctx, page } = await open(browser, { user: CORY, seed: cs, tour: true }); await wait(page, 1900);
+    const t1 = await page.locator("#modal .tour").textContent().catch(() => "");
+    if (!/Interview coordinator · 1 of 8/.test(t1) || !/You run the interviews, Cory/.test(t1)) fail("coordinator tour: " + t1.slice(0, 200)); else ok("a coordinator's first visit opens their tour");
+    await page.locator("[data-tnext]").click(); await wait(page, 150);
+    if (!/2 of 8/.test(await page.locator("#modal .tour").textContent()) || !(await page.locator("[data-tback]").count())) fail("tour Next/Back"); else ok("the tour steps forward and back");
+    await page.screenshot({ path: path.join(OUT, "53-tour.png") });
+    await page.locator("[data-tskip]").click(); await wait(page, 200);
+    await page.reload(); await wait(page, 2200);
+    if (await page.locator("#modal .tour").count()) fail("tour showed a second time"); else ok("the tour shows only once");
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await page.locator("#palQ").fill("tour"); await wait(page, 150); await page.keyboard.press("Enter"); await wait(page, 400);
+    if (!/1 of 8/.test(await page.locator("#modal .tour").textContent().catch(() => ""))) fail("no way to replay the tour"); else ok("the tour can be opened again from search");
+    for (let n = 0; n < 7; n++) await page.locator("[data-tnext]").click();
+    await wait(page, 150);
+    if (!(await page.locator("[data-tnotif]").count())) fail("tour doesn't end on notifications"); else ok("the last card offers to turn on notifications");
+    await ctx.close();
+    // an applicant, and the same person once in orientation
+    { const { ctx, page } = await open(browser, { user: { email: "marcus.bell@example.com", displayName: "" }, tour: true }); await wait(page, 1900);
+      const t = await page.locator("#modal .tour").textContent().catch(() => "");
+      if (!/Your applicant portal · 1 of 6/.test(t) || !/Welcome, Marcus/.test(t)) fail("applicant tour: " + t.slice(0, 200)); else ok("an applicant's first visit opens the portal tour");
+      await page.locator("[data-tskip]").click(); await wait(page, 200);
+      await page.locator("[data-tour]").click(); await wait(page, 300);
+      if (!/1 of 6/.test(await page.locator("#modal .tour").textContent().catch(() => ""))) fail("portal How this works"); else ok("the portal has a How this works button");
+      await page.locator("[data-tskip]").click(); await wait(page, 200);
+      await ctx.close(); }
+    { const { ctx, page } = await open(browser, { user: { email: "nina@example.com", displayName: "" }, tour: true,
+        seed: [["portal/o9", { email: "nina@example.com", name: "Nina New", firstName: "Nina", steps: [], docs: [], refs: [], bookingOpen: false, orientation: { total: 2, done: 0, items: [] } }]] }); await wait(page, 1900);
+      if (!/Your orientation · 1 of 5/.test(await page.locator("#modal .tour").textContent().catch(() => ""))) fail("no orientation tour for a new member"); else ok("a new member in orientation gets the orientation tour");
+      await ctx.close(); }
+    // the owner isn't interrupted, but can preview each tour
+    { const { ctx, page } = await open(browser, { tour: true }); await wait(page, 1900);
+      if (await page.locator("#modal .tour").count()) fail("owner got a tour"); else ok("the owner isn't shown a tour");
+      await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await page.locator("#palQ").fill("tour interviewer"); await wait(page, 150); await page.keyboard.press("Enter"); await wait(page, 400);
+      if (!/Interviewer · 1 of 6/.test(await page.locator("#modal .tour").textContent().catch(() => ""))) fail("owner can't preview a tour"); else ok("the owner can preview any role's tour from search");
+      await ctx.close(); }
+  }
   // ---- Nov 4 batch: interviewer times + home, applicant alerts, duplicates, bulk, channel extras, search
   {
     const IVY = { email: "ivy@pvrs.org", displayName: "Ivy Lane" }, ivySeed = [["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Lane" }]];
@@ -700,6 +739,7 @@ try {
         if (u.host === "www.gstatic.com") return route.fulfill({ body: MOCK, contentType: "text/javascript" });
         if (u.host === "localhost:5999") { let f = path.join(PUB, u.pathname === "/" ? "index.html" : u.pathname); if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(PUB, "index.html"); return route.fulfill({ body: fs.readFileSync(f), contentType: TYPES[path.extname(f)] || "application/octet-stream" }); }
         return route.abort(); });
+      await ctx.addInitScript(() => { try { localStorage.setItem("pvrsTourOff", "1"); } catch {} });
       const page = await ctx.newPage(); await page.goto("http://localhost:5999/"); await wait(page, 900);
       if (!(await page.locator("[data-pushon]").count())) fail("no Turn on alerts in the portal: " + (await page.locator("#portal").textContent()).slice(0, 200)); else { await page.locator("[data-pushon]").click(); await wait(page, 500);
         const tk = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("applicantTokens/")).map(([, v]) => v));

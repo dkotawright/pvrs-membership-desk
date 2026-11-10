@@ -6,6 +6,7 @@ import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysS
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
   progress, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
+import { showTour, maybeTour } from "./tour.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL, VAPID_KEY } from "./config.js";
 
@@ -1632,6 +1633,9 @@ function openPalette(){
     { label: "Settings", show: S.owner, words: "settings team access signature", run: go(gateSettings) },
     { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
     { label: "Notifications", show: true, words: "notifications alerts push bell phone", run: go(openNotifications) },
+    { label: "Show the tour", show: !S.owner, words: "tour tutorial help how guide welcome what can i do", run: go(() => showTour(S.role, tourOpts())) },
+    ...(S.owner ? [["admin", "an Admin"], ["coordinator", "the Interview coordinator"], ["interviewer", "an Interviewer"], ["member", "a Member"], ["applicant", "an applicant"], ["newmember", "a new member in orientation"]]
+      .map(([r, l]) => ({ label: `Tour: what ${l} is shown`, show: true, words: "tour tutorial help guide welcome preview " + r, run: go(() => showTour(r, { email: S.me })) })) : []),
     { label: "Two-step sign-in", show: true, words: "two step 2fa mfa authenticator security code", run: go(openTwoStep) },
     { label: "Sign-in password", show: true, words: "password key sign in", run: go(openPassword) },
     { label: "Keyboard shortcuts", hint: "?", show: true, words: "keyboard shortcuts help keys", run: go(openShortcuts) },
@@ -1761,9 +1765,10 @@ function openMore(){
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div>
     <div class="ios morelist">${tools.map(([id, label]) => `<button class="row" type="button" data-more="${id}"><span class="mi">${icon(id)}</span><span class="lbl">${esc(label)}</span><span class="chev" aria-hidden="true">›</span></button>`).join("")}
       ${S.me ? `<button class="row" type="button" data-notif><span class="mi"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3l1-1zM6.5 14h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lbl">Notifications</span><span class="chev" aria-hidden="true">›</span></button>` : ""}
+      ${S.owner ? "" : `<button class="row" type="button" data-tour><span class="mi"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.4 6.3a1.7 1.7 0 1 1 2.4 1.6c-.5.3-.8.6-.8 1.2M8 11.4v.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><span class="lbl">How this works</span><span class="chev" aria-hidden="true">›</span></button>`}
       <button class="row" type="button" data-signout><span class="mi">${$(".me [data-signout] svg")?.outerHTML || ""}</span><span class="lbl" style="color:var(--s-dec)">Sign out</span></button></div>
     <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`);
-  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("[data-notif]")) { closeModal(); setTimeout(openNotifications, 60); return; } const b = e.target.closest("[data-more]"); if (b) { closeModal(); setTimeout(() => $("#" + b.dataset.more).click(), 60); } };
+  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("[data-notif]")) { closeModal(); setTimeout(openNotifications, 60); return; } if (e.target.closest("[data-tour]")) { closeModal(); setTimeout(() => showTour(S.role, tourOpts()), 60); return; } const b = e.target.closest("[data-more]"); if (b) { closeModal(); setTimeout(() => $("#" + b.dataset.more).click(), 60); } };
 }
 function deselect(){ if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
 // Choosing a filter (sidebar or stage tile) shows the results in the dashboard's Applicants box.
@@ -3546,6 +3551,28 @@ const deviceName = () => { const u = navigator.userAgent;
     + " · " + (/Edg\//.test(u) ? "Edge" : /Chrome\//.test(u) ? "Chrome" : /Firefox\//.test(u) ? "Firefox" : /Safari\//.test(u) ? "Safari" : "browser"); };
 let fmMod = null;
 const fm = async () => fmMod || (fmMod = await import(FM_URL));
+// Phones swap or drop a device's push registration without telling anyone (iPhones especially), and the server
+// forgets a registration the moment a send to it fails. So every time the desk opens (and every few hours while it
+// stays open) a device that had alerts on asks for its current registration and saves it again.
+let pushChecked = 0, pushLost = false;
+async function refreshPush(){
+  const old = pushToken(); if (!old || !VAPID_KEY || !S.me || Date.now() - pushChecked < 6 * 36e5) return;
+  pushChecked = Date.now();
+  try {
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
+    if (Notification.permission !== "granted") {   // the phone or browser switched them off
+      try { localStorage.removeItem(PUSH_KEY); } catch {}
+      deleteDoc(doc(db, "pushTokens", old)).catch(() => {});
+      pushLost = true; setTimeout(() => { if ($("#modal").hidden) openNotifications(); }, 1500); return;
+    }
+    const m = await fm(), reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    const token = await m.getToken(m.getMessaging(app), { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) return;
+    await setDoc(doc(db, "pushTokens", token), { email: S.me, device: deviceName(), at: Date.now() });
+    if (token !== old) { try { localStorage.setItem(PUSH_KEY, token); } catch {} deleteDoc(doc(db, "pushTokens", old)).catch(() => {}); }
+  } catch (e) { console.error(e); }
+}
+const tourOpts = () => ({ name: first(S.name), email: S.me, onNotif: openNotifications });
 async function pushState(){
   if (!VAPID_KEY) return "unset";
   if (!("Notification" in window) || !("serviceWorker" in navigator)) return /iPhone|iPad/.test(navigator.userAgent) ? "ios" : "unsupported";
@@ -3560,6 +3587,7 @@ async function pushOn(){
   if (!token) throw new Error("no token");
   await setDoc(doc(db, "pushTokens", token), { email: S.me, device: deviceName(), at: Date.now() });
   try { localStorage.setItem(PUSH_KEY, token); } catch {}
+  pushLost = false; pushChecked = Date.now();
   startPushToasts();
 }
 async function pushOff(){
@@ -3572,7 +3600,9 @@ async function pushOff(){
 let pushToasting = false;
 async function startPushToasts(){
   if (pushToasting || !pushToken() || !VAPID_KEY) return; pushToasting = true;
-  try { const m = await fm(); if (await m.isSupported()) m.onMessage(m.getMessaging(app), p => { const n = p.notification || {}; toast([n.title, n.body].filter(Boolean).join(": ")); }); } catch {}
+  // The service worker shows every alert as a notification and also tells an open desk, which shows it as a toast.
+  try { navigator.serviceWorker?.addEventListener?.("message", e => { const d = e.data || {}; if (d.type === "pvrs-push" && document.visibilityState === "visible") toast([d.title, d.body].filter(Boolean).join(": ")); }); } catch {}
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refreshPush(); });
 }
 async function openNotifications(){
   const st = await pushState();
@@ -3586,7 +3616,7 @@ async function openNotifications(){
     ios: `<p class="help">On iPhone and iPad, notifications only work from the Home Screen app: in Safari tap Share → <b>Add to Home Screen</b>, open PVRS Desk from your Home Screen, sign in, and come back here.</p>`,
     unsupported: `<p class="help">This browser can't receive notifications. Try Chrome, Edge, Firefox or Safari (on Mac), or the Home Screen app on iPhone.</p>`,
     blocked: `<p class="help">Notifications are blocked for this site. Allow them in your browser's site settings (the icon left of the address), then reload.</p>`,
-    off: `<p class="help">Get an alert on <b>this device</b> for ${what}. Alerts say who and what, never the message itself.</p>`,
+    off: `${pushLost ? `<div class="note warn"><b>Notifications stopped on this device.</b> Your phone or browser switched them off. Turn them back on below.</div>` : ""}<p class="help">Get an alert on <b>this device</b> for ${what}. Alerts say who and what, never the message itself.</p>`,
     on: `<p class="help">This device (${esc(deviceName())}) gets an alert for ${what}.</p>`,
   }[st];
   const M = openModal(`<h3>Notifications</h3>${body}
@@ -3640,7 +3670,8 @@ export function startDesk({ email, role, owner, name }){
   if (!S.canEdit) document.body.classList.add("viewonly-user");
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
   startIdleLock();
-  startPushToasts();
+  startPushToasts(); refreshPush();
+  if (!S.owner) maybeTour(S.role, tourOpts());   // first visit only: what this role can do
   watchOrientation(); watchChat(); startPresence(); $("#msgsBtn").hidden = false; paintMnav();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };
 

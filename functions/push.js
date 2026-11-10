@@ -42,7 +42,7 @@ async function send({ title, body, id = "", chat = "", everyone = false, to = nu
   const res = await getMessaging().sendEachForMulticast({ tokens, notification: { title, body },
     webpush: { notification: { icon: "/img/icon-192.png", badge: "/img/icon-192.png" }, fcmOptions: { link } } });
   // Forget devices that uninstalled or revoked permission.
-  const dead = res.responses.map((r, i) => (!r.success && /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(r.error?.code || "") ? tokens[i] : null)).filter(Boolean);
+  const dead = res.responses.map((r, i) => (!r.success && /registration-token-not-registered|invalid-registration-token/.test(r.error?.code || "") ? tokens[i] : null)).filter(Boolean);
   await Promise.all(dead.map(t => db.doc(`pushTokens/${t}`).delete().catch(() => {})));
   logger.info("push sent", { title, sent: res.successCount, failed: res.failureCount, removed: dead.length });
 }
@@ -55,7 +55,7 @@ async function sendApplicant(appId, { title, body }){
   if (!tokens.length) return;
   const res = await getMessaging().sendEachForMulticast({ tokens, notification: { title, body },
     webpush: { notification: { icon: "/img/icon-192.png", badge: "/img/icon-192.png" }, fcmOptions: { link: DESK } } });
-  const dead = res.responses.map((r, i) => (!r.success && /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(r.error?.code || "") ? tokens[i] : null)).filter(Boolean);
+  const dead = res.responses.map((r, i) => (!r.success && /registration-token-not-registered|invalid-registration-token/.test(r.error?.code || "") ? tokens[i] : null)).filter(Boolean);
   await Promise.all(dead.map(t => db.doc(`applicantTokens/${t}`).delete().catch(() => {})));
 }
 const doneCount = pd => (pd.steps || []).filter(s => s.state === "done").length;

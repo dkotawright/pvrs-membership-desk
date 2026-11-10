@@ -1,22 +1,30 @@
-// Push notifications for the desk (new applications, messages, bookings…), sent by functions/push.js.
-// Classic service worker (Safari/Firefox don't all run module workers), so it uses the compat SDK. The config below is
-// public and must match public/js/config.js. The alert text never includes message content, only who and what.
-importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js");
+// Push notifications for the desk and the applicant portal, sent by functions/push.js through Firebase Cloud Messaging.
+// This worker shows EVERY push as a notification itself. It used to hand that to the Firebase library, which stays
+// silent whenever the app is open in front; iPhones count a silent push as a broken promise and, after a few, switch
+// notifications off for the app (Nov 10: the owner's alerts died after about two days). So: no Firebase code in here,
+// and no push without a notification. The alert text never includes message content, only who and what.
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", e => e.waitUntil(self.clients.claim()));
 
-firebase.initializeApp({
-  apiKey: "AIzaSyAmPIMyTAPdJLdhEFwoSNi9Bfdx5YqCcDY",
-  projectId: "pvrs-membership",
-  messagingSenderId: "1066878367633",
-  appId: "1:1066878367633:web:84e23e24b83916e4360c30",
+self.addEventListener("push", e => {
+  let p = {};
+  try { p = e.data ? e.data.json() : {}; } catch { p = {}; }
+  const n = p.notification || {}, d = p.data || {};
+  const title = n.title || d.title || "PVRS";
+  const body = n.body || d.body || "";
+  const link = (p.fcmOptions && p.fcmOptions.link) || n.click_action || d.link || "/";
+  e.waitUntil((async () => {
+    await self.registration.showNotification(title, { body, icon: n.icon || "/img/icon-192.png", badge: n.badge || "/img/icon-192.png", data: { link } });
+    // An open desk also shows it as a toast.
+    const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    list.forEach(c => c.postMessage({ type: "pvrs-push", title, body }));
+  })());
 });
-// Messages carry a `notification` block, so the browser shows them itself while the desk is closed or in the background.
-firebase.messaging();
 
 // Tapping an alert focuses an open desk (or opens one) at the link the function sent.
 self.addEventListener("notificationclick", e => {
   e.notification.close();
-  const link = (e.notification.data && (e.notification.data.FCM_MSG?.fcmOptions?.link || e.notification.data.link)) || "/";
+  const link = (e.notification.data && (e.notification.data.link || e.notification.data.FCM_MSG?.fcmOptions?.link)) || "/";
   e.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
     const open = list.find(c => new URL(c.url).origin === self.location.origin);
     if (open) { open.focus(); return open.navigate ? open.navigate(link).catch(() => {}) : null; }

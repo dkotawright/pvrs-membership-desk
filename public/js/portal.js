@@ -2,6 +2,7 @@
 import { app, db, storage, doc, collection, onSnapshot, writeBatch, addDoc, updateDoc, setDoc, deleteDoc, query, where, ref, uploadBytes, getDownloadURL } from "./fb.js";
 import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download, isConfidential } from "./shared.js";
 import { CONTACT_EMAIL, VAPID_KEY } from "./config.js";
+import { showTour, maybeTour } from "./tour.js";
 
 const DAY = 864e5, MAX = 15 * 1024 * 1024;
 const CONF_KEY = "_private";   // the "Secure document upload" button (not tied to a request)
@@ -100,7 +101,7 @@ export function portalHTML({ pd, files = [], slots = [], msgs = [], preview = fa
     <section class="card glass"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
       <div class="ptop"><div><div class="eyebrow">${nm ? "New member" : "Applicant portal"}</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
       <div class="info">${nm ? "Welcome to the squad. Here's your orientation." : esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div>
-      ${preview ? `<span class="badge wait">Preview</span>` : `<button class="btn small" type="button" data-signout>Sign out</button>`}</div></section>
+      ${preview ? `<span class="badge wait">Preview</span>` : `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn small" type="button" data-tour>How this works</button><button class="btn small" type="button" data-signout>Sign out</button></span>`}</div></section>
 
 ${nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checkinDone, dis }) : `${ivSoonHTML(iv, ivDone, now, dis)}
     <section class="card glass"><h2>Your application</h2>${trackerHTML(pd.steps || [])}${timelineHTML(pd.steps || [])}</section>`}
@@ -223,6 +224,15 @@ export function startPortal(id, email){
   };
   render();
   pushState().then(st => { P.push = st; render(); });
+  // A device that had alerts on re-saves its current registration each visit (phones swap or drop them silently).
+  (async () => { const old = pushToken(); if (!old || !VAPID_KEY || !("Notification" in window) || !("serviceWorker" in navigator)) return;
+    try {
+      if (Notification.permission !== "granted") { try { localStorage.removeItem(PUSH_KEY); } catch {} deleteDoc(doc(db, "applicantTokens", old)).catch(() => {}); P.push = "off"; render(); return; }
+      const m = await import(FM_URL), reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+      const token = await m.getToken(m.getMessaging(app), { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg }); if (!token) return;
+      await setDoc(doc(db, "applicantTokens", token), { appId: id, email, device: deviceName(), at: Date.now() });
+      if (token !== old) { try { localStorage.setItem(PUSH_KEY, token); } catch {} deleteDoc(doc(db, "applicantTokens", old)).catch(() => {}); }
+    } catch (e) { console.error(e); } })();
   const pushOn = async () => { const m = await import(FM_URL), msg = m.getMessaging(app);
     const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
     const token = await m.getToken(msg, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg }); if (!token) throw new Error("no token");
@@ -237,7 +247,9 @@ export function startPortal(id, email){
     onSnapshot(collection(db, "orientSlots"), s => { P.oslots = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
     onSnapshot(query(collection(db, "library"), where("newMembers", "==", true)), s => { P.lib = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
     onSnapshot(collection(db, "portal", id, "checkins"), s => { P.checkins = s.docs.map(d => d.id); render(); }, () => {}); };
-  onSnapshot(doc(db, "portal", id), s => { P.pd = s.exists() ? s.data() : { steps: [] }; if (P.pd.orientation) startOrient(); render(); }, () => toast("Couldn't load your application. Reload the page."));
+  const tourRole = () => P.pd?.orientation ? "newmember" : "applicant", tourOpts = () => ({ name: P.pd?.firstName || "", email });
+  onSnapshot(doc(db, "portal", id), s => { const firstLoad = !P.pd; P.pd = s.exists() ? s.data() : { steps: [] }; if (P.pd.orientation) startOrient(); render();
+    if (firstLoad && s.exists()) maybeTour(tourRole(), tourOpts()); }, () => toast("Couldn't load your application. Reload the page."));
   onSnapshot(collection(db, "portal", id, "messages"), s => { P.msgs = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x,y) => (x.at||0) - (y.at||0)); render(); }, () => {});
   const send = async () => {
     const ta = $("#msgText"); const text = (ta ? ta.value : "").trim();
@@ -317,6 +329,7 @@ export function startPortal(id, email){
     if (t.closest("[data-csend]")) { if (!P.crate) return toast("Pick a number from 1 to 5 first.");
       try { await setDoc(doc(db, "portal", id, "checkins", String(P.pd.checkin)), { rating: P.crate, going: $("#ciGoing").value.trim(), help: $("#ciHelp").value.trim(), at: Date.now() }); toast("Thanks! That helps a lot."); }
       catch (err) { console.error(err); toast("Couldn't send that. Try again."); } return; }
+    if (t.closest("[data-tour]")) return showTour(tourRole(), tourOpts());
     if (t.closest("[data-send]")) return send();
     if (t.closest("[data-pushon]")) { try { await pushOn(); } catch (err) { console.error(err); toast(Notification.permission === "denied" ? "Alerts were blocked. You can allow them in your browser's settings." : "Couldn't turn on alerts. Try again."); } return; }
     if (t.closest("[data-pushoff]")) return pushOff();
