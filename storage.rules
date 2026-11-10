@@ -10,7 +10,7 @@ service firebase.storage {
     function isAdmin()  {
       return verified() && (myEmail() == 'dkota@pvrs.org'
         || (firestore.exists(/databases/(default)/documents/staff/$(myEmail()))
-            && firestore.get(/databases/(default)/documents/staff/$(myEmail())).data.role == 'admin'));
+            && firestore.get(/databases/(default)/documents/staff/$(myEmail())).data.role in ['admin', 'coordinator']));
     }
     function ownsPortal(id) {
       return verified() && firestore.exists(/databases/(default)/documents/portal/$(id))

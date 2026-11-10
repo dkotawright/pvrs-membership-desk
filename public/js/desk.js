@@ -83,7 +83,7 @@ function tabHTML(tab){
   </div>`;
   if (tab === "iv") return `<div class="ivstart"><button class="btn primary" type="button" data-act="ivmode"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor"/></svg>Start interview mode</button>
     <span class="help">Full screen, one section at a time, big enough to read across the table. Answers save as you go.</span></div><div class="cols">
-    ${admin ? `<section class="group noiv"><h3><span>Interviewers</span>${S.canEdit ? `<button class="btn small" type="button" data-act="assigniv">Assign</button>` : ""}</h3><div class="ios" id="ivAssign"></div></section>` : ""}
+    ${admin ? `<section class="group noiv"><h3><span>Interviewers</span>${S.sched ? `<button class="btn small" type="button" data-act="assigniv">Assign</button>` : ""}</h3><div class="ios" id="ivAssign"></div></section>` : ""}
     ${group("Scheduling",[
       `<div class="row"><span class="lbl">Booked time<small id="bookedEcho">—</small></span><span id="bookedActs" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"></span></div>`,
       F.date("sched.contacted","Applicant contacted"),F.date("sched.scheduled","Interview date (if not booked above)"),F.text("sched.time","Interview time","6:30 PM"),F.date("sched.completed","Interview completed"),F.init("sched.completedInit","Completed by (initials)")])}
@@ -172,7 +172,7 @@ function tabHTML(tab){
   if (tab === "msgs") return `<div class="msgpane">
     <div class="ios"><div class="thread staffview" id="dThread"></div></div>
     <p class="help" id="msgNote" style="margin:8px 4px 0"></p>
-    ${S.canEdit ? `<div class="ios composer-box"><div class="row qreplies" id="qReplies">${quickRepliesHTML()}</div><label class="row stack"><span class="lbl">Reply</span><textarea id="replyText" rows="3" maxlength="2000" placeholder="Write a reply… (⌘↩ to send)"></textarea></label>
+    ${S.sched ? `<div class="ios composer-box"><div class="row qreplies" id="qReplies">${quickRepliesHTML()}</div><label class="row stack"><span class="lbl">Reply</span><textarea id="replyText" rows="3" maxlength="2000" placeholder="Write a reply… (⌘↩ to send)"></textarea></label>
       <div class="row"><label class="lbl" style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" id="replyMail" checked style="width:auto"> Also open an email in Mail to let them know</label>
         <button class="btn primary" type="button" data-reply>Send reply</button></div></div>` : `<div class="viewonly"><b>View only.</b> Only the owner replies to applicants.</div>`}
   </div>`;
@@ -418,13 +418,40 @@ function todoItems(){
   out.push(...orientToDo());
   return out.sort((x, y) => x.pri - y.pri || y.age - x.age);
 }
+// The interview coordinator's To do: only the interview work, each with the button that does it.
+const COORD_ACTS = new Set(["book", "assigniv", "slots", "ivmail", "booking"]);
+function coordItems(){
+  const out = [], now = Date.now();
+  const openTimes = [...S.slots.values()].filter(s => !s.bookedBy && s.start > now + 864e5).length;
+  let waiting = 0, firstWaiting = null;
+  for (const a of S.apps.values()) {
+    const p = progress(a); if (!IN_PROCESS.includes(p.stage) || isDeclined(a) || get(a, "sched.completed")) continue;
+    const id = a._id, g = k => get(a, k), fn = first(a.name) || "them", step = MILESTONES.findIndex(m => !m[1](a));
+    const bookOpen = g("portal.bookingOpen") === "yes", when = a._booked ? a._booked.start : g("sched.scheduled") ? new Date(g("sched.scheduled") + "T12:00").getTime() : 0;
+    if (!when && !bookOpen && step < 5) continue;   // not at the interview step yet
+    const age = daysSince(g("app.received")) || 0, add = (pri, text, sub, act, btn) => out.push({ id, a, pri, text, sub, tab: "iv", act, btn, age });
+    const crew = Array.isArray(a.interviewers) ? a.interviewers : [];
+    if (when) {
+      if (when < now) add(0, `Mark ${fn}'s interview completed`, "Was " + fmtDate(isoDay(when)));
+      else if (!crew.length) add(1, `Pick who interviews ${fn}`, "Interview " + (a._booked ? slotLong(when) : fmtDate(g("sched.scheduled"))), "assigniv", "Assign");
+      continue;
+    }
+    waiting++; firstWaiting = firstWaiting || a;
+    if (!g("portal.invited") || !okEmail(a.email)) add(1, `Schedule ${fn}'s interview`, g("portal.invited") ? "No email on file, so book it for them" : "Not on the portal yet, so call and book it for them", "book", "Book a time");
+    else if (!bookOpen) add(1, `Open interview booking for ${fn}`, `${fn} can then pick a time in the portal`, "booking", "Open booking");
+    else if (!g("sched.contacted")) add(1, `Tell ${fn} interview times are open`, "Opens the interview email. Enter the contacted date after you send it", "ivmail", "Email");
+    else if (daysSince(g("sched.contacted")) >= 5) add(2, `${fn} hasn't picked a time`, `Contacted ${fmtDate(g("sched.contacted"))}. Follow up, or book it for them`, "book", "Book a time");
+  }
+  if (waiting && openTimes < waiting) out.push({ id: firstWaiting._id, a: firstWaiting, pri: 0, text: openTimes ? "Add more interview times" : "Post interview times", sub: `${waiting} waiting to interview · ${openTimes} open time${openTimes === 1 ? "" : "s"}`, tab: "iv", act: "slots", btn: "Add times", age: 0 });
+  return out.sort((x, y) => x.pri - y.pri || y.age - x.age);
+}
 function todoCard(){
   if (!S.admin) return "";
-  const items = todoItems(), shown = S.todoAll ? items : items.slice(0, 6);
-  return `<section class="ovcard todo"><h3>To do<small>${items.length ? items.length + " thing" + (items.length === 1 ? "" : "s") : "all caught up"}</small></h3><div class="olist">${shown.length ? shown.map(x => `<div class="oitem todoitem">
+  const items = S.coord ? coordItems() : todoItems(), shown = S.todoAll ? items : items.slice(0, 6);
+  return `<section class="ovcard todo"><h3>${S.coord ? "Interviews to do" : "To do"}<small>${items.length ? items.length + " thing" + (items.length === 1 ? "" : "s") : "all caught up"}</small></h3><div class="olist">${shown.length ? shown.map(x => `<div class="oitem todoitem">
       <button class="todomain" type="button" data-todo="${esc(x.id)}" data-totab="${esc(x.tab)}"><span class="av" style="--stage-c:${stageVar(view(x.a).stage)}" aria-hidden="true">${esc(initials(x.a.name))}</span>
         <span class="ot"><b>${esc(x.text)}</b><small>${esc(x.a.name || "Applicant")}${x.sub ? " · " + esc(x.sub) : ""}</small></span></button>
-      ${x.act && S.canEdit ? `<button class="btn small primary" type="button" data-todoact="${esc(x.act)}" data-id="${esc(x.id)}">${esc(x.btn)}</button>` : `<span class="when">${x.age ? x.age + "d" : ""}</span>`}</div>`).join("")
+      ${x.act && (S.canEdit || (S.sched && COORD_ACTS.has(x.act))) ? `<button class="btn small primary" type="button" data-todoact="${esc(x.act)}" data-id="${esc(x.id)}">${esc(x.btn)}</button>` : `<span class="when">${x.age ? x.age + "d" : ""}</span>`}</div>`).join("")
     : `<div class="oempty">Nothing needs you right now. 🎉</div>`}
     ${items.length > 6 ? `<button class="oitem showall" type="button" data-cmd="todoall">${S.todoAll ? "Show fewer" : `Show all ${items.length}`}</button>` : ""}</div></section>`;
 }
@@ -530,7 +557,7 @@ function renderOverview(){
     return oitem(a, `<b>${esc(d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}))}</b>${esc(slotTime(s.start))}`, esc([a.type, s.location].filter(Boolean).join(" · ") || "Interview")); }).join("");
   // One strip of stage counts (replaces the separate count tiles and pipeline bar); each filters the list.
   const stage = (k, label, sub) => `<button class="stg" type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}"><span class="v">${c[k] || 0}</span><span class="k">${label}</span>${sub ? `<span class="s">${sub}</span>` : ""}</button>`;
-  const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.canEdit ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>`;
+  const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.sched ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>`;
   const html = `<div class="ov"><div class="ovin">
     <div class="ovhead"><div><div class="eyebrow">${esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))}</div>
       <h2>${greet}${S.name ? ", " + esc(first(S.name)) : ""}</h2>
@@ -556,9 +583,11 @@ function renderOverview(){
 // Only the owner edits. Everyone else on the team may fill in the interview questionnaire, record who was there,
 // mark the interview completed and sign off the Interview page. Firestore rules enforce the same thing.
 const INTERVIEW_FIELDS = new Set(["sched.completed", "sched.completedInit", "signoff.iv.init", "signoff.iv.done"]);
-const canEditPath = path => S.canEdit || path.startsWith("iv.") || INTERVIEW_FIELDS.has(path);
+// The interview coordinator also changes the scheduling dates and the "Let them book an interview" switch.
+const canEditPath = path => S.canEdit || path.startsWith("iv.") || INTERVIEW_FIELDS.has(path) || (S.sched && (path.startsWith("sched.") || path === "portal.bookingOpen"));
+const SCHED_OK = '[data-act="book"],[data-act="release"],[data-act="email"]';   // owner-only buttons the coordinator may use
 const OWNER_ONLY = '[data-act="records"],[data-act="uploadapp"],[data-recrm],[data-act="invite"],[data-act="docs"],[data-act="book"],[data-act="release"],[data-act="email"],[data-docrcv],[data-docrm],[data-refrcv],[data-refrep],[data-refmail],[data-refremind],[data-refcopy],[data-act="refsall"],#delBtn,#rqAdd';
-const ownerOnlyToast = () => toast("View only. You can fill in the Interview tab; everything else is changed by the owner.");
+const ownerOnlyToast = () => toast(S.coord ? "That part is changed by the owner. You run the interviews: times, booking, who interviews and messages." : "View only. You can fill in the Interview tab; everything else is changed by the owner.");
 
 /* ---------- page sign-off ---------- */
 // Initials + "complete" at the bottom of each working tab. Tabs members can open keep it on the shared record;
@@ -706,7 +735,7 @@ function syncDetail(){
   if (S.tab === "msgs" && !$("#dThread")?.childElementCount) renderMessages();
   syncSignoff(a);
   const dlr = $("#dlFromApp"); if (dlr) { const n = get(a, "form.person.dlNumber"); dlr.hidden = !n; if (n) { $("#dlNum").textContent = n; $("#dlFromAppNote").textContent = `Issued in ${get(a, "form.person.dlState") || "—"} · admins only`; } }
-  if (!S.canEdit) document.querySelectorAll("#detail " + OWNER_ONLY).forEach(el => { el.hidden = true; });
+  if (!S.canEdit) document.querySelectorAll("#detail " + OWNER_ONLY).forEach(el => { el.hidden = !(S.sched && el.matches(SCHED_OK)); });
   const pc = $("#panelCount"); if (pc) { const n = [1,2,3,4,5].filter(i => String(get(a,`iv.panel.m${i}`) || "").trim()).length; pc.textContent = n ? `${n} recorded` : ""; }
   document.querySelectorAll("#dbody [data-k]").forEach(el => {
     const k = el.dataset.k; let v = get(a, k);
@@ -810,7 +839,7 @@ function renderRecords(){
         <button class="btn small" type="button" data-rec="${esc(r.id)}">Open</button>
         <button class="copy" type="button" data-recrm="${esc(r.id)}" aria-label="Remove ${esc(r.name)}">Remove</button></div>`).join("")
       : `<div class="row"><span class="lbl" style="color:var(--fg2)">${S.canEdit ? "No records yet. Click <b>Upload records</b> to add MVRs, background checks, intake forms and other copies." : "No records uploaded yet."}</span></div>`);
-  if (!S.canEdit) el.querySelectorAll(OWNER_ONLY).forEach(b => { b.hidden = true; });
+  if (!S.canEdit) el.querySelectorAll(OWNER_ONLY).forEach(b => { b.hidden = !(S.sched && b.matches(SCHED_OK)); });
 }
 
 /* ---------- writes ---------- */
@@ -824,7 +853,7 @@ function edit(id, path, value){
   if (!S.apps.has(id)) return;
   if (!canEditPath(path)) { ownerOnlyToast(); syncDetail(); return; }
   const kind = SECURE.has(path.split(".")[0]) ? "sec" : "pub";
-  if (kind === "sec" && !S.canEdit) return;
+  if (kind === "sec" && !S.canEdit && !(S.sched && path === "portal.bookingOpen")) return;
   const now = Date.now();
   const meta = kind === "pub" ? { updatedAt: now, updatedBy: S.me } : { secUpdatedAt: now, secUpdatedBy: S.me };
   const patch = merge(nest(path, value), meta);
@@ -842,8 +871,15 @@ function edit(id, path, value){
     if (!wasActive && st === "act") celebrate(`🎉 ${first(a.name) || "They"} ${a.name ? "is" : "are"} now an active member!`);
     else if (!wasApproved && get(a, "board.result") === "approved") celebrate(`🎉 ${a.name || "Applicant"} approved by the board!`);
   }
+  else if (S.coord && path === "portal.bookingOpen") coordBooking(id);
   setSave("Editing…");
   renderList(); syncDetail();
+}
+// The coordinator's desk can't rewrite an applicant's whole portal page (only the owner's does), so it flips just the
+// booking switch on it. Applicants who haven't been welcomed have no page yet; the owner's desk fills it in then.
+function coordBooking(id){
+  const a = S.apps.get(id); if (!a || !S.portal.has(id)) return;
+  updateDoc(doc(db, "portal", id), { bookingOpen: get(a, "portal.bookingOpen") === "yes" && !isDeclined(a), updatedAt: Date.now() }).catch(e => console.error(e));
 }
 async function flush(key){
   if (inflight[key] || !pending[key]) return;
@@ -978,11 +1014,11 @@ async function releaseFor(id){
   await b.commit();
 }
 function openBook(id){
-  if (!S.canEdit) return ownerOnlyToast();
+  if (!S.sched) return ownerOnlyToast();
   const a = S.apps.get(id);
   const open = [...S.slots.values()].filter(s => !s.bookedBy && s.start > Date.now()).sort((x,y) => x.start - y.start);
   const M = openModal(`<h3>Book a time</h3><p class="help">For ${esc(a.name || "this applicant")}. Booking here works even inside 24 hours.</p>
-    ${open.length ? `<div class="ios slotlist">${open.map(s => `<div class="row"><span class="lbl"><span class="when">${esc(slotLong(s.start))}</span><small>${esc([s.duration?s.duration+" min":"", s.location].filter(Boolean).join(" · "))}</small></span><button class="btn small primary" type="button" data-bk="${esc(s.id)}">Book</button></div>`).join("")}</div>`
+    ${open.length ? `<div class="ios slotlist">${open.map(s => `<div class="row"><span class="lbl"><span class="when">${esc(slotLong(s.start))}</span><small>${esc([s.duration?s.duration+" min":"", s.location, s.hostName ? "with " + s.hostName : ""].filter(Boolean).join(" · "))}</small></span><button class="btn small primary" type="button" data-bk="${esc(s.id)}">Book</button></div>`).join("")}</div>`
       : `<p class="help">No open interview times. Add some under <b>Interview times</b>.</p>`}
     <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`, true);
   M.onclick = async e => {
@@ -996,9 +1032,9 @@ const canHostSlots = () => S.owner || S.admin || S.role === "interviewer";
 function openSlots(){
   if (!canHostSlots()) return ownerOnlyToast();
   const def = S.settings.defaultLocation || "";
-  const hosts = S.canEdit ? [...S.staff.entries()].filter(([, s]) => s.role === "interviewer" || s.role === "admin") : [];
+  const hosts = S.sched ? [...S.staff.entries()].filter(([, s]) => canInterview(s)) : [];
   const d0 = new Date(Date.now() + 3*864e5), dStr = `${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,"0")}-${String(d0.getDate()).padStart(2,"0")}`;
-  const M = openModal(`<h3>${S.canEdit ? "Interview times" : "My interview times"}</h3><p class="help">${S.canEdit ? "Applicants with booking turned on can pick any open time at least 24 hours out." : "Add the times you're free to interview. When an applicant books one, they're assigned to you automatically."}</p>
+  const M = openModal(`<h3>${S.sched ? "Interview times" : "My interview times"}</h3><p class="help">${S.sched ? "Applicants with booking turned on can pick any open time at least 24 hours out." : "Add the times you're free to interview. When an applicant books one, they're assigned to you automatically."}</p>
     <form id="slotForm" class="ios" style="padding:14px"><div class="addslot">
       <div class="field"><label for="slDate">Date</label><input id="slDate" type="date" value="${dStr}" required></div>
       <div class="field"><label for="slTime">First start time</label><input id="slTime" type="time" value="18:00" required></div>
@@ -1011,12 +1047,12 @@ function openSlots(){
     <div class="acts"><button class="btn" type="button" id="slIcs" title="Every booked interview as one calendar file">Add booked interviews to Calendar</button><button class="btn" type="button" data-x>Done</button></div>`, true);
   const paint = () => {
     if (!$("#slotList")) return;
-    const up = [...S.slots.values()].filter(s => s.start > Date.now() - 864e5 && (S.canEdit || s.host === S.me)).sort((x,y) => x.start - y.start);
+    const up = [...S.slots.values()].filter(s => s.start > Date.now() - 864e5 && (S.sched || s.host === S.me)).sort((x,y) => x.start - y.start);
     const days = {}; up.forEach(s => { const k = slotDay(s.start); (days[k] = days[k] || []).push(s); });
     $("#slotList").innerHTML = up.length ? Object.entries(days).map(([day, list]) => `<div class="group"><h3><span>${esc(day)}</span></h3><div class="ios slotlist">${list.map(s => {
       const who = s.bookedBy ? (S.apps.get(s.bookedBy)?.name || "Applicant") : "";
-      return `<div class="row"><span class="lbl"><span class="when">${esc(slotTime(s.start))}</span><small>${esc([s.duration?s.duration+" min":"", s.location, S.canEdit && s.hostName ? "with " + s.hostName : ""].filter(Boolean).join(" · "))}</small></span>
-        ${who ? `<span class="badge ok">${esc(who)}</span>${S.canEdit ? `<button class="btn small" type="button" data-rel="${esc(s.id)}">Release</button>` : ""}` : `<span class="badge wait">Open</span><button class="btn small danger" type="button" data-del="${esc(s.id)}">Delete</button>`}</div>`; }).join("")}</div></div>`).join("")
+      return `<div class="row"><span class="lbl"><span class="when">${esc(slotTime(s.start))}</span><small>${esc([s.duration?s.duration+" min":"", s.location, S.sched && s.hostName ? "with " + s.hostName : ""].filter(Boolean).join(" · "))}</small></span>
+        ${who ? `<span class="badge ok">${esc(who)}</span>${S.sched ? `<button class="btn small" type="button" data-rel="${esc(s.id)}">Release</button>` : ""}` : `<span class="badge wait">Open</span><button class="btn small danger" type="button" data-del="${esc(s.id)}">Delete</button>`}</div>`; }).join("")}</div></div>`).join("")
       : `<p class="help">No upcoming interview times yet.</p>`;
   };
   paint(); S._slotPaint = paint;
@@ -1027,10 +1063,10 @@ function openSlots(){
     if (!y || isNaN(h)) return toast("Pick a date and time.");
     const dur = +$("#slDur").value, n = +$("#slCount").value, where = $("#slLoc").value.trim();
     try {
-      const hostEmail = S.canEdit ? ($("#slHost")?.value || "") : S.me;
+      const hostEmail = S.sched ? ($("#slHost")?.value || "") : S.me;
       const host = hostEmail ? { host: hostEmail, hostName: first(hostEmail === S.me ? S.name : S.staff.get(hostEmail)?.name) || hostEmail.split("@")[0] } : {};
       for (let i = 0; i < n; i++) { const start = new Date(y, mo-1, d, h, mi + i*dur).getTime(); await addDoc(collection(db, "slots"), { start, duration: dur, location: where, bookedBy: null, createdAt: Date.now(), ...host }); }
-      if (where && where !== S.settings.defaultLocation && S.canEdit) { S.settings.defaultLocation = where; setDoc(doc(db, "settings", "main"), { defaultLocation: where }, { merge: true }).catch(() => {}); }
+      if (where && where !== S.settings.defaultLocation && S.sched) { S.settings.defaultLocation = where; setDoc(doc(db, "settings", "main"), { defaultLocation: where }, { merge: true }).catch(() => {}); }
       toast(`Added ${n} time${n>1?"s":""}`);
     } catch (err) { console.error(err); toast("Couldn't add those times."); }
   };
@@ -1346,14 +1382,16 @@ async function decideRequest(email, role){
     toast(role ? `${q.name || email} approved as ${role}. They can sign in now.` : `Request from ${q.name || email} denied.`);
   } catch (e) { console.error(e); toast("Couldn't save that. Try again."); }
 }
-const ROLE_LABEL = { admin: "Admin", interviewer: "Interviewer", member: "Member" };
+const ROLE_LABEL = { admin: "Admin", coordinator: "Interview coordinator", interviewer: "Interviewer", member: "Member" };
+// Who can be put on an interview or host a time.
+const canInterview = s => ["interviewer", "admin", "coordinator"].includes(s.role);
 const roleLabel = r => ROLE_LABEL[r] || "Member";
 function teamHTML(){
   const rows = [...S.staff.entries()].sort((x,y) => x[0].localeCompare(y[0])).map(([email, s]) => `<div class="row"><span class="lbl">${esc(s.name || email)}<small>${esc(email)}</small></span>
-    <div class="seg" role="group" aria-label="Role">${[["member","Member"],["interviewer","Interviewer"],["admin","Admin"]].map(([v,l]) => `<button type="button" class="${s.role===v?"on":""}" data-role="${esc(email)}" data-v="${v}">${l}</button>`).join("")}</div>
+    <div class="seg" role="group" aria-label="Role">${[["member","Member"],["interviewer","Interviewer"],["coordinator","Coordinator"],["admin","Admin"]].map(([v,l]) => `<button type="button" class="${s.role===v?"on":""}" data-role="${esc(email)}" data-v="${v}">${l}</button>`).join("")}</div>
     <button class="copy" type="button" data-rmstaff="${esc(email)}">Remove</button></div>`).join("");
   return `<div class="row"><span class="lbl">${esc(OWNER_EMAIL)}<small>Owner · full access</small></span></div>${rows}
-    <p class="help" style="margin:6px 12px">Admin: sees every file (view only). Interviewer: only the applicants you assign on their Interview tab. Member: Messages only.</p>
+    <p class="help" style="margin:6px 12px">Admin: sees every file (view only). Coordinator: sees every file and runs the interviews (posts times, books and reschedules, opens booking, assigns interviewers, messages applicants). Interviewer: only the applicants assigned on their Interview tab. Member: Messages only.</p>
     <div class="row" style="flex-wrap:wrap"><input id="tmEmail" type="email" placeholder="member@pvrs.org" class="inlinefield" style="flex:2 1 180px">
       <input id="tmName" type="text" placeholder="Name" class="inlinefield" style="flex:1 1 120px">
       <button class="btn small primary" type="button" id="tmAdd">Add member</button></div>`;
@@ -1720,7 +1758,7 @@ function openMore(){
   const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation"], ["trainBtn", "Sign-offs"], ["libBtn", "Documents"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
-  const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : S.admin ? "Admin" : "Member"} · ${esc(S.me)}</small></span></div>
+  const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div>
     <div class="ios morelist">${tools.map(([id, label]) => `<button class="row" type="button" data-more="${id}"><span class="mi">${icon(id)}</span><span class="lbl">${esc(label)}</span><span class="chev" aria-hidden="true">›</span></button>`).join("")}
       ${S.me ? `<button class="row" type="button" data-notif><span class="mi"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3l1-1zM6.5 14h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lbl">Notifications</span><span class="chev" aria-hidden="true">›</span></button>` : ""}
       <button class="row" type="button" data-signout><span class="mi">${$(".me [data-signout] svg")?.outerHTML || ""}</span><span class="lbl" style="color:var(--s-dec)">Sign out</span></button></div>
@@ -1745,7 +1783,8 @@ function moveSel(dir){
   if (el) { el.scrollIntoView({ block: "nearest" }); if (!el.closest("[inert]")) el.focus({ preventScroll: true }); }
 }
 function openEmailPicker(){
-  if (!S.canEdit) return ownerOnlyToast();
+  if (!S.sched) return ownerOnlyToast();
+  if (S.coord) return openEmail("interview");   // the coordinator's one email: pick an interview time
   const a = S.apps.get(S.sel); if (!a) return;
   const waiting = requestedDocs(a).filter(d => !d.received).map(d => d.label);
   const waitRefs = refList(a).filter(r => !r.received).map(r => r.name);
@@ -1860,6 +1899,10 @@ function bindEvents(){
       if (k === "retention") return openRetention();
       if (k === "nextgo") { select(id); setTimeout(goNextStep, 60); return; }
       if (k === "invite") return inviteToPortal(id);
+      if (k === "book") return openBook(id);
+      if (k === "assigniv") return openAssignInterviewers(id);
+      if (k === "slots") return openSlots();
+      if (k === "ivmail") return openEmail("interview", undefined, id);
       if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
       return; }
     const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "inbox") openChat(); return; }
@@ -1869,7 +1912,7 @@ function bindEvents(){
     const aib = t.closest("[data-aibrief]"); if (aib) return aiMakeBrief(aib);
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
-    if (!S.canEdit && t.closest(OWNER_ONLY)) return ownerOnlyToast();
+    if (!S.canEdit && t.closest(OWNER_ONLY) && !(S.sched && t.closest(SCHED_OK))) return ownerOnlyToast();
     const act = t.closest("[data-act]");
     if (act) {
       const k = act.dataset.act;
@@ -2629,7 +2672,7 @@ function renderInterviewers(a){
   const el = $("#ivAssign"); if (!el) return;
   const list = Array.isArray(a.interviewers) ? a.interviewers : [];
   el.innerHTML = list.length ? list.map(e => `<div class="row"><span class="av sm" style="--stage-c:${personColor(e)}" aria-hidden="true">${esc(initials(memberName(e)))}</span><span class="lbl">${esc(memberName(e))}<small>${esc(e)} · ${esc(roleLabel(S.staff.get(e)?.role))}</small></span></div>`).join("")
-    : `<div class="row"><span class="lbl" style="color:var(--fg2)">Nobody assigned yet${S.canEdit ? ". Click <b>Assign</b> to pick who interviews " + esc(first(a.name) || "them") + "." : "."}</span></div>`;
+    : `<div class="row"><span class="lbl" style="color:var(--fg2)">Nobody assigned yet${S.sched ? ". Click <b>Assign</b> to pick who interviews " + esc(first(a.name) || "them") + "." : "."}</span></div>`;
 }
 async function saveInterviewers(id, next){
   const a = S.apps.get(id), cur = Array.isArray(a?.interviewers) ? a.interviewers : [];
@@ -2641,10 +2684,10 @@ async function saveInterviewers(id, next){
   addDoc(collection(db, "applicants", id, "history"), { at: Date.now(), by: S.me, changes: [{ path: "interviewers", from: cur.join(", "), to: next.join(", ") }] }).catch(() => {});
 }
 function openAssignInterviewers(id){
-  if (!S.canEdit) return ownerOnlyToast();
+  if (!S.sched) return ownerOnlyToast();
   const a = S.apps.get(id); if (!a) return;
   const cur = Array.isArray(a.interviewers) ? a.interviewers : [];
-  const team = [...S.staff.entries()].filter(([, s]) => s.role === "interviewer" || s.role === "admin").sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
+  const team = [...S.staff.entries()].filter(([, s]) => canInterview(s)).sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
   const M = openModal(`<h3>Who interviews ${esc(first(a.name) || "this applicant")}?</h3>
     <p class="help">They can open ${esc(first(a.name) || "the")}'s Application and Interview tabs, fill in the interview, and message ${esc(first(a.name) || "them")}. Nothing else.</p>
     <div class="ios cv-pick">${team.length ? team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"${cur.includes(e) ? " checked" : ""}><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${roleLabel(s.role)}</small></span></label>`).join("")
@@ -2670,8 +2713,8 @@ const C = { channels: new Map(), posts: new Map(), convos: new Map(), reads: {},
 const chatKeyOf = (kind, id) => (kind === "c" ? "c:" : "a:") + id;
 const parseKey = k => k ? { kind: k[0], id: k.slice(2) } : null;
 const channelPosts = cid => (C.posts.get(cid) || []).slice().sort((x, y) => (x.at || 0) - (y.at || 0));
-const canSeeApp = id => S.owner || C.convos.has(id);
-const canReplyApp = id => S.owner || (C.convos.get(id)?.members || []).includes(S.me);
+const canSeeApp = id => S.sched || C.convos.has(id);
+const canReplyApp = id => S.sched || (C.convos.get(id)?.members || []).includes(S.me);
 function lastReadOf(key){ return C.reads[key] || 0; }
 function unreadIn(key){
   const k = parseKey(key); if (!k) return 0;
@@ -2719,11 +2762,11 @@ function watchChat(){
     }, () => {}));
     C.channels = next; chatChanged();
   }, e => console.error(e));
-  const cvQ = S.owner ? collection(db, "convos") : query(collection(db, "convos"), where("members", "array-contains", S.me));
+  const cvQ = S.sched ? collection(db, "convos") : query(collection(db, "convos"), where("members", "array-contains", S.me));
   onSnapshot(cvQ, snap => {
     C.convos = new Map(snap.docs.map(d => [d.id, d.data()]));
-    // The owner already loads every conversation (watchMessages); everyone else loads just the ones they're in.
-    if (!S.owner) {
+    // The owner and the coordinator already load every conversation (watchMessages); everyone else loads just the ones they're in.
+    if (!S.sched) {
       for (const [id, un] of C.msgUnsubs) if (!C.convos.has(id)) { un(); C.msgUnsubs.delete(id); S.msgs = S.msgs.filter(m => m.appId !== id); }
       for (const id of C.convos.keys()) if (!C.msgUnsubs.has(id)) C.msgUnsubs.set(id, onSnapshot(collection(db, "portal", id, "messages"), ms => {
         S.msgs = S.msgs.filter(m => m.appId !== id).concat(ms.docs.map(d => ({ id: d.id, key: d.ref.path, appId: id, ...d.data() })));
@@ -2764,7 +2807,7 @@ function chatListHTML(){
   const { chans, apps } = chatItems(), q = C.q.trim().toLowerCase();
   const hit = it => !q || it.name.toLowerCase().includes(q) || (it.kind === "c" ? channelPosts(it.id) : threadOf(it.id)).some(m => String(m.text || "").toLowerCase().includes(q));
   // Owner's search also offers invited applicants with no messages yet, so a conversation can be started.
-  const extra = S.owner && q ? [...S.apps.values()].filter(a => get(a, "portal.invited") && !apps.some(x => x.id === a._id) && (a.name || "").toLowerCase().includes(q)).slice(0, 5)
+  const extra = S.sched && q ? [...S.apps.values()].filter(a => get(a, "portal.invited") && !apps.some(x => x.id === a._id) && (a.name || "").toLowerCase().includes(q)).slice(0, 5)
     .map(a => ({ key: chatKeyOf("a", a._id), kind: "a", id: a._id, name: a.name || "Applicant", last: null })) : [];
   const row = it => { const n = unreadIn(it.key), st = it.kind === "a" ? STAGES[view(S.apps.get(it.id)).stage] : null;
     const prev = it.last ? (it.last.by === S.me ? "You: " : it.kind === "c" || it.last.from === "staff" ? (first(it.last.name) || "Squad") + ": " : "") + postPreview(it.last) : it.kind === "c" ? "No messages yet" : "Start the conversation";
@@ -2810,7 +2853,7 @@ function chatInfoHTML(k){
   return `<h3>In this conversation</h3>
     <div class="cv-mem"><span class="av sm" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span><b>${esc(a.name || "Applicant")}</b><small>Applicant</small></span></div>
     ${mem.map(row).join("")}
-    ${S.owner ? `<button class="btn small" type="button" data-cvedit="${esc(k.id)}">+ Add squad member</button>` : ""}
+    ${S.sched ? `<button class="btn small" type="button" data-cvedit="${esc(k.id)}">+ Add squad member</button>` : ""}
     ${S.admin ? `<button class="btn small" type="button" data-cvfile="${esc(k.id)}">Open file</button>` : ""}
     <p class="cv-note">${esc(first(a.name) || "The applicant")} sees replies in the applicant portal as <b>PVRS Membership</b> with the sender's first name, and never sees other applicants or squad channels.${get(a, "portal.invited") ? "" : ` <b>Not invited to the portal yet</b>, so they can't see messages.`}</p>`;
 }
@@ -2824,14 +2867,14 @@ function paintChat(){
     const canSend = kk && (kk.kind === "c" || canReplyApp(kk.id));
     D.innerHTML = `<div class="cv${kk ? " has" : ""}${C.info ? " info" : ""}">
       <section class="cv-list glass" aria-label="Conversations"><div class="cv-lh"><h1>Messages</h1>${S.owner ? `<button class="btn small primary" type="button" data-chnew>+ Channel</button>` : ""}</div>
-        <label class="search cv-search"><input id="cvQ" type="search" placeholder="${S.owner ? "Search or find an applicant" : "Search messages"}" autocomplete="off" value="${esc(C.q)}" aria-label="Search conversations"></label>
+        <label class="search cv-search"><input id="cvQ" type="search" placeholder="${S.sched ? "Search or find an applicant" : "Search messages"}" autocomplete="off" value="${esc(C.q)}" aria-label="Search conversations"></label>
         <div class="cv-rows" id="cvRows"></div></section>
       <section class="cv-thread glass" aria-label="Conversation">${it ? `<header class="cv-th"><button class="btn small cv-back" type="button" data-chback aria-label="Back to conversations">‹</button>${chIcon(it, true)}
           <div class="cv-tt"><h2>${it.kind === "c" ? "#" : ""}${esc(it.name)}</h2><small id="cvSub"></small></div>
           <button class="btn small cv-infob" type="button" data-chinfo aria-pressed="${C.info}">${it.kind === "c" ? "Members" : "People"}</button></header>
         <div class="cv-pinbar" id="cvPin" hidden></div>
         <div class="cv-msgs" id="cvMsgs" aria-live="polite"></div><div class="cv-typing" id="cvTyping" aria-live="polite"></div>
-        ${canSend ? `<div class="cv-compose">${it.kind === "a" && S.owner ? `<div class="chips cv-chips">${savedReplies().map((r, i) => `<button class="chip" type="button" data-qr="${i}">${esc(r.title)}</button>`).join("")}</div>` : ""}
+        ${canSend ? `<div class="cv-compose">${it.kind === "a" && S.sched ? `<div class="chips cv-chips">${savedReplies().map((r, i) => `<button class="chip" type="button" data-qr="${i}">${esc(r.title)}</button>`).join("")}</div>` : ""}
           <div class="cv-crow"><textarea id="cvText" rows="1" maxlength="${it.kind === "c" ? 4000 : 2000}" placeholder="${it.kind === "c" ? `Message #${esc(it.name)}` : `Reply to ${esc(first(it.name))}…`}" aria-label="Message"></textarea>
           ${it.kind === "c" ? `<label class="btn cv-attach" title="Post a PDF or photo (up to 15 MB). Nothing medical or Social Security."><input type="file" id="cvFile" accept="application/pdf,image/*" hidden>📎<span class="sr">Attach a file</span></label>` : ""}
           <button class="btn primary" type="button" data-chsend>Send</button></div><small class="cv-hint">Enter to send · Shift+Enter for a new line</small></div>`
@@ -2907,7 +2950,7 @@ function openChannelEditor(cid){
 }
 // Owner: choose which squad members can read and reply in an applicant's conversation.
 function openConvoEditor(appId){
-  if (!S.owner) return;
+  if (!S.sched) return;
   const a = S.apps.get(appId); if (!a) return;
   const cur = C.convos.get(appId)?.members || [];
   const team = [...S.staff.entries()].sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
@@ -3066,7 +3109,7 @@ function paintBulk(){
 const bulkApps = () => [...(S.bulk || [])].map(id => S.apps.get(id)).filter(Boolean);
 function bulkAssign(){
   const list = bulkApps();
-  const team = [...S.staff.entries()].filter(([, s]) => s.role === "interviewer" || s.role === "admin").sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
+  const team = [...S.staff.entries()].filter(([, s]) => canInterview(s)).sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
   const M = openModal(`<h3>Assign to ${list.length} applicant${list.length === 1 ? "" : "s"}</h3><p class="help">Adds them alongside anyone already assigned. To take someone off, use that applicant's Interview tab.</p>
     <div class="ios cv-pick">${team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${roleLabel(s.role)}</small></span></label>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">No interviewers yet. In Settings → Team, set someone's role to <b>Interviewer</b>.</span></div>`}</div>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="bkaSave">Assign</button></div>`);
@@ -3219,7 +3262,7 @@ function watchOrientation(){
   }
   const q0 = S.admin || S.owner ? collection(db, "signoffs") : query(collection(db, "signoffs"), where("trainers", "array-contains", S.me));
   onSnapshot(q0, s => { S.signoffs = new Map(s.docs.map(d => [d.id, d.data()])); $("#trainBtn").hidden = ![...S.signoffs.values()].some(x => (x.trainers || []).includes(S.me)); S._trainPaint?.(); S._boardPaint?.(); if (S.sel) syncDetail(); paintMnav(); }, () => {});
-  const q1 = S.owner ? collection(db, "library") : query(collection(db, "library"), where("roles", "array-contains", S.role));
+  const q1 = S.owner ? collection(db, "library") : query(collection(db, "library"), where("roles", "array-contains", S.coord ? "admin" : S.role));
   onSnapshot(q1, s => { S.library = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => (x.name || "").localeCompare(y.name || "")); S._libPaint?.(); }, () => {});
 }
 function orientToDo(){
@@ -3535,6 +3578,7 @@ async function openNotifications(){
   const st = await pushState();
   const what = S.owner ? "a new online application, a reference check answered, all references in, a page marked complete (Application, Checks, Interview, Board, Onboard), an interview booked or cancelled, an applicant message or upload, desk access requests, and new messages in your channels"
     : S.admin ? "an interview booked or cancelled and new messages in your channels and conversations"
+    : S.coord ? "every interview booked or cancelled, each morning's interviews, applicant messages, and new messages in your channels"
     : S.role === "interviewer" ? "being assigned an interview, your applicants booking or cancelling, and new messages in your channels and conversations"
     : "new messages in your channels";
   const body = {
@@ -3578,7 +3622,9 @@ function startIdleLock(){
 
 /* ---------- start ---------- */
 export function startDesk({ email, role, owner, name }){
-  S.me = email; S.admin = role === "admin"; S.owner = !!owner; S.canEdit = !!owner; S.name = name || "";
+  S.me = email; S.admin = role === "admin" || role === "coordinator"; S.owner = !!owner; S.canEdit = !!owner;
+  // Interview coordinator: sees what an admin sees and runs scheduling. S.sched = may schedule (owner or coordinator).
+  S.coord = !owner && role === "coordinator"; S.sched = !!owner || S.coord; S.name = name || "";
   S.role = owner ? "owner" : role; S.member = S.role === "member";
   S.sort = SORTS[prefs.get("sort")] ? prefs.get("sort") : "stage";
   bindEvents(); renderList(); renderDetail();
@@ -3632,7 +3678,7 @@ export function startDesk({ email, role, owner, name }){
       reconcilePortalEmails();
     }, () => {});
     watchActivity();
-    if (S.owner) watchMessages();
+    if (S.sched) watchMessages();
     if (S.owner) { watchSubmissions(); watchRefUpdates(); watchRefResponses(); }
     if (S.owner) {
       let primed = false;
