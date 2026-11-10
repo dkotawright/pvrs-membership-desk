@@ -65,17 +65,21 @@ exports.portalChanged = onDocumentUpdated({ document: "portal/{id}", ...OPTS }, 
   if (doneCount(a) > doneCount(b)) await sendApplicant(id, { title: "Your application moved forward", body: "Open your PVRS portal to see what's next." });
   if (!b.orientation && a.orientation) await sendApplicant(id, { title: "Orientation is open", body: "Your background check is complete. Pick your orientation time in your PVRS portal." });
   if (!b.checkin && a.checkin) await sendApplicant(id, { title: "Quick check-in", body: "How's it going so far? Tell us in your PVRS portal." });
+  const asked = pd => ((pd.orientation || {}).items || []).filter(i => i.req).length;
+  if (b.orientation && asked(a) > asked(b)) await sendApplicant(id, { title: "Document needed", body: "PVRS asked for an orientation document. Details are in your portal." });
   if ((a.docs || []).length > (b.docs || []).length) await sendApplicant(id, { title: "Document needed", body: "PVRS asked for a document. Details are in your portal." });
 });
 
 // 7:30 AM reminders: the owner's summary (only if there's something to say), each interviewer's interviews, and a
 // day-before reminder for applicants who turned on alerts.
+// Interview coordinators (staff role "coordinator"): they run scheduling, so they hear what the owner hears about interviews and messages.
+const coordinators = async () => (await db.collection("staff").get()).docs.filter(d => d.data().role === "coordinator").map(d => d.id);
 async function runMorning(now){
   const appDocs = (await db.collection("applicants").get()).docs;
   const apps = await Promise.all(appDocs.map(async d => { const sec = await db.doc(`applicants/${d.id}/private/main`).get(); return { id: d.id, ...(sec.exists ? sec.data() : {}), ...d.data() }; }));
   const slots = (await db.collection("slots").get()).docs.map(d => d.data());
   const portals = (await db.collection("portal").get()).docs.map(d => ({ id: d.id, ...d.data() }));
-  const m = buildMorning({ apps, slots, now, portals });
+  const m = buildMorning({ apps, slots, now, portals, coordinators: await coordinators() });
   if (m.owner) await send({ to: [OWNER_EMAIL], ...m.owner });
   for (const [email, lines] of m.interviewers) for (const l of lines) await send({ to: [email], ...l });
   for (const x of m.applicants) await sendApplicant(x.id, x);
@@ -109,7 +113,7 @@ exports.newApplication = onDocumentCreated({ document: "submissions/{id}", ...OP
 exports.applicantMessage = onDocumentCreated({ document: "portal/{id}/messages/{mid}", ...OPTS }, async e => {
   const m = e.data?.data() || {}, id = e.params.id;
   const cv = await db.doc(`convos/${id}`).get();
-  const to = [OWNER_EMAIL, ...((cv.exists && cv.data().members) || [])];
+  const to = [...new Set([OWNER_EMAIL, ...(await coordinators()), ...((cv.exists && cv.data().members) || [])])];
   const name = await nameOf(id);
   if (m.from === "applicant") await send({ to, title: "New message", body: `${name} sent a message`, chat: `a:${id}` });
   else if (m.from === "staff") {
@@ -128,7 +132,7 @@ exports.channelPost = onDocumentCreated({ document: "channels/{cid}/posts/{pid}"
 
 // Bookings: the owner, admins, and the interviewers assigned to that applicant (members never hear about applicants).
 const bookingCrew = async appId => {
-  const admins = (await db.collection("staff").get()).docs.filter(d => d.data().role === "admin").map(d => d.id);
+  const admins = (await db.collection("staff").get()).docs.filter(d => ["admin", "coordinator"].includes(d.data().role)).map(d => d.id);
   const a = appId ? await db.doc(`applicants/${appId}`).get() : null;
   return [OWNER_EMAIL, ...admins, ...((a && a.exists && a.data().interviewers) || [])];
 };

@@ -240,6 +240,38 @@ await t("only the owner adds documents", setDoc(doc(admin, "library/d3"), { name
 // HTTPS_PROXY and ignores NO_PROXY, so behind a proxy (e.g. a cloud sandbox) the lookup fails and the upload test
 // below fails too. Run without a proxy (a Mac, GitHub Actions) or let localhost bypass it.
 console.log("Storage");
+console.log("Interview coordinator");
+await env.withSecurityRulesDisabled(async c => { const db = c.firestore();
+  await setDoc(doc(db, "staff/cory@pvrs.org"), { role: "coordinator" });
+  await setDoc(doc(db, "applicants/c1"), { name: "Coord Test", sched: {}, updatedBy: "dkota@pvrs.org" });
+  await setDoc(doc(db, "applicants/c1/private/main"), { notes: "private", portal: { invited: "2026-11-01" } });
+  await setDoc(doc(db, "portal/c1"), { email: "c1@example.com", bookingOpen: false, interview: null, steps: [] });
+  await setDoc(doc(db, "slots/cs0"), { start: now() + 3 * DAY, duration: 30, location: "Station", bookedBy: null }); });
+const cory = fsOf("cory@pvrs.org");
+await t("a coordinator reads every file", getDocs(collection(cory, "applicants")), true);
+await t("and private records", getDoc(doc(cory, "applicants/c1/private/main")), true);
+await t("a coordinator posts a time for someone else", setDoc(doc(cory, "slots/cs1"), { start: now() + 3 * DAY, duration: 30, location: "Station", bookedBy: null, createdAt: now(), host: "admin@pvrs.org", hostName: "Casey" }), true);
+await t("an admin still can't", setDoc(doc(admin, "slots/cs2"), { start: now() + 3 * DAY, duration: 30, location: "Station", bookedBy: null, createdAt: now(), host: "cory@pvrs.org", hostName: "Cory" }), false);
+await t("a coordinator books an applicant into a time", (() => { const b = writeBatch(cory); b.update(doc(cory, "slots/cs0"), { bookedBy: "c1" }); b.set(doc(cory, "portal/c1"), { interview: { slotId: "cs0", start: 1 } }, { merge: true }); return b.commit(); })(), true);
+await t("and releases it", (() => { const b = writeBatch(cory); b.update(doc(cory, "slots/cs0"), { bookedBy: null }); b.set(doc(cory, "portal/c1"), { interview: null }, { merge: true }); return b.commit(); })(), true);
+await t("a coordinator sets scheduling dates", updateDoc(doc(cory, "applicants/c1"), { "sched.contacted": "2026-11-10", updatedAt: now(), updatedBy: "cory@pvrs.org" }), true);
+await t("an admin can't set scheduling dates", updateDoc(doc(admin, "applicants/c1"), { "sched.contacted": "2026-11-11", updatedAt: now(), updatedBy: "admin@pvrs.org" }), false);
+await t("a coordinator assigns interviewers", updateDoc(doc(cory, "applicants/c1"), { interviewers: ["admin@pvrs.org"], updatedAt: now(), updatedBy: "cory@pvrs.org" }), true);
+await t("and adds them to the conversation", setDoc(doc(cory, "convos/c1"), { members: ["admin@pvrs.org"], names: {}, updatedAt: now() }), true);
+await t("a coordinator can't rename an applicant", updateDoc(doc(cory, "applicants/c1"), { name: "Changed", updatedAt: now(), updatedBy: "cory@pvrs.org" }), false);
+await t("or delete one", deleteDoc(doc(cory, "applicants/c1")), false);
+await t("a coordinator opens booking in the private record", updateDoc(doc(cory, "applicants/c1/private/main"), { "portal.bookingOpen": "yes", secUpdatedAt: now(), secUpdatedBy: "cory@pvrs.org" }), true);
+await t("but can't touch notes", updateDoc(doc(cory, "applicants/c1/private/main"), { notes: "x", secUpdatedAt: now(), secUpdatedBy: "cory@pvrs.org" }), false);
+await t("or the portal invite", updateDoc(doc(cory, "applicants/c1/private/main"), { "portal.invited": "", secUpdatedAt: now(), secUpdatedBy: "cory@pvrs.org" }), false);
+await t("or board votes", updateDoc(doc(cory, "applicants/c1/private/main"), { board: { result: "approved" }, secUpdatedAt: now(), secUpdatedBy: "cory@pvrs.org" }), false);
+await t("a coordinator opens booking on the applicant's page", updateDoc(doc(cory, "portal/c1"), { bookingOpen: true, updatedAt: now() }), true);
+await t("but can't change what else the applicant sees", updateDoc(doc(cory, "portal/c1"), { steps: [{ label: "Board", state: "done" }] }), false);
+await t("or whose page it is", updateDoc(doc(cory, "portal/c1"), { email: "cory@pvrs.org" }), false);
+await t("a coordinator reads every applicant conversation", getDocs(collectionGroup(cory, "messages")), true);
+await t("and replies", setDoc(doc(cory, "portal/c1/messages/m1"), { text: "You're booked", from: "staff", by: "cory@pvrs.org", name: "Cory", at: now() }), true);
+await t("a coordinator can't change roles", setDoc(doc(cory, "staff/cory@pvrs.org"), { role: "admin" }), false);
+await t("or settings", setDoc(doc(cory, "settings/main"), { signature: "x" }, { merge: true }), false);
+
 const st = email => ctx(email).storage(), pdf = new Uint8Array([37, 80, 68, 70]), meta = { contentType: "application/pdf" };
 await t("an applicant uploads private paperwork to their folder", uploadBytes(ref(st("app@example.com"), "confidential/a1/1.pdf"), pdf, meta), true);
 await t("a stranger can't add files to someone else's folder", uploadBytes(ref(st("x@example.com"), "confidential/a1/2.pdf"), pdf, meta), false);

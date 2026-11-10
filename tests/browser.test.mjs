@@ -622,6 +622,51 @@ try {
       if (!(await page.locator(".cv").count())) fail("member didn't land on Messages"); else ok("members land on Messages");
       await ctx.close(); }
   }
+  // ---- Interview coordinator: sees every file, runs scheduling (times, booking, who interviews, booking switch, messages)
+  {
+    const CORY = { email: "cory@pvrs.org", displayName: "Cory Reed" };
+    const { ctx, page } = await open(browser, { user: CORY, seed: [["staff/cory@pvrs.org", { role: "coordinator", name: "Cory Reed" }], ["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Lane" }]] }); await wait(page, 900);
+    if (!/Interview coordinator/.test(await page.locator("#conn").textContent())) fail("coordinator label: " + await page.locator("#conn").textContent()); else ok("the sidebar shows the Interview coordinator role");
+    if ((await page.locator("#list .arow, #ovRoster .arow").count()) < 2) fail("coordinator can't see every file"); else ok("a coordinator sees every applicant");
+    if (!(await page.locator("#settingsBtn").isHidden()) || !(await page.locator("#newBtn").isHidden())) fail("coordinator got Settings / New applicant"); else ok("Settings and New applicant stay with the owner");
+    const todo = await page.locator(".ovcard.todo").textContent();
+    if (!/Interviews to do/.test(todo) || !/Post interview times|Add more interview times/.test(todo)) fail("coordinator to do: " + todo.slice(0, 300)); else ok("the coordinator's To do is the interview work");
+    // post a time, hosted by Ivy
+    await page.locator('.todo [data-todoact="slots"]').click(); await wait(page, 300);
+    if (!(await page.locator("#slHost").count())) fail("coordinator can't pick the interviewer for a time"); else { await page.locator("#slHost").selectOption("ivy@pvrs.org"); ok("a coordinator posts times for any interviewer"); }
+    await page.locator("#slotForm button[type=submit]").click(); await wait(page, 500);
+    const sl = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k, v]) => k.startsWith("slots/") && v.host === "ivy@pvrs.org").map(([k]) => k.slice(6)));
+    if (sl.length !== 1) fail("coordinator slot: " + sl); else ok("the time is saved under that interviewer");
+    await page.locator("#modal [data-x]").click(); await wait(page, 300);
+    // Marcus: open booking, book him, assign, message
+    await pickApplicant(page, "Marcus Bell");
+    const tabs = await page.locator(".tabdock [data-tab]").evaluateAll(b => b.map(x => x.dataset.tab));
+    if (!tabs.includes("checks") || !tabs.includes("board")) fail("coordinator tabs: " + tabs); else ok("a coordinator can open every tab");
+    if (!(await page.locator('#f-name, [data-k="name"]').first().isDisabled())) fail("coordinator can edit the name"); else ok("the rest of the file stays view only");
+    await page.locator('.seg[data-k="portal.bookingOpen"] button[data-v="yes"]').click(); await wait(page, 1200);
+    const bo = await page.evaluate(() => [window.__mock.docs.get("applicants/a2/private/main").portal.bookingOpen, window.__mock.docs.get("portal/a2").bookingOpen, window.__mock.docs.get("portal/a2").email]);
+    if (bo[0] !== "yes" || bo[1] !== true || bo[2] !== "marcus.bell@example.com") fail("open booking: " + JSON.stringify(bo)); else ok("a coordinator opens booking and the applicant's portal follows");
+    if (!/pick a time/i.test(await page.locator("#emSubject").inputValue().catch(() => ""))) fail("opening booking didn't offer the interview email"); else ok("opening booking offers the interview email");
+    await page.locator("#emCancel").click(); await wait(page, 300);
+    await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
+    if (await page.locator('[data-k="sched.contacted"]').first().isDisabled()) fail("scheduling dates locked for the coordinator"); else ok("a coordinator fills in the scheduling dates");
+    await page.locator('#bookedActs [data-act="book"]').click(); await wait(page, 300);
+    await page.locator(`[data-bk="${sl[0]}"]`).click(); await wait(page, 600);
+    const bk = await page.evaluate(id => [window.__mock.docs.get("slots/" + id).bookedBy, window.__mock.docs.get("portal/a2").interview?.slotId], sl[0]);
+    if (bk[0] !== "a2" || bk[1] !== sl[0]) fail("coordinator booking: " + JSON.stringify(bk)); else ok("a coordinator books an applicant into a time");
+    await page.locator('[data-act="assigniv"]').click(); await wait(page, 300);
+    await page.locator('.cv-pick input[value="ivy@pvrs.org"]').check(); await page.locator("#ivaSave").click(); await wait(page, 600);
+    const asg = await page.evaluate(() => [window.__mock.docs.get("applicants/a2").interviewers, window.__mock.docs.get("convos/a2")?.members]);
+    if ((asg[0] || []).join() !== "ivy@pvrs.org" || !(asg[1] || []).includes("ivy@pvrs.org")) fail("coordinator assign: " + JSON.stringify(asg)); else ok("a coordinator assigns interviewers");
+    await page.locator('.tabdock [data-tab="msgs"]').click(); await wait(page, 300);
+    await page.locator("#replyText").fill("Hi Marcus, you're booked."); await page.locator("#replyMail").uncheck(); await page.locator("[data-reply]").click(); await wait(page, 500);
+    const rp = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/a2/messages/")).map(([, v]) => v).find(m => m.by === "cory@pvrs.org"));
+    if (!rp || rp.from !== "staff" || rp.name !== "Cory") fail("coordinator reply: " + JSON.stringify(rp)); else ok("a coordinator replies to applicants under their own first name");
+    await page.locator('[data-act="email"]').first().click(); await wait(page, 300);
+    if (!/pick a time/i.test(await page.locator("#emSubject").inputValue().catch(() => ""))) fail("coordinator email isn't the interview email"); else ok("the coordinator's Email button opens the interview email");
+    await page.screenshot({ path: path.join(OUT, "52-coordinator.png") });
+    await ctx.close();
+  }
   // ---- Nov 4 batch: interviewer times + home, applicant alerts, duplicates, bulk, channel extras, search
   {
     const IVY = { email: "ivy@pvrs.org", displayName: "Ivy Lane" }, ivySeed = [["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Lane" }]];
@@ -784,6 +829,17 @@ try {
     if (!/Status: New member/.test(box) || !/One-on-one session/.test(box)) fail("onboard box: " + box); else ok("the Onboard tab shows their status and session");
     await page.locator('[data-oact="attend"]').click(); await wait(page, 1600);
     if (!(await page.evaluate(() => Object.keys(window.__mock.docs.get("applicants/o1/private/main").onb?.items || {}).some(k => k.startsWith("orientation_form"))))) fail("attended not saved"); else ok("Mark attended checks off orientation");
+    // Request documents from the Onboard tab: marks the checklist items as requested and opens the email
+    await page.locator('[data-oact="reqdocs"]').click(); await wait(page, 300);
+    const chips = await page.locator("#odChips [data-k]").allTextContents();
+    if (chips.length < 6 || chips.some(c => /Completed application|Orientation form/.test(c)) || !chips.some(c => /health physical.*🔒/.test(c))) fail("request chips: " + chips.join("|")); else ok("Request documents lists every outstanding checklist document");
+    await page.locator('#odChips [data-k^="equipment_request"]').click(); await page.locator("#odCustom").fill("Copy of AEMT card"); await page.locator("#odSave").click(); await wait(page, 2400);
+    const rq = await page.evaluate(() => { const m = window.__mock.docs; return { pv: m.get("applicants/o1/private/main"), pd: m.get("portal/o1"), mail: document.querySelector("#emBody")?.value || "", subj: document.querySelector("#emSubject")?.value || "" }; });
+    const reqd = rq.pd.orientation.items.filter(i => i.req).map(i => i.key);
+    if (!rq.pv.onb?.requested?.copy_of_training_records_emt_cpr_etc || rq.pv.onb.requested.equipment_request || !reqd.includes("copy_of_training_records_emt_cpr_etc") || reqd.includes("equipment_request")) fail("requested: " + JSON.stringify([rq.pv.onb?.requested, reqd])); else ok("the picked items are marked requested in their dashboard");
+    if (!(rq.pd.docs || []).some(d => d.label === "Copy of AEMT card")) fail("extra doc not requested: " + JSON.stringify(rq.pd.docs)); else ok("an extra document is requested alongside");
+    if (!/orientation/i.test(rq.subj) || !/Copy of training records/.test(rq.mail) || !/Copy of AEMT card/.test(rq.mail) || /Equipment request/.test(rq.mail)) fail("orientation docs email: " + rq.mail.slice(0, 300)); else ok("the orientation documents email lists what was asked for");
+    await page.locator("#emCancel").click(); await wait(page, 300);
     await page.locator('[data-oact="trainers"]').click(); await wait(page, 300); await page.locator('.cv-pick input[value="ivy@pvrs.org"]').check(); await page.locator("#trSave").click(); await wait(page, 400);
     const so = await page.evaluate(() => window.__mock.docs.get("signoffs/o1"));
     if (so?.trainers?.join() !== "ivy@pvrs.org" || (so.items || []).length < 3) fail("signoff doc: " + JSON.stringify(so)); else ok("assigning a trainer creates their sign-off list");
@@ -811,6 +867,14 @@ try {
       if (!/required before you can be issued equipment or run calls/.test(t)) fail("no requirement note"); else ok("new members see why the checklist matters");
       const medBtn = page.locator('[data-upload^="onb:copy_of_health"]');
       if (!/🔒/.test(await medBtn.textContent().catch(() => ""))) fail("medical item isn't marked secure"); else ok("the health physical item uploads through the secure route");
+      const lic = page.locator('.or-item:has([data-upload="onb:copy_of_training_records_emt_cpr_etc"])');
+      if (!/Requested/.test(await lic.textContent().catch(() => "")) || !(await lic.locator(".btn.primary").count())) fail("requested item not highlighted"); else ok("requested items stand out with an Upload button");
+      // a scan with no file type (some phones) still uploads, as a PDF
+      await page.locator('[data-upload="onb:copy_of_training_records_emt_cpr_etc"]').evaluate(b => { const i = document.querySelector('input[type="file"]'); i.click = () => {}; b.click(); });
+      await page.locator('input[type="file"]').setInputFiles({ name: "emt card scan.PDF", mimeType: "", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 800);
+      const upf = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/o1/files/")).map(([, v]) => v));
+      if (!upf.some(f => f.docKey === "onb:copy_of_training_records_emt_cpr_etc" && f.contentType === "application/pdf")) fail("typeless upload: " + JSON.stringify(upf)); else ok("a file with no type still uploads against its checklist item");
+      if (!/Under review/.test(await lic.textContent())) fail("no under-review badge"); else ok("an uploaded item shows as under review");
       if (!/Squad handbook/.test(t)) fail("no library doc in dashboard"); else ok("new members see documents meant for them");
       await page.locator("#orientCard").screenshot({ path: path.join(OUT, "71-orientation-dashboard.png") });
       await page.locator('[data-crate="4"]').click(); await page.locator("#ciGoing").fill("Going well"); await page.locator("[data-csend]").click(); await wait(page, 400);

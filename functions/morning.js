@@ -9,7 +9,7 @@ const isClosed = a => a.status === "declined" || a.status === "withdrawn" || get
 const EXPIRES = ["dl.expires", "onb.cprExpires", "onb.emtExpires"];
 const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
-function buildMorning({ apps, slots, now, portals = [] }){
+function buildMorning({ apps, slots, now, portals = [], coordinators = [] }){
   const today = dayKey(now), tomorrow = dayKey(now + DAY);
   const open = apps.filter(a => !isClosed(a));
   const byId = new Map(apps.map(a => [a.id, a]));
@@ -20,7 +20,7 @@ function buildMorning({ apps, slots, now, portals = [] }){
     const a = byId.get(s.bookedBy); if (!a || isClosed(a) || get(a, "sched.completed")) continue;
     const k = dayKey(s.start); if (k !== today && k !== tomorrow) continue;
     k === today ? ivToday++ : ivTomorrow++;
-    const crew = [...new Set([...(a.interviewers || []), ...(s.host ? [s.host] : [])])];
+    const crew = [...new Set([...(a.interviewers || []), ...(s.host ? [s.host] : []), ...coordinators])];
     const line = { id: a.id, title: `Interview ${k === today ? "today" : "tomorrow"}`, body: `${a.name || "Applicant"} at ${timeOf(s.start)}${s.location ? " · " + s.location : ""}` };
     crew.forEach(e => interviewers.set(e, [...(interviewers.get(e) || []), line]));
     if (k === tomorrow) applicants.push({ id: a.id, title: "Interview tomorrow", body: `Your PVRS interview is tomorrow at ${timeOf(s.start)}${s.location ? " · " + s.location : ""}.` });

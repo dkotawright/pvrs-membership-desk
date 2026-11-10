@@ -109,6 +109,9 @@ const last = () => sent[sent.length - 1];
   check(mm.owner && mm.owner.body === "1 interview tomorrow · 1 reference overdue · 1 card expiring · 1 file with no movement", "morning owner: " + JSON.stringify(mm.owner));
   check(mm.interviewers.get("iv@pvrs.org").length === 1 && /Jack G at 7:30 AM · Station/.test(mm.interviewers.get("iv@pvrs.org")[0].body), "morning interviewer: " + JSON.stringify([...mm.interviewers]));
   check(mm.applicants.length === 1 && mm.applicants[0].id === "x1" && /tomorrow at 7:30 AM/.test(mm.applicants[0].body), "morning applicant: " + JSON.stringify(mm.applicants));
+  const mc = buildMorning({ now: NOW, coordinators: ["cory@pvrs.org"], apps: [{ id: "x1", name: "Jack G", interviewers: ["iv@pvrs.org"], updatedAt: NOW }, { id: "x4", name: "Nobody Assigned", updatedAt: NOW }],
+    slots: [{ start: NOW + D, bookedBy: "x1" }, { start: NOW + D, bookedBy: "x4" }] });
+  check(mc.interviewers.get("cory@pvrs.org").length === 2 && mc.interviewers.get("iv@pvrs.org").length === 1, "morning coordinator hears every interview: " + JSON.stringify([...mc.interviewers]));
   check(buildMorning({ now: NOW, apps: [], slots: [] }).owner === null, "nothing to say means no morning alert");
   // orientation
   await P.portalChanged(upd({ steps: [] }, { steps: [], orientation: { total: 3, done: 0 } }, { id: "a1" }));
