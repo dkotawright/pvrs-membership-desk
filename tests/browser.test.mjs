@@ -279,7 +279,13 @@ try {
     const { ctx, page } = await open(browser, { w: 390, h: 844 });
     if (await page.locator(".app > .side").isVisible() || await page.locator("#mnav").isHidden()) fail("phone: sidebar strip still showing / no bottom menu"); else ok("phone: bottom menu replaces the icon strip");
     const items = await page.locator("#mnav [data-m]:visible").evaluateAll(b => b.map(x => x.dataset.m));
-    if (items.join() !== "list,ov,msgs,more") fail("phone menu items: " + items); else ok("phone menu: Applicants, Overview, Messages, More (no big +)");
+    if (items.join() !== "list,orient,ov,msgs,more") fail("phone menu items: " + items); else ok("phone menu: Applicants, Orientation, Overview, Messages, More (no big +)");
+    { const fit = await page.evaluate(() => { const r = document.querySelector("#mnav").getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; });
+      if (!fit) fail("phone menu wider than the screen"); else ok("the five-item phone menu fits the screen");
+      await page.click('#mnav [data-m="orient"]'); await wait(page, 400);
+      if (!/In orientation/.test(await page.locator("#rosterTitle").textContent()) || !(await page.locator('#mnav [data-m="orient"].on').count())) fail("phone Orientation menu"); else ok("the phone Orientation menu opens the orientation list");
+      await page.click('#mnav [data-m="list"]'); await wait(page, 400);
+      if (!/All applicants/.test(await page.locator("#rosterTitle").textContent())) fail("Applicants menu didn't go back to applicants"); else ok("Applicants goes back to the applicant list"); }
     await page.click('#mnav [data-m="ov"]'); await wait(page, 500);
     if (await page.locator(".ov").isHidden() || !/Good (morning|afternoon|evening)/.test(await page.locator(".ov").textContent())) fail("phone overview not shown"); else ok("phone: Overview shows the dashboard");
     await page.click('#mnav [data-m="list"]'); await wait(page, 500);
@@ -583,9 +589,13 @@ try {
   {
     const { ctx, page } = await open(browser, { seed: [["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Interviewer" }]] }); await wait(page, 700);
     await page.locator("#settingsBtn").click(); await wait(page, 500);
-    const seg = page.locator('[data-role="alex@pvrs.org"][data-v="interviewer"]');
-    if (!(await seg.count())) fail("Team has no Interviewer role"); else { await seg.click(); await wait(page, 400);
+    const seg = page.locator('[data-rolesel="alex@pvrs.org"]');
+    if (!(await seg.count())) fail("Team has no role picker"); else { await seg.selectOption("interviewer"); await wait(page, 400);
       if ((await page.evaluate(() => window.__mock.docs.get("staff/alex@pvrs.org").role)) !== "interviewer") fail("role not saved"); else ok("Settings → Team offers Member, Interviewer, Admin"); }
+    await page.setViewportSize({ width: 390, height: 844 }); await wait(page, 300);
+    { const box = await seg.boundingBox(); if (!box || box.height < 44 || box.width < 150 || box.x < 0 || box.x + box.width > 390) fail("role picker too small on a phone: " + JSON.stringify(box)); else ok("the role picker is a large dropdown on phones");
+      await page.screenshot({ path: path.join(OUT, "58-team-phone.png") }); }
+    await page.setViewportSize({ width: 1440, height: 900 }); await wait(page, 300);
     await page.keyboard.press("Escape"); await wait(page, 300);
     await pickApplicant(page, "Georgia Thurmond");
     await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
@@ -895,7 +905,29 @@ try {
     await page.locator('[data-obook="o1"]').click(); await wait(page, 300); await page.locator('[data-opick="s1"]').click(); await wait(page, 500);
     const bk = await page.evaluate(() => [window.__mock.docs.get("orientSlots/s1").bookedBy, window.__mock.docs.get("portal/o1").orient?.slotId]);
     if (bk.join() !== "o1,s1") fail("owner booking: " + bk); else ok("you can book their one-on-one for them");
-    await pickApplicant(page, "Sam Ready"); await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    // people in orientation are their own list, apart from applicants
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    const allNames = (await page.locator(".arow").allTextContents()).join("|");
+    const orBtn = page.locator('#chips [data-f="orient"]');
+    if (/Sam Ready/.test(allNames) || !/1/.test(await orBtn.textContent())) fail("orientation person still listed with applicants: " + allNames.slice(0, 200)); else ok("someone in orientation leaves the applicant list for the Orientation list");
+    await orBtn.click(); await wait(page, 400);
+    const orRow = (await page.locator(".arow").allTextContents()).join("|");
+    if (!/Sam Ready/.test(orRow) || !/Orientation: \d+ of \d+ done/.test(orRow) || /Una Waiting/.test(orRow)) fail("orientation list: " + orRow.slice(0, 300)); else ok("the Orientation list shows only new members, with their checklist progress");
+    await pickApplicant(page, "Sam Ready");
+    if ((await page.locator('.tabdock [data-tab][aria-selected="true"], .tabdock [data-tab].on').first().getAttribute("data-tab")) !== "onb") fail("orientation file didn't open on Onboard"); else ok("an orientation file opens on its orientation page");
+    await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    // your own upload for a checklist line: filed under orientation and checked off
+    const odTxt = await page.locator("#orDocs").textContent();
+    if (!/Copy of training records/.test(odTxt) || !/Other orientation paperwork/.test(odTxt) || /Completed application/.test(odTxt)) fail("orientation documents list: " + odTxt.slice(0, 300)); else ok("the Onboard tab has an Orientation documents list");
+    await page.locator('[data-orup^="insurance_beneficiary"]').evaluate(b => { const c = HTMLInputElement.prototype.click; HTMLInputElement.prototype.click = function(){}; b.click(); HTMLInputElement.prototype.click = c; });
+    await page.locator("#orPicker").setInputFiles({ name: "emt-card.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 1500);
+    const up = await page.evaluate(() => { const m = window.__mock.docs; return { recs: [...m.entries()].filter(([k]) => k.startsWith("applicants/o1/records/")).map(([, v]) => v), item: m.get("applicants/o1/private/main").onb?.items?.insurance_beneficiary_card_completed }; });
+    if (up.recs.length !== 1 || up.recs[0].label !== "Orientation: Insurance beneficiary card, completed" || !up.recs[0].path.startsWith("records/o1/") || !up.item) fail("orientation upload: " + JSON.stringify(up)); else ok("uploading for a checklist line files it under orientation and checks it off");
+    if (!/emt-card\.pdf/.test(await page.locator("#orDocs").textContent())) fail("uploaded file not listed"); else ok("the uploaded file shows on its line");
+    await page.screenshot({ path: path.join(OUT, "57-orientation-documents.png") });
+    await page.locator('.tabdock [data-tab="app"]').click(); await wait(page, 300);
+    if (/emt-card\.pdf/.test(await page.locator("#recList").textContent())) fail("orientation upload mixed into application records"); else ok("orientation uploads stay out of the application's records");
+    await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
     const box = await page.locator("#orientBox").textContent();
     if (!/Status: New member/.test(box) || !/One-on-one session/.test(box)) fail("onboard box: " + box); else ok("the Onboard tab shows their status and session");
     await page.locator('[data-oact="attend"]').click(); await wait(page, 1600);

@@ -99,12 +99,18 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## Orientation list, orientation documents, team role dropdown (Nov 11)
+- **Orientation people are their own list** (`inOrient(a)` = moved to orientation and not yet Active): they leave "All applicants" and the stage counts and show under sidebar heading **Orientation → New members** (`data-f="orient"`, filter `orient`), phone bottom menu **Orientation** (`#mnav [data-m="orient"]`, five items now) and the phone chip. Searching in All still finds them. Their pill reads "Orientation" and their line "Orientation: X of Y done" (`orientStat`, `stat(a,p)` wraps `statusOf`). Opening one lands on the Onboard tab. The sidebar tool "Orientation" (board grid) is unchanged.
+- **Orientation documents** group on the Onboard tab (`#orDocs`, `renderOrientDocs`), shown once someone is in orientation: one line per checklist document plus "Other orientation paperwork", each listing what the new member sent (portal `onb:<key>` files) and what the owner uploaded, with Approve and **Upload**. Owner uploads go to staff records labelled `Orientation: <item>` (`uploadRecord`, `pickOrientDoc`; medical lines route to the vault) and check the item off. These records are hidden from the Application tab's Squad records (`isOrRec`). Request documents moved to this group's header.
+- **Settings → Team**: the four role buttons became a dropdown (`[data-rolesel]`, handled by `#modal.onchange`); 44px tall on phones.
+- Tests: 339 browser.
+
 ## Progress display (Nov 10; Dkota: "a guy on Interview but it isn't scheduled" was confusing)
 - File header `#dProg`: the 14 unlabeled dashes are replaced by five labelled phases (`PHASES` in shared.js: Screening 0–4, Interview 5–6, Approval 7–8, Onboarding 9–13, then Active) with Done / "n of m", plus one sentence from `statusOf(a, p)` → {pill, head, sub} and the Go button ("Schedule it" at step 5). Clicking a phase opens its first unfinished step (`data-step`).
 - `statusOf` spells out the Interview phase: "Interview isn't scheduled yet" (step 5) / "Interview booked for …" / "Interview was …" (past, not marked). The list pill and line and the header pill use it; the Overview Interview tile shows "N not scheduled yet".
 - `progress().next` is now an instruction (`NEXT_STEP`), not the milestone name ("Next: Interview scheduled" read as already scheduled). Milestone names are unchanged in the full checklist.
 - Portal: the Interview step says "Not scheduled yet…" and the tracker reads "Step 4 of 7: Interview (not scheduled yet)" (`steps[].short`).
-- Pushed to the branch; waiting for Dkota's OK on the look before merging (screenshots tests/shots/54–56).
+- Live Nov 10 (PR #28).
 - Tests: 328 browser.
 
 ## Notifications fix + first-visit tour (Nov 10)
