@@ -159,6 +159,7 @@ function tabHTML(tab){
       F.seg("bg.sterResult","Result",[["clear","Clear","good"],["review","Needs review","bad"]],true),F.init("bg.sterInit")])}
     ${group("Notifications",[F.date("notify.applicant","Applicant notified"),F.init("notify.applicantInit")])}
     ${admin ? `<section class="group noiv"><h3><span>Orientation</span></h3><div class="ios" id="orientBox"></div></section>
+      <section class="group noiv" id="orDocsGroup" hidden><h3><span>Orientation documents</span>${S.canEdit ? `<button class="btn small" type="button" data-oact="reqdocs">Request documents</button>` : ""}</h3><div class="ios" id="orDocs"></div></section>
       <section class="group noiv"><h3><span>Trainer sign-offs</span>${S.canEdit ? `<button class="btn small" type="button" data-oact="trainers">Assign</button>` : ""}</h3><div class="ios" id="trainBox"></div></section>
       <section class="group noiv"><h3><span>Check-ins</span></h3><div class="ios" id="checkinBox"></div></section>` : ""}
     ${group("Duty crew",[`<div class="row"><span class="lbl">Applicant phone<small id="phoneEcho">—</small></span><button class="copy" type="button" data-copy="phone">Copy</button></div>`,F.date("notify.chief","Chief notified"),F.init("notify.chiefInit")])}
@@ -220,8 +221,13 @@ const PSEUDO = {
   inproc:    { label: "In process", test: (a,p) => IN_PROCESS.includes(p.stage) },
   ivweek:    { label: "Interviews this week", test: a => !!a._booked && a._booked.start > Date.now() - 2*36e5 && a._booked.start < Date.now() + 7*864e5 },
 };
-const filterLabel = k => k==="all" ? "All applicants" : k==="board" ? "Board queue" : PSEUDO[k] ? PSEUDO[k].label : STAGES[k].label;
-const filterColor = k => k==="all" ? "var(--fg3)" : k==="board" ? "var(--s-appr)" : stageVar(k);
+// People moved to orientation are listed apart from applicants (sidebar "Orientation", phone menu "Orientation").
+const inOrient = a => S.admin && orientOpen(a) && progress(a).stage !== "act";
+const orientStat = a => { const c = orientCounts(a), s = orientSession(a._id), l = orientDaysLeft(a);
+  return { pill: "Orientation", head: `Orientation: ${c.done} of ${c.total} done`, sub: [s ? "Session " + slotLong(s.start) : "No session booked yet", l === null ? "" : l < 0 ? `${-l} days late` : `due ${longDate(orientDue(a))}`].filter(Boolean).join(" · ") }; };
+const stat = (a, p) => inOrient(a) ? orientStat(a) : statusOf(a, p);
+const filterLabel = k => k==="all" ? "All applicants" : k==="orient" ? "In orientation" : k==="board" ? "Board queue" : PSEUDO[k] ? PSEUDO[k].label : STAGES[k].label;
+const filterColor = k => k==="all" ? "var(--fg3)" : k==="board" ? "var(--s-appr)" : k==="orient" ? "var(--s-act)" : stageVar(k);
 const shortDate = d => d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});
 const hl = (text, q) => { const s = esc(text); if (!q) return s; const i = String(text).toLowerCase().indexOf(q); return i < 0 ? s : esc(text.slice(0,i)) + `<mark>${esc(text.slice(i, i+q.length))}</mark>` + esc(text.slice(i+q.length)); };
 const SORTS = {
@@ -236,11 +242,15 @@ function sorted(){
     .sort((x,y) => (order[x.p.stage]-order[y.p.stage]) || String(get(x.a,"app.received")||"").localeCompare(String(get(y.a,"app.received")||"")) || (x.a.name||"").localeCompare(y.a.name||""));
 }
 function renderChips(rows){
-  const counts = {all:rows.length, board:0}; rows.forEach(r => { counts[r.p.stage] = (counts[r.p.stage]||0)+1; if (S.admin && inBoardQueue(r.a)) counts.board++; });
+  rows.forEach(r => { r.or = inOrient(r.a); });
+  const counts = {all:0, board:0, orient:0}; rows.forEach(r => { if (r.or) { counts.orient++; return; } counts.all++; counts[r.p.stage] = (counts[r.p.stage]||0)+1; if (S.admin && inBoardQueue(r.a)) counts.board++; });
   const base = S.admin ? ["all","board","screen","int","appr","onb","act","hold","dec","wd"] : ["all","screen","int","appr","onb","act","hold","dec","wd","open"];
   const keys = base.filter(k => k==="all" || k==="board" || counts[k] || (S.admin && ["screen","int","appr","onb"].includes(k)));
-  if (!keys.includes(S.filter) && !PSEUDO[S.filter]) S.filter = "all";
-  $("#chips").innerHTML = keys.map(k => `<button class="nav-i" type="button" data-f="${k}" aria-pressed="${S.filter===k}" style="--stage-c:${filterColor(k)}"><span class="ndot"></span><span class="nl">${k==="all"?"All":filterLabel(k)}</span><b>${counts[k]||0}</b></button>`).join("");
+  if (!keys.includes(S.filter) && !PSEUDO[S.filter] && !(S.filter === "orient" && S.admin)) S.filter = "all";
+  $("#chips").innerHTML = keys.map(k => `<button class="nav-i" type="button" data-f="${k}" aria-pressed="${S.filter===k}" style="--stage-c:${filterColor(k)}"><span class="ndot"></span><span class="nl">${k==="all"?"All":filterLabel(k)}</span><b>${counts[k]||0}</b></button>`).join("")
+    + (S.admin ? `<div class="navh navh2">Orientation</div><button class="nav-i" type="button" data-f="orient" aria-pressed="${S.filter==="orient"}" style="--stage-c:${filterColor("orient")}"><span class="ndot"></span><span class="nl">New members</span><b>${counts.orient}</b></button>` : "");
+  if (S.admin) keys.push("orient");
+  { const mo = $('#mnav [data-m="orient"]'); if (mo) { mo.hidden = !S.admin; const nb = mo.querySelector(".navbadge"); if (nb) { nb.textContent = counts.orient || ""; nb.hidden = !counts.orient; } } }
   $("#chipsMini").innerHTML = keys.map(k => `<button class="chip" type="button" data-f="${k}" aria-pressed="${S.filter===k}">${k==="all"?"All":filterLabel(k)} <b>${counts[k]||0}</b></button>`).join("");
   $("#boardBtn").hidden = !S.admin;
   { const bb = $("#boardBtn"); let n = bb.querySelector(".navbadge"); if (!n) { n = document.createElement("b"); n.className = "navbadge soft"; bb.appendChild(n); } n.textContent = counts.board || ""; n.hidden = !counts.board; }
@@ -255,11 +265,11 @@ function paintList(){
   const rows = sorted(); renderChips(rows);
   const q = S.q.trim().toLowerCase(), qd = q.replace(/\D/g, "");
   const match = a => !q || (a.name||"").toLowerCase().includes(q) || lower(a.email).includes(q) || (qd.length >= 3 && String(a.phone||"").replace(/\D/g,"").includes(qd));
-  const inFilter = r => S.filter==="all" || (S.filter==="board" ? inBoardQueue(r.a) : PSEUDO[S.filter] ? PSEUDO[S.filter].test(r.a, r.p) : r.p.stage===S.filter);
+  const inFilter = r => S.filter==="orient" ? r.or : r.or ? (S.filter==="all" && !!q) : S.filter==="all" || (S.filter==="board" ? inBoardQueue(r.a) : PSEUDO[S.filter] ? PSEUDO[S.filter].test(r.a, r.p) : r.p.stage===S.filter);
   const vis = rows.filter(r => inFilter(r) && match(r.a));
   if (SORTS[S.sort]) vis.sort((x,y) => SORTS[S.sort](x,y) || (x.a.name||"").localeCompare(y.a.name||""));
   S.vis = vis.map(r => r.a._id);
-  $("#rosterCount").textContent = S.ready ? (vis.length === rows.length ? String(rows.length) : `${vis.length} of ${rows.length}`) : "";
+  { const pool = S.filter === "orient" ? S.counts.orient : S.counts.all; $("#rosterCount").textContent = S.ready ? (vis.length === pool ? String(pool) : `${vis.length} of ${pool}`) : ""; }
   const L = $("#list");
   if (!S.sel) renderOverview();
   if (!S.ready) { L.innerHTML = `<div class="empty"><span class="spin" aria-hidden="true"></span><h3>Loading roster…</h3></div>`; return; }
@@ -271,13 +281,13 @@ function paintList(){
     const d = daysSince(get(a,"app.received"));
     const iv = a._booked ? `${slotDay(a._booked.start)} · ${slotTime(a._booked.start)}` : get(a,"sched.scheduled") ? `${fmtDate(get(a,"sched.scheduled"))}${get(a,"sched.time")?" · "+get(a,"sched.time"):""}` : "";
     const nextLine = S.admin
-      ? `<strong>${esc(statusOf(a, p).head)}</strong>`
+      ? `<strong>${esc(stat(a, p).head)}</strong>`
       : (get(a,"sched.completed") ? "Interview completed" : iv ? `Interview: <strong>${esc(iv)}</strong>` : "Interview not scheduled yet");
     const inProc = d != null && IN_PROCESS.includes(p.stage);
     return `<button class="arow${S.bulk?.has(a._id) ? " picked" : ""}" type="button" data-id="${esc(a._id)}" aria-current="${S.sel===a._id}"${S.bulk ? ` aria-pressed="${S.bulk.has(a._id)}"` : ""} style="--stage-c:${stageVar(p.stage)}">
       ${S.bulk ? `<span class="bulkck" aria-hidden="true">${S.bulk.has(a._id) ? "✓" : ""}</span>` : ""}<span class="av" aria-hidden="true">${esc(initials(a.name))}</span>
       <span class="ab">
-        <span class="r1"><span class="nm">${hl(a.name||"Unnamed applicant", q)}</span><span class="pill">${esc(S.admin ? statusOf(a, p).pill : STAGES[p.stage].label)}</span></span>
+        <span class="r1"><span class="nm">${hl(a.name||"Unnamed applicant", q)}</span><span class="pill">${esc(S.admin ? stat(a, p).pill : STAGES[p.stage].label)}</span></span>
         <span class="meta">${milestoneChip(a)}${get(a,"app.source") === "online" ? `<span class="srctag" title="Applied online">Online</span>` : ""}${[a.type,loc(a),inProc?`${d} day${d===1?"":"s"}`:null].filter(Boolean).map(esc).join(" · ")||"Details not entered"}</span>
         <span class="next">${nextLine}</span>
         ${S.admin?`<span class="bar" title="${p.n} of ${MILESTONES.length} steps"><span style="width:${(p.n/MILESTONES.length*100).toFixed(1)}%"></span></span>`:""}
@@ -711,7 +721,7 @@ function syncDetail(){
   const av = $("#dAv"); av.textContent = initials(a.name); av.style.setProperty("--stage-c", stageVar(p.stage));
   const t = Math.max(a.updatedAt||0, a.secUpdatedAt||0), by = (a.secUpdatedAt||0) > (a.updatedAt||0) ? a.secUpdatedBy : a.updatedBy;
   const who = personName(by);
-  const stt = statusOf(a, p);
+  const stt = stat(a, p);
   $("#dSub").innerHTML = `<span class="pill" style="--stage-c:${stageVar(p.stage)}">${esc(S.admin ? stt.pill : STAGES[p.stage].label)}</span>${[a.type,loc(a)].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join("")}${t?`<span class="upd">Updated ${ago(t)}${who?` by ${esc(who)}`:""}</span>`:""}`;
   const pr = $("#dProg");
   // Five labelled phases instead of fourteen anonymous dashes, and one plain sentence about where they stand.
@@ -840,8 +850,9 @@ async function printOriginal(id){
 }
 function renderRecords(){
   renderOriginal();
+  if (S.sel && S.apps.has(S.sel)) renderOrientDocs(S.apps.get(S.sel));
   const el = $("#recList"); if (!el) return;
-  const recs = S.records;
+  const recs = S.records.filter(r => !isOrRec(r));
   el.innerHTML = `<div class="note">Squad records · staff only, never shown to the applicant${recs.length ? ` · ${recs.length} file${recs.length===1?"":"s"}` : ""}</div>`
     + (recs.length ? recs.map(r => r.confidential ? `<div class="row"><span class="lbl">🔒 Secure document<small>${esc(r.label || "Confidential")} · ${esc(new Date(r.uploadedAt).toLocaleDateString())} · only ${esc(PAPERWORK_EMAIL)} can open it</small></span>
         <button class="copy" type="button" data-recrm="${esc(r.id)}" aria-label="Remove this entry">Remove</button></div>`
@@ -1399,8 +1410,8 @@ const canInterview = s => ["interviewer", "admin", "coordinator"].includes(s.rol
 const roleLabel = r => ROLE_LABEL[r] || "Member";
 function teamHTML(){
   const rows = [...S.staff.entries()].sort((x,y) => x[0].localeCompare(y[0])).map(([email, s]) => `<div class="row"><span class="lbl">${esc(s.name || email)}<small>${esc(email)}</small></span>
-    <div class="seg" role="group" aria-label="Role">${[["member","Member"],["interviewer","Interviewer"],["coordinator","Coordinator"],["admin","Admin"]].map(([v,l]) => `<button type="button" class="${s.role===v?"on":""}" data-role="${esc(email)}" data-v="${v}">${l}</button>`).join("")}</div>
-    <button class="copy" type="button" data-rmstaff="${esc(email)}">Remove</button></div>`).join("");
+    <span class="teamact"><select class="rolesel" data-rolesel="${esc(email)}" aria-label="Role for ${esc(s.name || email)}">${[["member","Member"],["interviewer","Interviewer"],["coordinator","Interview coordinator"],["admin","Admin"]].map(([v,l]) => `<option value="${v}"${(ROLE_LABEL[s.role] ? s.role : "member")===v?" selected":""}>${l}</option>`).join("")}</select>
+    <button class="copy" type="button" data-rmstaff="${esc(email)}">Remove</button></span></div>`).join("");
   return `<div class="row"><span class="lbl">${esc(OWNER_EMAIL)}<small>Owner · full access</small></span></div>${rows}
     <p class="help" style="margin:6px 12px">Admin: sees every file (view only). Coordinator: sees every file and runs the interviews (posts times, books and reschedules, opens booking, assigns interviewers, messages applicants). Interviewer: only the applicants assigned on their Interview tab. Member: Messages only.</p>
     <div class="row" style="flex-wrap:wrap"><input id="tmEmail" type="email" placeholder="member@pvrs.org" class="inlinefield" style="flex:2 1 180px">
@@ -1409,6 +1420,8 @@ function teamHTML(){
 }
 function openSettings(){
   const s = S.settings;
+  $("#modal").onchange = async e => { const rs = e.target.closest?.("[data-rolesel]"); if (!rs) return;
+    try { await setDoc(doc(db, "staff", rs.dataset.rolesel), { role: rs.value }, { merge: true }); toast(`${S.staff.get(rs.dataset.rolesel)?.name || rs.dataset.rolesel} is now ${/^[AEIOU]/.test(roleLabel(rs.value)) ? "an" : "a"} ${roleLabel(rs.value)}.`); } catch { toast("Couldn't change the role."); } };
   const M = openModal(`<h3>Settings</h3>
     <div class="group"><h3><span>Team</span></h3><div class="ios" id="reqList">${requestsHTML()}</div><div class="ios" id="teamList">${teamHTML()}</div>
       <p class="help" style="margin:4px 4px 0"><b>Members</b> can view the Application and Interview tabs. <b>Admins</b> can view every tab except Settings. Both can only fill in and complete the interview questionnaire; everything else is yours to change. They sign in on the Squad member tab with this address.</p></div>
@@ -1463,7 +1476,7 @@ function openSettings(){
     }
     const ap = e.target.closest("[data-approve]"); if (ap) { ap.disabled = true; return decideRequest(ap.dataset.approve, ap.dataset.v); }
     const dn = e.target.closest("[data-deny]"); if (dn) { if (dn.dataset.confirm !== "1") { dn.dataset.confirm = "1"; dn.textContent = "Confirm deny"; return; } dn.disabled = true; return decideRequest(dn.dataset.deny, null); }
-    const rb = e.target.closest("[data-role]"); if (rb) { try { await setDoc(doc(db, "staff", rb.dataset.role), { role: rb.dataset.v }, { merge: true }); } catch { toast("Couldn't change the role."); } }
+
     const rm = e.target.closest("[data-rmstaff]"); if (rm) {
       if (rm.dataset.confirm !== "1") { rm.dataset.confirm = "1"; rm.textContent = "Confirm remove"; return; }
       try { await deleteDoc(doc(db, "staff", rm.dataset.rmstaff)); toast("Removed"); } catch { toast("Couldn't remove."); } }
@@ -1746,7 +1759,7 @@ function ivGo(d){
 function paintMnav(){
   const m = $("#mnav"); if (!m) return;
   m.querySelector('[data-m="msgs"]').hidden = $("#msgsBtn").hidden;
-  m.querySelectorAll("[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === (S.chatOn ? "msgs" : S.mOv ? "ov" : "list")));
+  m.querySelectorAll("[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === (S.chatOn ? "msgs" : S.mOv ? "ov" : S.filter === "orient" ? "orient" : "list")));
   $("#app").classList.toggle("ovopen", !!S.mOv && !S.sel);
 }
 function mnavGo(k){
@@ -1755,7 +1768,8 @@ function mnavGo(k){
   if (S.chatOn) closeChat();
   if (k === "more") return openMore();
   S.mOv = k === "ov";
-  if (S.sel) deselect(); else renderDetail();
+  if (k === "orient") S.filter = "orient"; else if (k === "list" && S.filter === "orient") S.filter = "all";   // Applicants and Orientation are separate lists
+  if (S.sel) deselect(); else { renderList(); renderDetail(); }
   if (k === "list") { const l = $("#list"); if (l) l.scrollTop = 0; }
   paintMnav();
 }
@@ -1894,6 +1908,7 @@ function bindEvents(){
     if (tab) { switchTab(tab.dataset.tab); return; }
     const po = t.closest("[data-printother]"); if (po) { const x = S.apps.get(S.sel)?.otherForms?.[+po.dataset.printother]; if (x) printForm(x); return; }
     const oa = t.closest("[data-oact]"); if (oa && S.sel) { const k = oa.dataset.oact; if (k === "move") return openMoveToOrientation(S.sel); if (k === "member") return openMakeMember(S.sel); if (k === "back") return moveBackToApplicant(S.sel); if (k === "book") return openOrientBook(S.sel); if (k === "attend") return markAttended(S.sel); if (k === "record") return printOrientRecord(S.sel); if (k === "trainers") return openTrainers(S.sel); if (k === "reqdocs") return openOrientDocs(S.sel); }
+    const oru = t.closest("[data-orup]"); if (oru && S.sel) return pickOrientDoc(S.sel, oru.dataset.orup, oru.dataset.orlabel);
     const oap = t.closest("[data-oapprove]"); if (oap) { edit(S.sel, `onb.items.${oap.dataset.oapprove}`, today()); toast("Approved"); return; }
     const ord = t.closest("[data-oread]"); if (ord) { edit(S.sel, `onb.checkinRead.${ord.dataset.oread}`, today()); return; }
     const si = t.closest("[data-startiv]"); if (si) { select(si.dataset.startiv); switchTab("iv"); enterIvMode(); return; }
@@ -2018,6 +2033,7 @@ function select(id){
   if (!S.apps.has(id)) return;
   if (S.chatOn) closeChat();
   flushAll(); const same = S.sel === id; S.sel = id;
+  if (!same && S.admin && inOrient(S.apps.get(id))) S.tab = "onb";   // someone in orientation opens on their orientation page
   if (!same) { watchFiles(id); watchHistory(id); watchRecords(id); }
   renderList(); renderDetail();
   const b = $("#dbody"); if (b && !same) b.scrollTop = 0;
@@ -3478,19 +3494,66 @@ function renderOrientTab(a){
   if (orientReady(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Applicant<small>Sterling is complete and clear, so they're ready for orientation.</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-oact="move">Move to orientation</button>` : ""}</div>`; }
   else if (!orientOpen(a)) { el.innerHTML = `<div class="row"><span class="lbl" style="color:var(--fg2)">Locked until Sterling is complete and clear.<small>${get(a, "bg.sterDone") ? (get(a, "bg.sterResult") ? "Sterling is marked Needs review." : "Enter the Sterling result above.") : get(a, "bg.sterReq") ? "Requested " + esc(fmtDate(get(a, "bg.sterReq"))) + "." : "Not requested yet."}</small></span></div>`; }
   else { const s = orientSession(id), c = orientCounts(a), l = orientDaysLeft(a), key = orientItemKey(), att = key && get(a, `onb.items.${key}`);
-    const files = (S.files || []).filter(f => String(f.docKey || "").startsWith("onb:"));
     el.innerHTML = `<div class="row"><span class="lbl">Status: ${get(a, "onb.memberSince") ? "Squad member" : "New member"}<small>In orientation since ${esc(fmtDate(get(a, "onb.orientStarted")))}${get(a, "onb.memberSince") ? " · member since " + esc(fmtDate(get(a, "onb.memberSince"))) : ""}</small></span>
         ${S.canEdit && !get(a, "onb.memberSince") ? `<button class="copy" type="button" data-oact="back">Move back</button><button class="btn small" type="button" data-oact="member">Make squad member</button>` : ""}</div>
       <div class="row"><span class="lbl">One-on-one session<small>${s ? esc(slotLong(s.start)) + (s.location ? " · " + esc(s.location) : "") : "Not booked yet"}${att ? " · attended " + esc(fmtDate(att)) : ""}</small></span>
         ${S.canEdit ? `<button class="btn small" type="button" data-oact="book">${s ? "Change" : "Book"}</button>${att ? "" : `<button class="btn small primary" type="button" data-oact="attend">Mark attended</button>`}` : ""}</div>
-      <div class="row"><span class="lbl">Progress<small>${c.done} of ${c.total} done${l === null ? "" : l < 0 ? ` · ${-l} days late` : ` · due ${esc(longDate(orientDue(a)))}`}</small></span><button class="btn small" type="button" data-oact="record">Print record</button></div>
-      ${(() => { const want = orientDocItems(a), asked = want.filter(([k]) => get(a, `onb.requested.${k}`)).length; return `<div class="row"><span class="lbl">Documents<small>${want.length ? `${want.length} still needed${asked ? ` · ${asked} requested` : ""}. They upload each one from their checklist.` : "Nothing outstanding."}</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-oact="reqdocs">Request documents</button>` : ""}</div>`; })()}
-      ${files.map(f => { const k = f.docKey.slice(4), done = get(a, `onb.items.${k}`); return `<div class="row"><span class="lbl">${f.confidential ? "🔒 Secure document" : `<button class="filelink" type="button" data-file="${esc(f.id)}">${esc(f.name)}</button>`}<small>${esc(f.label || "Certificate")} · uploaded ${esc(new Date(f.uploadedAt).toLocaleDateString())}${f.confidential ? " · sent to " + esc(PAPERWORK_EMAIL) : ""}</small></span>${done ? `<span class="badge ok">Approved</span>` : S.canEdit ? `<button class="btn small primary" type="button" data-oapprove="${esc(k)}">Approve</button>` : ""}</div>`; }).join("")}`; }
+      <div class="row"><span class="lbl">Progress<small>${c.done} of ${c.total} done${l === null ? "" : l < 0 ? ` · ${-l} days late` : ` · due ${esc(longDate(orientDue(a)))}`}</small></span><button class="btn small" type="button" data-oact="record">Print record</button></div>`; }
+  renderOrientDocs(a);
   const sb = $("#trainBox"); if (sb) { const so = S.signoffs.get(id);
     sb.innerHTML = so ? `<div class="row"><span class="lbl">Trainers<small>${esc((so.trainers || []).map(e => memberName(e)).join(", ") || "None")}</small></span></div>` + (so.items || []).map(i => { const d = (so.done || {})[i.key]; return `<div class="row"><span class="lbl">${esc(i.label)}<small>${d ? `Signed off by ${esc(d.name || d.by)} · ${esc(new Date(d.at).toLocaleDateString())}` : "Not signed off yet"}</small></span>${d ? `<span class="badge ok">Done</span>` : ""}</div>`; }).join("")
       : `<div class="row"><span class="lbl" style="color:var(--fg2)">No trainer yet. A trainer signs off skills and first shifts from their own phone and sees nothing else on this file.</span></div>`; }
   const cb = $("#checkinBox"); if (cb) { const list = [...S.checkins.values()].filter(c => c.appId === id).sort((x, y) => +x.n - +y.n);
     cb.innerHTML = list.map(c => `<div class="row stack"><span class="lbl">${esc(c.n)}-day check-in · rated it ${esc(c.rating)} of 5<small>${esc(new Date(c.at).toLocaleDateString())}</small></span><p class="cv-note"><b>How it's going:</b> ${esc(c.going || "—")}<br><b>What would help:</b> ${esc(c.help || "—")}</p>${S.canEdit && !get(a, `onb.checkinRead.${c.n}`) ? `<div><button class="btn small" type="button" data-oread="${esc(c.n)}">Mark read</button></div>` : ""}</div>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">New members are asked how it's going 30 and 90 days after moving to orientation. Answers show here.</span></div>`; }
+}
+// Onboard tab → Orientation documents: one line per checklist document, with what the new member sent, what you
+// uploaded for them, and an Upload button. Kept apart from the application's Documents and Squad records.
+const OR_LABEL = "Orientation: ", orLabel = l => OR_LABEL + l, isOrRec = r => String(r.label || "").startsWith(OR_LABEL);
+function renderOrientDocs(a){
+  const g = $("#orDocsGroup"), el = $("#orDocs"); if (!g || !el) return;
+  g.hidden = !orientOpen(a); if (g.hidden) return;
+  const day = ms => new Date(ms).toLocaleDateString();
+  const fileRow = (f, mine) => f.confidential ? `<span class="orfile">🔒 Secure document · ${esc(day(f.uploadedAt))} · sent to ${esc(PAPERWORK_EMAIL)}</span>`
+    : `<span class="orfile"><button class="filelink" type="button" ${mine ? `data-rec="${esc(f.id)}"` : `data-file="${esc(f.id)}"`}>${esc(f.name)}</button> · ${mine ? "you" : esc(first(a.name))} · ${esc(day(f.uploadedAt))}</span>`;
+  const row = (key, label) => { const done = key && get(a, `onb.items.${key}`), asked = key && get(a, `onb.requested.${key}`);
+    const theirs = key ? (S.files || []).filter(f => f.docKey === "onb:" + key) : [], mine = S.records.filter(r => r.label === orLabel(label));
+    const state = done ? `<span class="badge ok">Done ${esc(fmtDate(done))}</span>` : theirs.length ? `<span class="badge wait">Needs your OK</span>` : asked ? `<span class="badge wait">Requested</span>` : "";
+    return `<div class="row ordoc"><span class="lbl">${esc(label)}${isConfidential(label) ? " 🔒" : ""}<small>${theirs.length + mine.length ? "" : key ? (asked ? `Asked ${esc(fmtDate(asked))}, nothing in yet` : "Nothing in yet") : "Anything else for their orientation file"}</small>${[...theirs.map(f => fileRow(f, false)), ...mine.map(f => fileRow(f, true))].join("")}</span>
+      ${state}${S.canEdit && key && !done && theirs.length ? `<button class="btn small primary" type="button" data-oapprove="${esc(key)}">Approve</button>` : ""}
+      ${S.canEdit ? `<button class="btn small" type="button" data-orup="${esc(key)}" data-orlabel="${esc(label)}">Upload</button>` : ""}</div>`; };
+  el.innerHTML = `<div class="note">${S.canEdit ? "Upload a scan or photo for any line and it's checked off. What the new member sends from their dashboard shows here too." : "What the new member and the orientation chair have sent in."} 🔒 lines go only to ${esc(PAPERWORK_EMAIL)}.</div>`
+    + onbItems().filter(([, l]) => !NOT_CERT_RE.test(l)).map(([k, l]) => row(k, l)).join("") + row("", "Other orientation paperwork");
+}
+// One file into an applicant's staff records (or the vault when the label is medical / Social Security).
+const REC_EXT = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", heic: "image/heic", heif: "image/heif", webp: "image/webp", gif: "image/gif" };
+async function uploadRecord(id, f, label){
+  const a = S.apps.get(id), type = f.type || REC_EXT[String(f.name || "").split(".").pop().toLowerCase()] || "";
+  if (!(type === "application/pdf" || /^image\//.test(type))) throw new Error("type");
+  if (f.size > RECORD_MAX) throw new Error("size");
+  const safe = `${Date.now()}-${f.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
+  if (isConfidential(label)) {
+    const path = `confidential/${id}/${safe}`;
+    await uploadBytes(ref(storage, path), f, { contentType: type });
+    await addDoc(collection(db, "vault"), { appId: id, appName: a.name || "", label, name: f.name, path, size: f.size, contentType: type, uploadedAt: Date.now(), uploadedBy: S.me, from: "staff" });
+    await addDoc(collection(db, "applicants", id, "records"), { name: "Private document", label, path: "", size: f.size, contentType: type, uploadedAt: Date.now(), uploadedBy: S.me, confidential: true });
+  } else {
+    const path = `records/${id}/${safe}`;
+    await uploadBytes(ref(storage, path), f, { contentType: type });
+    await addDoc(collection(db, "applicants", id, "records"), { name: f.name, label, path, size: f.size, contentType: type, uploadedAt: Date.now(), uploadedBy: S.me });
+  }
+}
+let orPicker = null;
+function pickOrientDoc(id, key, label){
+  if (!S.canEdit) return ownerOnlyToast();
+  if (!orPicker) { orPicker = document.createElement("input"); orPicker.type = "file"; orPicker.id = "orPicker"; orPicker.accept = "application/pdf,image/*"; orPicker.multiple = true; orPicker.hidden = true; document.body.appendChild(orPicker); }
+  orPicker.onchange = async () => { const list = [...orPicker.files]; orPicker.value = ""; let n = 0;
+    for (const f of list) { toast(`Uploading ${f.name}…`);
+      try { await uploadRecord(id, f, orLabel(label)); n++; }
+      catch (e) { console.error(e); toast(e.message === "type" ? `${f.name} isn't a PDF or photo.` : e.message === "size" ? `${f.name} is over 25 MB.` : `Couldn't upload ${f.name}. Try again.`); } }
+    if (!n) return;
+    if (key && !get(S.apps.get(id), `onb.items.${key}`)) edit(id, `onb.items.${key}`, today());
+    toast(key ? `Uploaded and checked off: ${label}` : `Uploaded ${n} file${n === 1 ? "" : "s"}`); };
+  orPicker.click();
 }
 function openTrainers(id){
   if (!S.canEdit) return ownerOnlyToast();
