@@ -1771,3 +1771,12 @@ body:has(.gate:not([hidden])){background:
 }
 .ovroster{scroll-margin:12px}
 body.member-user nav:has(#chips),body.member-user #overviewBtn{display:none}
+
+/* First-visit tour (tour.js) */
+.tour{display:flex;flex-direction:column;gap:10px;min-height:190px}
+.tour .eyebrow{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+.modal .tour h3{font-size:21px;line-height:1.25}
+.modal .tour .tourbody{font-size:15px;line-height:1.55;color:var(--fg)}
+.tourdots{display:flex;gap:6px;margin-top:auto;padding-top:6px}
+.tourdots i{width:7px;height:7px;border-radius:50%;background:var(--fg3);opacity:.35}
+.tourdots i.on{opacity:1;background:var(--accent);width:18px;border-radius:4px}
