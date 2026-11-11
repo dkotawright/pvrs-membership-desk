@@ -45,8 +45,9 @@ const TOURS = {
     ["Questions?", "Send us a message under <b>Messages</b> and we'll reply there. Turn on alerts in that box to hear when we answer or your application moves forward."] ] },
   newmember: { title: "Your orientation", steps: [
     ["Welcome to the squad", "This is your orientation dashboard. Everything on the checklist is required before you can be issued equipment or run calls."],
-    ["Your checklist", "Each item has an <b>Upload</b> button. Send a PDF or a clear photo; items we've asked for are marked <b>Requested</b>. Once we've looked at it, the item is checked off."],
+    ["Your checklist", "Most items have an <b>Upload</b> button, and you can send files any time. Send a PDF, a clear photo or a Word file; items we've asked for are marked <b>Requested</b>. Once we've looked at it, the item is checked off."],
     ["Medical paperwork", "Items with a lock 🔒 go straight to our orientation paperwork coordinator. Nobody else on the squad can open them."],
+    ["Forms you sign on your phone", "Under <b>Forms to sign</b> are the squad's forms. They unlock during your orientation session, when you sign each one with your finger. The insurance form stays on paper."],
     ["Your session", "Under <b>Your session</b>, pick a time for your one-on-one with the orientation chair. You can change it up to 24 hours before."],
     ["Questions?", "Send us a message under <b>Messages</b> and we'll reply there."] ] },
 };

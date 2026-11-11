@@ -3,13 +3,16 @@ import { app, db, storage, doc, collection, onSnapshot, writeBatch, addDoc, upda
 import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download, isConfidential } from "./shared.js";
 import { CONTACT_EMAIL, VAPID_KEY } from "./config.js";
 import { showTour, maybeTour } from "./tour.js";
+import { openModal, closeModal } from "./shared.js";
+import { FORMS, HEPB_LABEL, formByKey, formForItem, formTextHTML, formFieldsHTML, readForm, formDocHTML, signaturePad, printDoc } from "./forms.js";
 
-const DAY = 864e5, MAX = 15 * 1024 * 1024;
+const DAY = 864e5, MAX = 25 * 1024 * 1024;
 const CONF_KEY = "_private";   // the "Secure document upload" button (not tied to a request)
 // Some phones and scanners hand over a file with no type at all, so fall back to the file's ending.
-const EXT_TYPE = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", heic: "image/heic", heif: "image/heif", webp: "image/webp", gif: "image/gif", tif: "image/tiff", tiff: "image/tiff", bmp: "image/bmp" };
+const WORD = ["application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+const EXT_TYPE = { doc: WORD[0], docx: WORD[1], pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", heic: "image/heic", heif: "image/heif", webp: "image/webp", gif: "image/gif", tif: "image/tiff", tiff: "image/tiff", bmp: "image/bmp" };
 const typeOf = f => f.type || EXT_TYPE[String(f.name || "").split(".").pop().toLowerCase()] || "";
-const okType = f => /^image\//.test(typeOf(f)) || typeOf(f) === "application/pdf";
+const okType = f => /^image\//.test(typeOf(f)) || typeOf(f) === "application/pdf" || WORD.includes(typeOf(f));
 // Say what actually went wrong, so "it won't upload" can be fixed from a single screenshot.
 const uploadWhy = e => { const c = String(e?.code || "");
   return /unauthorized|permission-denied|unauthenticated/.test(c) ? "You may be signed in with a different email than the one we have for you. Sign out, then sign in with the address we emailed"
@@ -42,7 +45,20 @@ function pushHTML(st){
   return "";
 }
 // Orientation card: only there once the owner's desk opens it (board approved and Sterling complete and clear).
-function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis }){
+// Forms signed on the phone. Signing is only possible while the orientation chair has it open (pd.signUntil).
+const PAPER_RE = /insurance|beneficiar/i;
+const signOpen = pd => (pd.signUntil || 0) > Date.now();
+const formsLeft = forms => FORMS.filter(f => !f.optional && !forms.some(x => x.id === f.key));
+// A medical form (Hep B declination) leaves no trace with the squad except a nameless "Private document" on its checklist line.
+const confKey = (pd, f) => { const i = ((pd.orientation || {}).items || []).find(x => f.item && f.item.test(x.label)); return i ? "onb:" + i.key : ""; };
+function formsHTML(pd, forms, dis, files = []){
+  const open = signOpen(pd), day = ms => new Date(ms).toLocaleDateString();
+  return `<h3 class="or-h" id="formsCard">Forms to sign</h3><p class="info" style="margin:0">${open ? "Signing is open. Read each form, then sign it with your finger." : formsLeft(forms).length ? "You'll sign these on your phone during your orientation session. They unlock when the orientation chair opens signing." : "All signed. Thank you!"}</p>
+    <div class="or-list fm-list">${FORMS.map(f => { const sent = f.confidential && files.find(x => x.confidential && x.docKey === confKey(pd, f)), d = sent ? { confidential: true, signedAt: sent.uploadedAt } : forms.find(x => x.id === f.key);
+      return `<div class="or-item${d ? " done" : ""}"><span class="or-ck" aria-hidden="true">${d ? "✓" : ""}</span><span class="or-tx">${esc(f.title)}${f.confidential ? " 🔒" : ""}${f.optional ? `<small class="fm-opt">${esc(f.optional)}</small>` : ""}</span>
+        ${d ? `<span class="badge ok">${d.confidential ? "Sent securely" : "Signed"} ${esc(day(d.signedAt))}</span>${d.confidential ? "" : `<button class="btn small" type="button" data-formview="${f.key}">View</button>`}` : open ? `<button class="btn small primary" type="button" data-formsign="${f.key}" ${dis}>Sign</button>` : `<span class="badge">🔒 At your session</span>`}</div>`; }).join("")}</div>`;
+}
+function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis, forms = [] }){
   const now = Date.now(), s = pd.orient, open = oslots.filter(x => !x.bookedBy && x.start > now + DAY).sort((a, b) => a.start - b.start);
   const days = {}; open.forEach(x => { const k = slotDay(x.start); (days[k] = days[k] || []).push(x); });
   const pct = o.total ? Math.round(o.done / o.total * 100) : 0, left = o.due ? Math.round((new Date(o.due + "T12:00") - now) / DAY) : null;
@@ -53,7 +69,7 @@ function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis 
         ${opick ? `<div style="display:flex;justify-content:flex-end"><button class="btn primary" type="button" data-obook ${obusy ? "disabled" : ""}>Book this time</button></div>` : ""}`
     : `<p class="info">Times will show up here soon. Questions? Email <b>${esc(CONTACT_EMAIL)}</b>.</p>`;
   const item = i => `<div class="or-item${i.date ? " done" : ""}"><span class="or-ck" aria-hidden="true">${i.date ? "✓" : ""}</span><span class="or-tx">${esc(i.label)}${i.link ? ` <a href="${esc(i.link)}" target="_blank" rel="noopener">Open</a>` : ""}</span>
-    ${i.date ? "" : `${uploaded(i.key) ? `<span class="badge wait">Under review</span>` : i.req ? `<span class="badge wait">Requested</span>` : ""}${i.cert || i.req ? `<button class="btn small${i.req && !uploaded(i.key) ? " primary" : ""}" type="button" data-upload="onb:${esc(i.key)}" ${dis}>${isConfidential(i.label) ? "🔒 " : ""}${uploaded(i.key) ? "Add file" : "Upload"}</button>` : ""}`}</div>`;
+    ${i.date ? "" : uploaded(i.key) ? `<span class="badge wait">Under review</span>` : i.req ? `<span class="badge wait">Requested</span>` : ""}${PAPER_RE.test(i.label) ? (i.date ? "" : `<span class="badge">Paper form at your session</span>`) : formForItem(i.label) && !formForItem(i.label).optional ? (i.date ? "" : `<span class="badge">Sign below</span>`) : i.cert || i.req ? `<button class="btn small${i.req && !i.date && !uploaded(i.key) ? " primary" : ""}" type="button" data-upload="onb:${esc(i.key)}" ${dis}>${isConfidential(i.label) ? "🔒 " : ""}${i.date || uploaded(i.key) ? "Add file" : "Upload"}</button>` : ""}</div>`;
   const check = pd.checkin && !checkinDone ? `<div class="or-check"><h3>Your ${esc(pd.checkin)}-day check-in</h3><p class="info" style="margin:0">Goes to the orientation chair. It only takes a minute.</p>
       <label class="info">How's it going so far? (1 = not great, 5 = great)</label><div class="slotrow">${[1, 2, 3, 4, 5].map(n => `<button class="slotbtn" type="button" data-crate="${n}" ${dis}>${n}</button>`).join("")}</div>
       <textarea id="ciGoing" rows="2" maxlength="2000" placeholder="Tell us how it's going" aria-label="How it's going" ${dis}></textarea><textarea id="ciHelp" rows="2" maxlength="2000" placeholder="Anything that would help?" aria-label="Anything that would help" ${dis}></textarea>
@@ -61,11 +77,11 @@ function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis 
   return `<section class="card glass" id="orientCard"><h2>Orientation</h2>
     <p class="info" style="margin:0">${o.done} of ${o.total} done${left === null ? "" : left < 0 ? `. This was due ${esc(new Date(o.due + "T12:00").toLocaleDateString())}, so please reach out` : `. Please finish by ${esc(new Date(o.due + "T12:00").toLocaleDateString())}`}.</p>
     <div class="or-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
-    <h3 class="or-h">Your session</h3>${session}<h3 class="or-h">Checklist</h3><p class="info" style="margin:0">All of these are required before you can be issued equipment or run calls.</p><div class="or-list">${(o.items || []).map(item).join("")}</div>
+    <h3 class="or-h">Your session</h3>${session}${formsHTML(pd, forms, dis, files)}<h3 class="or-h">Checklist</h3><p class="info" style="margin:0">All of these are required before you can be issued equipment or run calls.</p><div class="or-list">${(o.items || []).map(item).join("")}</div>
     ${lib.length ? `<h3 class="or-h">Documents</h3><div class="docbtns">${lib.map(d => `<button class="btn small" type="button" data-olib="${esc(d.id)}">${esc(d.name)}</button>`).join("")}</div>` : ""}${check}</section>`;
 }
 // "Your move": the one thing this person can do right now, or a plain "nothing needed" so nobody wonders.
-function moveHTML({ pd, files, slots, oslots, nm, dis, now }){
+function moveHTML({ pd, files, slots, oslots, nm, dis, now, forms = [] }){
   const has = k => files.some(f => f.docKey === k), o = pd.orientation, iv = pd.interview;
   const ivDone = (pd.steps || []).some(s => s.label === "Interview" && s.state === "done");
   const openIv = slots.some(s => !s.bookedBy && s.start > now + DAY), openOr = oslots.some(s => !s.bookedBy && s.start > now + DAY);
@@ -74,6 +90,7 @@ function moveHTML({ pd, files, slots, oslots, nm, dis, now }){
   const go = (to, text) => `<button class="btn primary" type="button" data-goto="${to}" ${dis}>${text}</button>`;
   let m = null;
   if ((pd.refReplace || []).length) m = { head: "We need a different reference", sub: "One of your references couldn't be reached.", btn: go("refCard", "Add a reference") };
+  else if (nm && signOpen(pd) && formsLeft(forms).length) m = { head: "Sign your orientation forms", sub: `${formsLeft(forms).length} to sign on your phone, with the orientation chair.`, btn: go("formsCard", "Sign now") };
   else if (nm && !pd.orient && openOr) m = { head: "Pick your orientation time", sub: "A one-on-one with our orientation chair.", btn: go("orientCard", "See times") };
   else if (req) m = up("onb:" + req.key, req.label);
   else if (doc) m = up(doc.key, doc.label);
@@ -85,7 +102,7 @@ function moveHTML({ pd, files, slots, oslots, nm, dis, now }){
     : `<section class="card glass movecard calm" id="moveCard" aria-label="Nothing needed"><div class="mv-eye">All set for now</div>
       <div class="mv-head">Nothing needed from you right now</div><p class="info" style="margin:0">We'll let you know here, and by email, as soon as there's a next step.</p></section>`;
 }
-export function portalHTML({ back = false, pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "", oslots = [], opick = null, obusy = false, lib = [], checkinDone = false }){
+export function portalHTML({ back = false, pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "", oslots = [], opick = null, obusy = false, lib = [], checkinDone = false, forms = [] }){
   const now = Date.now(), nm = !!pd.orientation;   // nm: moved to orientation, so only the orientation dashboard shows
   // The header takes the colour of the lane they're in (same four lanes as the desk's board).
   const stepNow = (pd.steps || []).findIndex(x => x.state === "now"), stepsDone = (pd.steps || []).length && (pd.steps || []).every(x => x.state === "done");
@@ -128,8 +145,8 @@ export function portalHTML({ back = false, pd, files = [], slots = [], msgs = []
       <div class="info">${nm ? "Welcome to the squad. Here's your orientation." : esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div>
       ${preview ? `<span class="badge wait">Preview</span>` : `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${back ? `<a class="btn small primary" href="/">‹ Back to the desk</a>` : ""}<button class="btn small" type="button" data-tour>How this works</button><button class="btn small" type="button" data-signout>Sign out</button></span>`}</div></section>
 
-${moveHTML({ pd, files, slots, oslots, nm, dis, now })}
-${nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checkinDone, dis }) : `${ivSoonHTML(iv, ivDone, now, dis)}
+${moveHTML({ pd, files, slots, oslots, nm, dis, now, forms })}
+${nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checkinDone, dis, forms }) : `${ivSoonHTML(iv, ivDone, now, dis)}
     <section class="card glass" id="appCard"><h2>Your application</h2>${trackerHTML(pd.steps || [])}${timelineHTML(pd.steps || [])}</section>`}
 
     <section class="card glass" id="msgCard"><div class="ptop"><h2>Messages</h2>${msgs.some(m => m.from === "staff" && !m.seenAt) ? `<span class="badge wait">New reply</span>` : ""}</div>
@@ -149,7 +166,7 @@ ${nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checki
       <div class="docbtns"><button class="btn small" type="button" data-upload="" ${dis}>Send another document</button>
         <button class="btn small" type="button" data-upload="${CONF_KEY}" ${dis}>🔒 Secure document upload</button></div>
       <p class="info" style="margin:0">Use <b>Secure document upload</b> for medical records, your Social Security card and other sensitive papers. Only our orientation paperwork coordinator can open them; the membership committee can't.</p>
-      <p class="info" style="margin:0">PDF or photo, up to 15 MB each. Trouble uploading? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></section>
+      <p class="info" style="margin:0">PDF, photo or Word file, up to 25 MB each. You can send documents any time. Trouble uploading? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></section>
 
     ${nm ? "" : `<section class="card glass"><h2>What to expect</h2><div class="info">
       <ul><li>Your application goes to the next board meeting once your references and all other prerequisites (interview, driving record and application review) are complete. You'll hear back within about a week of that meeting.</li>
@@ -230,7 +247,7 @@ function slotPicker(days, pick, dis, busy){
 }
 
 export function startPortal(id, email, { backToDesk = false } = {}){
-  const P = { oslots: [], opick: null, obusy: false, lib: [], checkins: [], orientOn: false, crate: 0, pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false, refUps: [], refForm: null, refDraft: {}, refSending: false };
+  const P = { oslots: [], opick: null, obusy: false, lib: [], checkins: [], orientOn: false, crate: 0, pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false, refUps: [], refForm: null, refDraft: {}, refSending: false, forms: [] };
   const seen = new Set();
   const root = $("#portal");
   const render = () => {
@@ -240,7 +257,7 @@ export function startPortal(id, email, { backToDesk = false } = {}){
     const ta = $("#msgText"), focused = !!ta && document.activeElement === ta, caret = ta ? ta.selectionStart : 0, scroll = root.scrollTop;
     const rf = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.rf ? document.activeElement : null, rfCaret = rf ? rf.selectionStart : 0;
     if (ta) P.draft = ta.value;
-    root.innerHTML = portalHTML({ back: backToDesk, pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending, push: P.push, oslots: P.oslots, opick: P.opick, obusy: P.obusy, lib: P.lib, checkinDone: !!P.pd.checkin && P.checkins.includes(P.pd.checkin) });
+    root.innerHTML = portalHTML({ back: backToDesk, pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending, push: P.push, oslots: P.oslots, opick: P.opick, obusy: P.obusy, lib: P.lib, forms: P.forms, checkinDone: !!P.pd.checkin && P.checkins.includes(P.pd.checkin) });
     if (rf) { const back = root.querySelector(`[data-rf="${rf.dataset.rf}"]`); if (back) { back.focus({ preventScroll: true }); try { back.setSelectionRange(rfCaret, rfCaret); } catch {} } }
     const t2 = $("#msgText"); if (t2) { t2.value = P.draft; if (focused) { t2.focus({ preventScroll: true }); t2.setSelectionRange(caret, caret); } }
     const th = $("#thread"); if (th) th.scrollTop = th.scrollHeight;
@@ -273,9 +290,43 @@ export function startPortal(id, email, { backToDesk = false } = {}){
   const startOrient = () => { if (P.orientOn) return; P.orientOn = true;
     onSnapshot(collection(db, "orientSlots"), s => { P.oslots = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
     onSnapshot(query(collection(db, "library"), where("newMembers", "==", true)), s => { P.lib = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
+    onSnapshot(collection(db, "portal", id, "forms"), s => { P.forms = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
     onSnapshot(collection(db, "portal", id, "checkins"), s => { P.checkins = s.docs.map(d => d.id); render(); }, () => {}); };
+  let signT;
+  // Sign one form: wording, any questions, typed name and a finger signature. Saved as the signed document.
+  const openSign = key => { const f = formByKey(key); if (!f) return;
+    if (!signOpen(P.pd)) return toast("Signing opens during your orientation session.");
+    const M = openModal(`<h3>${esc(f.title)}</h3><div class="fm-body">${f.statement ? "" : formTextHTML(f, P.pd.name)}<div id="fmStmt">${f.statement ? formTextHTML(f, P.pd.name) : ""}</div>${formFieldsHTML(f)}
+      <label class="fm-f"><span>Type your full legal name</span><input id="fmName" type="text" maxlength="200" autocomplete="name" value="${esc(P.pd.name || "")}"></label>
+      <div class="fm-f"><span>${esc(f.sign || "Your signature")}: sign in the box with your finger</span><canvas id="fmPad" class="fm-pad" aria-label="Signature box"></canvas>
+        <div class="fm-padrow"><span class="info">${esc(new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }))}</span><button class="btn small" type="button" id="fmClear">Clear signature</button></div></div></div>
+      <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="fmSave">Sign and save</button></div>`, true);
+    const pad = signaturePad(M.querySelector("#fmPad")); let busy = false;
+    if (f.groups) { const set = (k, v) => { const el = M.querySelector(`[name="${k}"]`); if (el && v) el.value = v; }; set("m_name", P.pd.name); set("m_email", email); }
+    M.querySelector("#fmName").addEventListener("input", e => { if (f.statement) M.querySelector("#fmStmt").innerHTML = formTextHTML(f, e.target.value.trim()); });
+    M.onclick = async e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("#fmClear")) return pad.clear();
+      if (!e.target.closest("#fmSave") || busy) return;
+      const r = readForm(f, M); if (r.missing) return toast(r.missing);
+      const name = M.querySelector("#fmName").value.trim(), sig = pad.data();
+      if (!name) return toast("Type your full name.");
+      if (!sig) return toast("Sign in the box with your finger first.");
+      if (!signOpen(P.pd)) return toast("Signing has closed. Ask the orientation chair to open it again.");
+      busy = true; const at = Date.now(), body = { key: f.key, title: f.title, values: r.values, name: name.slice(0, 200), sig, signedAt: at, by: email };
+      try {
+        if (f.confidential) {   // medical: the signed form goes only to the paperwork account; the squad sees that it was signed, nothing else
+          await addDoc(collection(db, "vault"), { appId: id, appName: P.pd.name || "", label: HEPB_LABEL, name: f.title + " (signed).pdf", path: "", size: 0, contentType: "form", uploadedAt: at, uploadedBy: email, from: "applicant", form: body });
+          const item = ((P.pd.orientation || {}).items || []).find(x => f.item.test(x.label));
+          await addDoc(collection(db, "portal", id, "files"), { docKey: confKey(P.pd, f), label: item ? item.label : "Secure document", name: "Private document", path: "", size: 0, contentType: "form", uploadedAt: at, uploadedBy: email, confidential: true });
+        } else await setDoc(doc(db, "portal", id, "forms", f.key), body);
+        closeModal(); toast(`Signed: ${f.title}`);
+      } catch (err) { console.error(err); busy = false; toast(/permission/.test(String(err?.code || err)) ? "Signing isn't open right now. Ask the orientation chair to open it." : "Couldn't save. Check your connection and try again."); } };
+  };
+  const viewForm = key => { const f = formByKey(key), d = P.forms.find(x => x.id === key); if (!f || !d || d.confidential) return;
+    const M = openModal(`${formDocHTML(f, d)}<div class="acts"><button class="btn" type="button" data-x>Close</button><button class="btn primary" type="button" id="fmPrint">Print or save as PDF</button></div>`, true);
+    M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("#fmPrint")) { closeModal(); printDoc(formDocHTML(f, d)); } }; };
   const tourRole = () => P.pd?.orientation ? "newmember" : "applicant", tourOpts = () => ({ name: P.pd?.firstName || "", email });
   onSnapshot(doc(db, "portal", id), s => { const firstLoad = !P.pd; P.pd = s.exists() ? s.data() : { steps: [] }; if (P.pd.orientation) startOrient(); render();
+    clearTimeout(signT); const ms = (P.pd.signUntil || 0) - Date.now(); if (ms > 0 && ms < 864e5) signT = setTimeout(render, ms + 500);   // lock the forms again when signing closes
     if (firstLoad && s.exists()) maybeTour(tourRole(), tourOpts()); }, () => toast("Couldn't load your application. Reload the page."));
   onSnapshot(collection(db, "portal", id, "messages"), s => { P.msgs = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x,y) => (x.at||0) - (y.at||0)); render(); }, () => {});
   const send = async () => {
@@ -309,8 +360,11 @@ export function startPortal(id, email, { backToDesk = false } = {}){
   onSnapshot(collection(db, "portal", id, "files"), s => { P.files = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
   onSnapshot(collection(db, "slots"), s => { P.slots = s.docs.map(d => ({ id: d.id, ...d.data() })); if (P.pick && !P.slots.some(x => x.id === P.pick && !x.bookedBy)) P.pick = null; render(); }, () => {});
 
-  const picker = document.createElement("input"); picker.type = "file"; picker.accept = "application/pdf,image/*"; picker.multiple = true; picker.hidden = true; document.body.appendChild(picker);
+  const picker = document.createElement("input"); picker.type = "file"; picker.accept = "application/pdf,image/*,.heic,.heif,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"; picker.multiple = true; picker.hidden = true; document.body.appendChild(picker);
   let uploadKey = "";
+  // Tell the desk when an upload is turned away, and why, so nobody has to guess from "it won't upload".
+  const noteFail = (f, label, code, message) => addDoc(collection(db, "portal", id, "uploadErrors"), { name: String(f.name || "").slice(0, 300), size: f.size || 0, type: String(f.type || "").slice(0, 100), label: String(label || "").slice(0, 200),
+    code: String(code).slice(0, 80), message: String(message).slice(0, 500), at: Date.now(), by: email, device: deviceName() }).catch(() => {});
   picker.addEventListener("change", async () => {
     const list = [...picker.files]; picker.value = ""; if (!list.length) return;
     const docEntry = (P.pd.docs || []).find(d => d.key === uploadKey), orItem = (P.pd.orientation?.items || []).find(i => "onb:" + i.key === uploadKey);
@@ -319,8 +373,8 @@ export function startPortal(id, email, { backToDesk = false } = {}){
     const sent = new Set();
     for (const f of list) {
       const type = typeOf(f);
-      if (!okType(f)) { toast(`${f.name} isn't a PDF or photo.`); continue; }
-      if (f.size > MAX) { toast(`${f.name} is over 15 MB.`); continue; }
+      if (!okType(f)) { toast(`${f.name} can't be sent here. Use a PDF, a photo or a Word file, or email it to ${CONTACT_EMAIL}.`); noteFail(f, label, "wrong-type", "Not a PDF, photo or Word file"); continue; }
+      if (f.size > MAX) { toast(`${f.name} is over 25 MB. Try a photo of each page instead, or email it to ${CONTACT_EMAIL}.`); noteFail(f, label, "too-big", "Over 25 MB"); continue; }
       try {
         toast(`Uploading ${f.name}…`);
         const safe = `${Date.now()}-${f.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
@@ -338,7 +392,7 @@ export function startPortal(id, email, { backToDesk = false } = {}){
           toast(`Uploaded ${f.name}`);
         }
         sent.add(docKey);
-      } catch (e) { console.error(e); toast(`Couldn't upload ${f.name}. ${uploadWhy(e)}, or email it to ${CONTACT_EMAIL}.`); }
+      } catch (e) { console.error(e); toast(`Couldn't upload ${f.name}. ${uploadWhy(e)}, or email it to ${CONTACT_EMAIL}.`); noteFail(f, label, String(e?.code || "error"), String(e?.message || e || "")); }
     }
     // Thank them and say what's still outstanding, so nobody wonders whether they're done.
     if (sent.size) { const has = k => sent.has(k) || P.files.some(f => f.docKey === k);
@@ -362,6 +416,8 @@ export function startPortal(id, email, { backToDesk = false } = {}){
     if (t.closest("[data-csend]")) { if (!P.crate) return toast("Pick a number from 1 to 5 first.");
       try { await setDoc(doc(db, "portal", id, "checkins", String(P.pd.checkin)), { rating: P.crate, going: $("#ciGoing").value.trim(), help: $("#ciHelp").value.trim(), at: Date.now() }); toast("Thanks! That helps a lot."); }
       catch (err) { console.error(err); toast("Couldn't send that. Try again."); } return; }
+    const fsn = t.closest("[data-formsign]"); if (fsn) return openSign(fsn.dataset.formsign);
+    const fvw = t.closest("[data-formview]"); if (fvw) return viewForm(fvw.dataset.formview);
     if (t.closest("[data-tour]")) return showTour(tourRole(), tourOpts());
     const gt = t.closest("[data-goto]"); if (gt) { const el = document.getElementById(gt.dataset.goto) || document.getElementById(gt.dataset.goto === "appCard" ? "orientCard" : "");
       if (el) { el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion:reduce)").matches ? "auto" : "smooth", block: "start" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }

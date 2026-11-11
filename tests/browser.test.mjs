@@ -421,19 +421,19 @@ try {
     await page.locator('[data-k="onb.cprExpires"]').fill(soon); await page.locator('[data-k="onb.cprExpires"]').blur(); await wait(page, 400);
     if ((await priv(page, "a2"))?.onb?.cprExpires !== soon) fail("CPR expiry not saved privately"); else ok("expiration dates save to the private record");
     const items = await page.locator('[data-k^="onb.items."]').count();
-    if (items !== 11 || !/0 of 11 done/.test(await page.locator("#onbCount").textContent())) fail("checklist rows: " + items); else ok("Onboard tab shows the new-member checklist");
+    if (items !== 15 || !/0 of 15 done/.test(await page.locator("#onbCount").textContent())) fail("checklist rows: " + items); else ok("Onboard tab shows the new-member checklist");
     await pickApplicant(page, "Georgia Thurmond");
     await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
     await page.locator('[data-k="board.result"] [data-v="approved"]').click(); await wait(page, 300);
     await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
     await page.locator('[data-k="onb.items.completed_application"]').fill(localDay(Date.now())); await page.locator('[data-k="onb.items.completed_application"]').blur(); await wait(page, 400);
-    if (!/1 of 11 done/.test(await page.locator("#onbCount").textContent())) fail("checklist count: " + await page.locator("#onbCount").textContent()); else ok("checking off an item updates the count");
+    if (!/1 of 15 done/.test(await page.locator("#onbCount").textContent())) fail("checklist count: " + await page.locator("#onbCount").textContent()); else ok("checking off an item updates the count");
     await page.keyboard.press("Escape"); await wait(page, 200); await page.keyboard.press("Escape"); await wait(page, 500);
     await page.evaluate(() => document.querySelector("#overviewBtn")?.click()); await wait(page, 500);
     await page.evaluate(() => document.querySelector('[data-cmd="todoall"]')?.click()); await wait(page, 300);
     const td = await page.locator(".todo .todoitem").evaluateAll(r => r.map(x => x.textContent.replace(/\s+/g, " ").trim()));
     if (!td.some(t => /CPR \/ BLS card expires in 10 days.*Marcus Bell/.test(t))) fail("no expiry to do: " + JSON.stringify(td)); else ok("To do warns 30 days before a card expires");
-    if (!td.some(t => /Finish the new-member checklist.*Georgia Thurmond.*1 of 11 done · next: Copy of driver's license/.test(t))) fail("no checklist to do: " + JSON.stringify(td)); else ok("To do tracks the new-member checklist after approval");
+    if (!td.some(t => /Finish the new-member checklist.*Georgia Thurmond.*1 of 15 done · next: Acknowledgement of Sterling/.test(t))) fail("no checklist to do: " + JSON.stringify(td)); else ok("To do tracks the new-member checklist after approval");
     await ctx.close();
   }
   // ---- Data retention: old declined/withdrawn files are flagged for review, never deleted automatically
@@ -725,7 +725,7 @@ try {
       ["slots/qs1", { start: past, duration: 30, location: "Station", bookedBy: "q1" }],
       ["staff/cory@pvrs.org", { role: "coordinator", name: "Cory Reed" }], ["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Lane" }],
       ["staff/mel@pvrs.org", { role: "member", name: "Mel Member" }],
-      ["portal/m9", { email: "mel@pvrs.org", name: "Mel Member", firstName: "Mel", steps: [], docs: [], refs: [], bookingOpen: false, orientation: { total: 2, done: 1, items: [{ key: "confidentiality_statement", label: "Confidentiality statement", date: "", cert: true }] } }]];
+      ["portal/m9", { email: "mel@pvrs.org", name: "Mel Member", firstName: "Mel", steps: [], docs: [], refs: [], bookingOpen: false, orientation: { total: 2, done: 1, items: [{ key: "copy_of_driver_s_license", label: "Copy of driver's license", date: "", cert: true }] } }]];
     // the coordinator: stage and portal steps follow their desk, and No-show reopens booking
     { const { ctx, page } = await open(browser, { user: { email: "cory@pvrs.org", displayName: "Cory Reed" }, seed }); await wait(page, 3600);
       const sy = await page.evaluate(() => [window.__mock.docs.get("applicants/q1").stage, (window.__mock.docs.get("portal/q1").steps || []).length]);
@@ -763,7 +763,7 @@ try {
       await ctx.close(); }
     { const { ctx, page } = await open(browser, { url: "/?paperwork=1", user: { email: "mel@pvrs.org", displayName: "Mel" }, seed }); await wait(page, 900);
       const t = await page.locator("#portal").textContent().catch(() => "");
-      if (!/Back to the desk/.test(t) || !/Confidentiality statement/.test(t) || !(await page.locator('[data-upload="onb:confidentiality_statement"]').count())) fail("member paperwork page: " + t.replace(/\s+/g, " ").slice(0, 300)); else ok("My paperwork opens their orientation checklist with uploads and a way back");
+      if (!/Back to the desk/.test(t) || !/Copy of driver's license/.test(t) || !(await page.locator('[data-upload^="onb:copy_of_driver"]').count())) fail("member paperwork page: " + t.replace(/\s+/g, " ").slice(0, 300)); else ok("My paperwork opens their orientation checklist with uploads and a way back");
       await ctx.close(); }
     // the applicant: what to bring, reschedule inside 24 hours, and what's still needed after an upload
     { const { ctx, page } = await open(browser, { user: { email: "quinn@example.com", displayName: "" }, seed: [...seed.filter(([k]) => k !== "slots/qs1"), ["slots/qs1", { start: Date.now() + 5 * 36e5, duration: 30, location: "Station", bookedBy: "q1" }]] }); await wait(page, 900);
@@ -915,7 +915,7 @@ try {
       await ctx.close(); }
     { const { ctx, page } = await open(browser, { user: { email: "nina@example.com", displayName: "" }, tour: true,
         seed: [["portal/o9", { email: "nina@example.com", name: "Nina New", firstName: "Nina", steps: [], docs: [], refs: [], bookingOpen: false, orientation: { total: 2, done: 0, items: [] } }]] }); await wait(page, 1900);
-      if (!/Your orientation · 1 of 5/.test(await page.locator("#modal .tour").textContent().catch(() => ""))) fail("no orientation tour for a new member"); else ok("a new member in orientation gets the orientation tour");
+      if (!/Your orientation · 1 of 6/.test(await page.locator("#modal .tour").textContent().catch(() => ""))) fail("no orientation tour for a new member"); else ok("a new member in orientation gets the orientation tour");
       await ctx.close(); }
     // the owner isn't interrupted, but can preview each tour
     { const { ctx, page } = await open(browser, { tour: true }); await wait(page, 1900);
@@ -1068,16 +1068,16 @@ try {
     const o = await page.evaluate(() => { const m = window.__mock.docs; return { pv: m.get("applicants/o1/private/main"), a: m.get("applicants/o1"), pd: m.get("portal/o1"), msg: [...m.entries()].filter(([k]) => k.startsWith("portal/o1/messages/")).map(([, v]) => v.text) }; });
     if (!o.pv.onb?.orientStarted || !o.pd.orientation || o.pd.orientation.items.length < 5 || !o.pd.orientation.due) fail("move: " + JSON.stringify([o.pv.onb, o.pd.orientation])); else ok("moving opens the orientation checklist with a due date");
     const lab = o.pd.orientation.items.map(i => i.label + (i.cert ? "+" : "")).join("|");
-    if (!/^Completed application\|Copy of driver's license\+/.test(lab) || !/Equipment request\+/.test(lab) || /Orientation form[^|]*\+/.test(lab)) fail("sheet items: " + lab); else ok("the checklist is PVRS's mandatory sheet, with uploads where they make sense");
-    if (!o.pd.orientation.items[0].date) fail("completed application not filled in"); else ok("the completed application is checked off automatically");
+    if (!/^Acknowledgement of Sterling[^|+]*\|Completed application\|Copy of driver's license\+/.test(lab) || !/Record of PPD\+/.test(lab) || /Equipment request/.test(lab) || /Orientation form[^|]*\+/.test(lab)) fail("sheet items: " + lab); else ok("the checklist is PVRS's mandatory sheet, with uploads where they make sense");
+    if (!o.pd.orientation.items.find(i => /^Completed application/.test(i.label)).date) fail("completed application not filled in"); else ok("the completed application is checked off automatically");
     if (o.a.email !== "sam@pvrs.org" || o.pd.email !== "sam@pvrs.org") fail("sign-in email not changed: " + JSON.stringify([o.a.email, o.pd.email])); else ok("moving can switch them to a new sign-in email");
     if (!o.msg.some(x => /moving on to orientation/.test(x))) fail("no welcome message"); else ok("moving posts a message to them");
     const others = await page.evaluate(() => [window.__mock.docs.get("portal/o2")?.orientation, window.__mock.docs.get("portal/o3")?.orientation]);
     if (others.some(Boolean)) fail("orientation opened for a locked file"); else ok("locked files get no orientation data");
     await page.locator("#orientBtn").click(); await wait(page, 400);
     if (!(await page.locator(".or-grid").count())) fail("no grid after moving"); else ok("the board shows them against every requirement");
-    await page.locator('[data-ocell="o1"]').nth(1).click(); await wait(page, 400);
-    if (!(await page.locator('[data-ocell="o1"]').nth(1).evaluate(b => b.classList.contains("on")))) fail("cell didn't toggle"); else ok("clicking a box marks it done");
+    await page.locator('[data-ocell="o1"]').nth(2).click(); await wait(page, 400);
+    if (!(await page.locator('[data-ocell="o1"]').nth(2).evaluate(b => b.classList.contains("on")))) fail("cell didn't toggle"); else ok("clicking a box marks it done");
     await page.screenshot({ path: path.join(OUT, "70-orientation-board.png") });
     await page.locator('[data-obook="o1"]').click(); await wait(page, 300); await page.locator('[data-opick="s1"]').click(); await wait(page, 500);
     const bk = await page.evaluate(() => [window.__mock.docs.get("orientSlots/s1").bookedBy, window.__mock.docs.get("portal/o1").orient?.slotId]);
@@ -1097,10 +1097,10 @@ try {
     // your own upload for a checklist line: filed under orientation and checked off
     const odTxt = await page.locator("#orDocs").textContent();
     if (!/Copy of training records/.test(odTxt) || !/Other orientation paperwork/.test(odTxt) || /Completed application/.test(odTxt)) fail("orientation documents list: " + odTxt.slice(0, 300)); else ok("the Onboard tab has an Orientation documents list");
-    await page.locator('[data-orup^="insurance_beneficiary"]').evaluate(b => { const c = HTMLInputElement.prototype.click; HTMLInputElement.prototype.click = function(){}; b.click(); HTMLInputElement.prototype.click = c; });
+    await page.locator('[data-orup^="copy_of_training"]').evaluate(b => { const c = HTMLInputElement.prototype.click; HTMLInputElement.prototype.click = function(){}; b.click(); HTMLInputElement.prototype.click = c; });
     await page.locator("#orPicker").setInputFiles({ name: "emt-card.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 1500);
-    const up = await page.evaluate(() => { const m = window.__mock.docs; return { recs: [...m.entries()].filter(([k]) => k.startsWith("applicants/o1/records/")).map(([, v]) => v), item: m.get("applicants/o1/private/main").onb?.items?.insurance_beneficiary_card_completed }; });
-    if (up.recs.length !== 1 || up.recs[0].label !== "Orientation: Insurance beneficiary card, completed" || !up.recs[0].path.startsWith("records/o1/") || !up.item) fail("orientation upload: " + JSON.stringify(up)); else ok("uploading for a checklist line files it under orientation and checks it off");
+    const up = await page.evaluate(() => { const m = window.__mock.docs; return { recs: [...m.entries()].filter(([k]) => k.startsWith("applicants/o1/records/")).map(([, v]) => v), item: m.get("applicants/o1/private/main").onb?.items?.copy_of_training_records_emt_cpr_etc }; });
+    if (up.recs.length !== 1 || up.recs[0].label !== "Orientation: Copy of training records (EMT, CPR, etc.)" || !up.recs[0].path.startsWith("records/o1/") || !up.item) fail("orientation upload: " + JSON.stringify(up)); else ok("uploading for a checklist line files it under orientation and checks it off");
     if (!/emt-card\.pdf/.test(await page.locator("#orDocs").textContent())) fail("uploaded file not listed"); else ok("the uploaded file shows on its line");
     await page.screenshot({ path: path.join(OUT, "57-orientation-documents.png") });
     await page.locator('.tabdock [data-tab="app"]').click(); await wait(page, 300);
@@ -1114,12 +1114,12 @@ try {
     await page.locator('[data-oact="reqdocs"]').click(); await wait(page, 300);
     const chips = await page.locator("#odChips [data-k]").allTextContents();
     if (chips.length < 6 || chips.some(c => /Completed application|Orientation form/.test(c)) || !chips.some(c => /health physical.*🔒/.test(c))) fail("request chips: " + chips.join("|")); else ok("Request documents lists every outstanding checklist document");
-    await page.locator('#odChips [data-k^="equipment_request"]').click(); await page.locator("#odCustom").fill("Copy of AEMT card"); await page.locator("#odSave").click(); await wait(page, 2400);
+    await page.locator('#odChips [data-k^="verification_of_blood"]').click(); await page.locator("#odCustom").fill("Copy of AEMT card"); await page.locator("#odSave").click(); await wait(page, 2400);
     const rq = await page.evaluate(() => { const m = window.__mock.docs; return { pv: m.get("applicants/o1/private/main"), pd: m.get("portal/o1"), mail: document.querySelector("#emBody")?.value || "", subj: document.querySelector("#emSubject")?.value || "" }; });
     const reqd = rq.pd.orientation.items.filter(i => i.req).map(i => i.key);
-    if (!rq.pv.onb?.requested?.copy_of_training_records_emt_cpr_etc || rq.pv.onb.requested.equipment_request || !reqd.includes("copy_of_training_records_emt_cpr_etc") || reqd.includes("equipment_request")) fail("requested: " + JSON.stringify([rq.pv.onb?.requested, reqd])); else ok("the picked items are marked requested in their dashboard");
+    if (!rq.pv.onb?.requested?.copy_of_training_records_emt_cpr_etc || Object.keys(rq.pv.onb.requested).some(k => k.startsWith("verification_of_blood")) || !reqd.includes("copy_of_training_records_emt_cpr_etc") || reqd.some(k => k.startsWith("verification_of_blood"))) fail("requested: " + JSON.stringify([rq.pv.onb?.requested, reqd])); else ok("the picked items are marked requested in their dashboard");
     if (!(rq.pd.docs || []).some(d => d.label === "Copy of AEMT card")) fail("extra doc not requested: " + JSON.stringify(rq.pd.docs)); else ok("an extra document is requested alongside");
-    if (!/orientation/i.test(rq.subj) || !/Copy of training records/.test(rq.mail) || !/Copy of AEMT card/.test(rq.mail) || /Equipment request/.test(rq.mail)) fail("orientation docs email: " + rq.mail.slice(0, 300)); else ok("the orientation documents email lists what was asked for");
+    if (!/orientation/i.test(rq.subj) || !/Copy of training records/.test(rq.mail) || !/Copy of AEMT card/.test(rq.mail) || /Blood Borne/.test(rq.mail)) fail("orientation docs email: " + rq.mail.slice(0, 300)); else ok("the orientation documents email lists what was asked for");
     await page.locator("#emCancel").click(); await wait(page, 300);
     await page.locator('[data-oact="trainers"]').click(); await wait(page, 300); await page.locator('.cv-pick input[value="ivy@pvrs.org"]').check(); await page.locator("#trSave").click(); await wait(page, 400);
     const so = await page.evaluate(() => window.__mock.docs.get("signoffs/o1"));
@@ -1533,6 +1533,89 @@ try {
     if (!/Step 2 of 3: References/.test(tk) || !/33%/.test(tk)) fail("portal tracker: " + tk); else ok("the portal shows a Step X of Y progress bar");
     if (!/Your interview is (today|tomorrow) at/.test(iv) || !/Add to calendar/.test(iv)) fail("interview reminder: " + iv); else ok("the portal reminds applicants the day before their interview");
     await ctx.close();
+  }
+  // ---- Orientation forms signed on the phone, only while the chair has signing open; uploads any time (Nov 11)
+  {
+    const d = n => localDay(Date.now() - n * 864e5), key = l => l.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
+    const oldPhys = key("Copy of health physical, record of PPD, Hep B record or refusal");
+    const seed = [["applicants/s1", { name: "Sig Ner", email: "s1@example.com", app: { received: d(40), complete: "yes" }, sched: { scheduled: d(25), completed: d(25) }, updatedAt: Date.now() }],
+      ["applicants/s1/private/main", { mvr: { completed: d(30) }, dl: { date: d(30), valid: "yes" }, refs: { r1: { name: "A", returned: d(20) }, r2: { name: "B", returned: d(20) }, r3: { name: "C", returned: d(20) } }, appr: { committee: "yes" },
+        board: { result: "approved", date: d(10) }, bg: { sterReq: d(9), sterDone: d(5), sterResult: "clear" }, portal: { invited: d(8) }, onb: { orientStarted: d(3), items: { [oldPhys]: d(2), copy_of_driver_s_license: d(2) } } }]];
+    const grab = (page, re) => page.evaluate(r => [...window.__mock.docs.entries()].filter(([k]) => new RegExp(r).test(k)), re);
+    let portalDocs, lockedDocs;
+    { const { ctx, page } = await open(browser, { seed }); await wait(page, 900); await pickApplicant(page, "Sig Ner"); await wait(page, 1800);
+      const row = await page.locator("#signRow").textContent().catch(() => "");
+      if (!/Closed/.test(row) || !(await page.locator('[data-signwin="1"]').count())) fail("sign row: " + row); else ok("the Onboard tab has an Open signing switch, closed to start");
+      const pv = await priv(page, "s1"), it = pv.onb.items || {};
+      if (!it.copy_of_health_physical || !it.record_of_ppd || !it.record_of_hep_b_or_signed_refusal) fail("old combined line not carried over: " + JSON.stringify(it)); else ok("dates on the old combined health line carry over to the three new lines");
+      if (!Object.keys(it).some(k => /^acknowledg/.test(k))) fail("Sterling line not ticked"); else ok("the Sterling acknowledgement line is ticked from the finished check");
+      const od = await page.locator("#orDocs").textContent();
+      if (!/Emergency contact form/.test(od) || !/Record of PPD/.test(od) || !/Forms signed on their phone/.test(od) || !/Confidentiality Quiz/.test(od)) fail("orientation docs list: " + od.slice(0, 400)); else ok("the checklist follows the new sheet and lists the phone forms");
+      await wait(page, 600); lockedDocs = await grab(page, "^(portal/s1$|portalEmails)");
+      await page.locator('[data-signwin="1"]').click(); await wait(page, 700);
+      const pd = await page.evaluate(() => window.__mock.docs.get("portal/s1"));
+      if (!(pd.signUntil > Date.now() + 2 * 36e5) || !/Open until/.test(await page.locator("#signRow").textContent())) fail("signing didn't open: " + pd.signUntil); else ok("Open signing gives the new member a three-hour window");
+      portalDocs = await grab(page, "^(portal/s1$|portalEmails)"); await ctx.close(); }
+    const me = { email: "s1@example.com", displayName: "Sig" };
+    { const { ctx, page } = await open(browser, { w: 390, h: 844, user: me, seed: lockedDocs }); await wait(page, 1000);
+      const t = await page.locator("#orientCard").textContent().catch(() => "");
+      if (!/Forms to sign/.test(t) || !/At your session/.test(t) || await page.locator("[data-formsign]").count()) fail("forms should be locked: " + t.slice(0, 300)); else ok("before the session the forms are listed but locked");
+      await ctx.close(); }
+    let after;
+    { const { ctx, page } = await open(browser, { w: 390, h: 844, user: me, seed: portalDocs }); await wait(page, 1000);
+      if (!/Sign your orientation forms/.test(await page.locator("#moveCard").textContent())) fail("no Your move for signing"); else ok("with signing open, Your move says to sign the forms");
+      const ins = page.locator(".or-item", { hasText: "Insurance beneficiary" });
+      if (!/Paper form/.test(await ins.textContent()) || await ins.locator("[data-upload]").count()) fail("insurance line: " + await ins.textContent()); else ok("the insurance beneficiary line is marked paper, with no upload");
+      const lic = page.locator('#orientCard [data-upload="onb:copy_of_driver_s_license"]');
+      if (!(await lic.count()) || !/Add file/.test(await lic.textContent())) fail("no upload on a finished line"); else ok("a line that's already checked off still takes another file");
+      await lic.evaluate(b => { const i = document.querySelector('input[type="file"]'); i.click = () => {}; b.click(); });
+      await page.locator('input[type="file"]').setInputFiles([{ name: "license.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: Buffer.from("PK") }, { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("x") }]); await wait(page, 900);
+      const fl = (await grab(page, "^portal/s1/files/")).map(([, v]) => v), er = (await grab(page, "^portal/s1/uploadErrors/")).map(([, v]) => v);
+      if (!fl.some(f => f.name === "license.docx")) fail("Word file refused"); else ok("a Word file uploads");
+      if (!er.some(e => e.name === "notes.txt" && e.code === "wrong-type")) fail("no note for the refused file: " + JSON.stringify(er)); else ok("a refused file leaves the reason for the desk");
+      // sign the confidentiality statement
+      await page.locator('[data-formsign="confidentiality"]').click(); await wait(page, 400);
+      if (!/may not make public/.test(await page.locator("#modal").textContent())) fail("statement wording missing"); else ok("the form shows the squad's own wording");
+      await page.locator("#fmSave").click(); await wait(page, 300);
+      if ((await grab(page, "^portal/s1/forms/")).length) fail("saved without a signature"); else ok("it can't be saved without a signature");
+      const draw = async () => { const c = page.locator("#fmPad"); await c.scrollIntoViewIfNeeded(); const b = await c.boundingBox();
+        await page.mouse.move(b.x + 30, b.y + 60); await page.mouse.down(); await page.mouse.move(b.x + 90, b.y + 30, { steps: 5 }); await page.mouse.move(b.x + 160, b.y + 90, { steps: 5 }); await page.mouse.up(); };
+      await draw(); await snap(page, "72-sign-form-phone"); await page.locator("#fmSave").click(); await wait(page, 500);
+      const cf = await page.evaluate(() => window.__mock.docs.get("portal/s1/forms/confidentiality"));
+      if (!cf || !/^data:image\/png/.test(cf.sig || "") || cf.name !== "Sig Ner" || cf.by !== "s1@example.com") fail("signed form: " + JSON.stringify(cf).slice(0, 200)); else ok("signing with a finger saves the form with the signature");
+      if (!/Signed/.test(await page.locator(".fm-list .or-item", { hasText: "Confidentiality Statement" }).textContent())) fail("not shown as signed"); else ok("the signed form shows as Signed");
+      await page.locator('[data-formview="confidentiality"]').click(); await wait(page, 300);
+      if (!(await page.locator("#modal .formdoc img").count()) || !(await page.locator("#fmPrint").count())) fail("no document view"); else ok("they can open the signed document and print or save it");
+      await page.locator("#modal [data-x]").click(); await wait(page, 200);
+      // emergency contact: required fields
+      await page.locator('[data-formsign="emergency"]').click(); await wait(page, 300); await draw(); await page.locator("#fmSave").click(); await wait(page, 300);
+      if (await page.evaluate(() => window.__mock.docs.has("portal/s1/forms/emergency"))) fail("emergency form saved with blanks"); else ok("the emergency contact form wants its required lines");
+      for (const [k, v] of [["m_address", "1 Elm St"], ["m_city", "Potsdam"], ["m_phone", "315-555-0100"], ["p_name", "Pat Ner"], ["p_phone", "315-555-0101"]]) await page.locator(`#modal [name="${k}"]`).fill(v);
+      await page.locator("#fmSave").click(); await wait(page, 500);
+      const em = await page.evaluate(() => window.__mock.docs.get("portal/s1/forms/emergency"));
+      if (!em || em.values.p_name !== "Pat Ner" || em.values.m_name !== "Sig Ner") fail("emergency: " + JSON.stringify(em || {}).slice(0, 200)); else ok("the emergency contact form saves what they typed");
+      // Hep B declination is medical: vault only
+      await page.locator('[data-formsign="hepb"]').click(); await wait(page, 300); await draw(); await page.locator("#fmSave").click(); await wait(page, 500);
+      const vault = (await grab(page, "^vault/")).map(([, v]) => v), stub = (await grab(page, "^portal/s1/files/")).map(([, v]) => v).find(f => f.confidential);
+      if (!vault.some(v => v.form && v.form.key === "hepb" && v.path === "") || await page.evaluate(() => window.__mock.docs.has("portal/s1/forms/hepb"))) fail("hep B not vault-only"); else ok("the Hepatitis B declination goes only to the paperwork vault");
+      if (!stub || stub.name !== "Private document" || stub.docKey !== "onb:record_of_hep_b_or_signed_refusal") fail("hep B stub: " + JSON.stringify(stub)); else ok("the squad only gets a nameless private document on the Hep B line");
+      if (!/Sent securely/.test(await page.locator(".fm-list .or-item", { hasText: "Hepatitis B" }).textContent())) fail("hep B row not marked sent"); else ok("their Hep B line reads Sent securely");
+      after = await grab(page, "^(portal/s1|portalEmails|vault/)"); await ctx.close(); }
+    { const { ctx, page } = await open(browser, { seed: [...seed, ...after] }); await wait(page, 900); await pickApplicant(page, "Sig Ner"); await wait(page, 1800);
+      const od = await page.locator("#orDocs").textContent();
+      if (!/needs your countersignature/.test(od) || await page.locator('[data-deskform="hepb"]').count()) fail("desk forms list: " + od.slice(-500)); else ok("the desk lists the signed forms, and no Hep B form to open");
+      if (!/turned away/.test(od) || !/notes\.txt/.test(od)) fail("no upload-failure note on the desk"); else ok("the desk shows which upload was turned away and why");
+      const pv = await priv(page, "s1");
+      if (!pv.onb.items.confidentiality_statement || !pv.onb.items.emergency_contact_form) fail("signed lines not ticked: " + JSON.stringify(pv.onb.items)); else ok("signed forms tick their checklist lines");
+      await page.locator('[data-deskform="confidentiality"]').click(); await wait(page, 300); await snap(page, "73-signed-form-desk");
+      await page.locator("#sfWit").click(); await wait(page, 400);
+      const cf = await page.evaluate(() => window.__mock.docs.get("portal/s1/forms/confidentiality"));
+      if (!cf.witness || !cf.witness.at) fail("no countersignature"); else ok("the orientation chair can countersign");
+      await ctx.close(); }
+    { const { ctx, page } = await open(browser, { user: { email: "orientationpaperwork@pvrs.org", displayName: "Paperwork" }, seed: after }); await wait(page, 900);
+      await page.locator("[data-vopen]").first().click().catch(() => {}); await wait(page, 300);
+      if (!/decline hepatitis B vaccination/.test(await page.locator("#modal").textContent().catch(() => ""))) fail("vault can't open the signed declination"); else ok("the paperwork account can open and print the signed declination");
+      await ctx.close(); }
   }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {

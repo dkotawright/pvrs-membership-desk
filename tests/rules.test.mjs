@@ -230,6 +230,37 @@ await t("and can't change it", setDoc(doc(nm, "portal/o1/checkins/30"), ci({ rat
 await t("a rating of 9 is rejected", setDoc(doc(nm, "portal/o1/checkins/90"), ci({ rating: 9 })), false);
 await t("an admin reads check-ins", getDocs(collectionGroup(admin, "checkins")), true);
 await t("a member can't", getDocs(collectionGroup(member, "checkins")), false);
+
+console.log("Orientation forms signed on the phone");
+const png = "data:image/png;base64,iVBORw0KGgo=";
+const signed = (x = {}) => ({ key: "confidentiality", title: "Confidentiality Statement", values: {}, name: "New Member", sig: png, signedAt: now(), by: "new@example.com", ...x });
+const hepV = (x = {}) => ({ appId: "o1", appName: "New Member", label: "Hepatitis B vaccine declination (signed on phone)", name: "Hep B (signed).pdf", path: "", size: 0, contentType: "form", uploadedAt: now(), uploadedBy: "new@example.com", from: "applicant",
+  form: { key: "hepb", title: "Hepatitis B Vaccine Declination Form", values: {}, name: "New Member", sig: png, signedAt: now(), by: "new@example.com" }, ...x });
+await t("a new member can't sign before signing is opened", setDoc(doc(nm, "portal/o1/forms/confidentiality"), signed()), false);
+await t("or send the Hep B declination", addDoc(collection(nm, "vault"), hepV()), false);
+await t("a new member can't open signing themselves", updateDoc(doc(nm, "portal/o1"), { signUntil: now() + 36e5 }), false);
+await t("the owner opens signing", setDoc(doc(owner, "portal/o1"), { signUntil: now() + 3 * 36e5 }, { merge: true }), true);
+await t("now the new member signs", setDoc(doc(nm, "portal/o1/forms/confidentiality"), signed()), true);
+await t("but can't change a signed form", setDoc(doc(nm, "portal/o1/forms/confidentiality"), signed({ name: "Someone Else" })), false);
+await t("a form with no signature is rejected", setDoc(doc(nm, "portal/o1/forms/bylaws"), signed({ key: "bylaws", sig: "" })), false);
+await t("a made-up form is rejected", setDoc(doc(nm, "portal/o1/forms/other"), signed({ key: "other" })), false);
+await t("signing as someone else is rejected", setDoc(doc(nm, "portal/o1/forms/bylaws"), signed({ key: "bylaws", by: "x@example.com" })), false);
+await t("the Hep B declination can't be left where the squad reads", setDoc(doc(nm, "portal/o1/forms/hepb"), signed({ key: "hepb" })), false);
+await t("another applicant can't sign in this file", setDoc(doc(applicant, "portal/o1/forms/bylaws"), signed({ key: "bylaws", by: "app@example.com" })), false);
+await t("the Hep B declination goes to the vault", addDoc(collection(nm, "vault"), hepV()), true);
+await t("the new member reads their signed form", getDoc(doc(nm, "portal/o1/forms/confidentiality")), true);
+await t("the new member can't countersign", updateDoc(doc(nm, "portal/o1/forms/confidentiality"), { witness: { name: "Me", by: "new@example.com", at: now() } }), false);
+await t("the owner countersigns", updateDoc(doc(owner, "portal/o1/forms/confidentiality"), { witness: { name: "Dkota", by: "dkota@pvrs.org", at: now() } }), true);
+await t("the owner can't rewrite the signature", updateDoc(doc(owner, "portal/o1/forms/confidentiality"), { sig: png + "x" }), false);
+await t("an admin reads signed forms", getDocs(collectionGroup(admin, "forms")), true);
+await t("a member can't", getDocs(collectionGroup(member, "forms")), false);
+await t("signing closes again", setDoc(doc(owner, "portal/o1"), { signUntil: 0 }, { merge: true }), true);
+await t("and then nothing more can be signed", setDoc(doc(nm, "portal/o1/forms/bylaws"), signed({ key: "bylaws" })), false);
+const upErr = (x = {}) => ({ name: "notes.txt", size: 3, type: "text/plain", label: "Other", code: "wrong-type", message: "Not a PDF, photo or Word file", at: now(), by: "new@example.com", device: "iPhone", ...x });
+await t("a refused upload leaves a note", addDoc(collection(nm, "portal/o1/uploadErrors"), upErr()), true);
+await t("not in someone else's file", addDoc(collection(applicant, "portal/o1/uploadErrors"), upErr({ by: "app@example.com" })), false);
+await t("an admin reads the notes", getDocs(collectionGroup(admin, "uploadErrors")), true);
+await t("a member can't", getDocs(collectionGroup(member, "uploadErrors")), false);
 await t("a member lists documents for members", getDocs(query(collection(member, "library"), where("roles", "array-contains", "member"))), true);
 await t("not board-only ones", getDoc(doc(member, "library/d2")), false);
 await t("a new member lists documents meant for them", getDocs(query(collection(nm, "library"), where("newMembers", "==", true))), true);
