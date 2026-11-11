@@ -699,7 +699,7 @@ try {
     const ph = await page.locator("#dProg .ph").evaluateAll(l => l.map(x => x.className.replace("ph", "").trim() + ":" + x.textContent.replace(/\s+/g, " ").trim()));
     if (ph.length !== 5 || !/^done:Screening ?Done/.test(ph[0]) || !/^cur:Interview ?0 of 2/.test(ph[1]) || /done|cur/.test(ph[2])) fail("phases: " + ph.join(" | ")); else ok("the header shows five labelled phases with the current one marked");
     const st = (await page.locator("#dProg .t").textContent()).replace(/\s+/g, " ");
-    if (!/Interview isn't scheduled yet/.test(st) || !/Open booking so Pat can pick a time, or book it for them/.test(st) || !/Schedule it/.test(st) || !/5 of 14 steps/.test(st)) fail("status line: " + st); else ok("one sentence says where they stand and what to do");
+    if (!/Interview isn't scheduled yet/.test(st) || !/Open interview booking\. Pat can then pick a time/.test(st) || !/Schedule it/.test(st) || !/5 of 14 steps/.test(st)) fail("status line: " + st); else ok("one sentence says where they stand and what to do");
     await page.screenshot({ path: path.join(OUT, "54-progress-not-scheduled.png") });
     const pd = await page.evaluate(() => window.__mock.docs.get("portal/p1").steps.find(x => x.label === "Interview"));
     if (pd?.state !== "now" || pd.short !== "not scheduled yet" || !/Not scheduled yet/.test(pd.detail)) fail("portal interview step: " + JSON.stringify(pd)); else ok("the applicant's portal also says not scheduled yet");
@@ -772,7 +772,7 @@ try {
       await page.locator("[data-resched]").click(); await wait(page, 500);
       const m = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/q1/messages/")).map(([, v]) => v));
       if (!m.some(x => x.from === "applicant" && /need to reschedule my interview/.test(x.text))) fail("reschedule message: " + JSON.stringify(m)); else ok("the reschedule button sends the squad a message");
-      await page.locator('[data-upload="d1"]').evaluate(b => { const i = document.querySelector('input[type="file"]'); i.click = () => {}; b.click(); });
+      await page.locator('#docCard [data-upload="d1"]').evaluate(b => { const i = document.querySelector('input[type="file"]'); i.click = () => {}; b.click(); });
       await page.locator('input[type="file"]').setInputFiles({ name: "cpr.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 2600);
       const tt = await page.locator("#toast").textContent();
       if (!/Still needed: EMT certification card/.test(tt) || /CPR card/.test(tt)) fail("after-upload note: " + tt); else ok("after an upload the portal says what's still needed");
@@ -850,6 +850,40 @@ try {
     { const { ctx, page } = await open(browser, { user: { email: "marcus.bell@example.com", displayName: "" }, w: 390, h: 844 }); await wait(page, 900);
       if (!(await page.locator(".portal .card.phead").count())) fail("portal header has no lane colour"); else ok("the applicant portal's header is in their lane's colour");
       await page.screenshot({ path: path.join(OUT, "65-lanes-portal.png") });
+      await ctx.close(); }
+  }
+  // ---- Lanes stage 2: a file's "your move" strip; the portal's Your move card, journey colours and bottom menu
+  {
+    const d = n => localDay(Date.now() - n * 864e5), ref = { returned: d(3) };
+    const seed = [["applicants/p1", { name: "Pat Waiting", email: "pat@example.com", type: "Regular", app: { received: d(20), complete: "yes" }, updatedAt: Date.now() }],
+      ["applicants/p1/private/main", { mvr: { completed: d(10) }, dl: { date: d(9), valid: "yes" }, refs: { r1: { name: "A", ...ref }, r2: { name: "B", ...ref }, r3: { name: "C", ...ref } }, portal: { invited: d(15) } }],
+      ["portal/p1", { email: "pat@example.com", name: "Pat Waiting", firstName: "Pat", steps: [{ label: "Application received", state: "done" }, { label: "Application review", state: "done" }, { label: "References and driving record", state: "done" }, { label: "Interview", state: "now", detail: "Not scheduled yet." }, { label: "Board review", state: "todo" }], docs: [], refs: [], bookingOpen: true }],
+      ["portalEmails/pat@example.com", { id: "p1" }], ["slots/ms1", { start: Date.now() + 4 * 864e5, duration: 30, location: "Station", bookedBy: null }]];
+    { const { ctx, page } = await open(browser, { seed }); await wait(page, 900);
+      await pickApplicant(page, "Pat Waiting");
+      const mv = (await page.locator("#dProg .t.move").textContent().catch(() => "")).replace(/\s+/g, " ");
+      if (!/Open interview booking/.test(mv) || !(await page.locator("#dProg .t.move .ping").count()) || !(await page.locator('#dProg .movego[data-todoact="booking"]').count())) fail("file move strip: " + mv); else ok("an open file shows its To do item as a Your move strip with the action button");
+      await page.locator("#dProg .movego").click(); await wait(page, 900);
+      if ((await priv(page, "p1")).portal.bookingOpen !== "yes") fail("move strip button didn't act"); else ok("the strip's button does the job from inside the file");
+      await page.screenshot({ path: path.join(OUT, "66-file-move.png") });
+      await ctx.close(); }
+    { const { ctx, page } = await open(browser, { user: { email: "pat@example.com", displayName: "" }, seed, w: 390, h: 844 }); await wait(page, 900);
+      const mc = (await page.locator("#moveCard").textContent()).replace(/\s+/g, " ");
+      if (!/Your move/.test(mc) || !/Pick your interview time/.test(mc) || !(await page.locator('#moveCard [data-goto="ivCard"]').count())) fail("portal move card: " + mc); else ok("the portal opens with Your move: pick your interview time");
+      const nav = await page.locator(".pnav button").allTextContents();
+      if (nav.map(x => x.trim()).join() !== "My application,Documents,Messages" || !(await page.locator(".pnav").isVisible())) fail("portal bottom menu: " + nav); else ok("phones get a three-item bottom menu in the portal");
+      await page.locator('.pnav [data-goto="msgCard"]').click(); await wait(page, 700);
+      const inView = await page.evaluate(() => { const r = document.querySelector("#msgCard").getBoundingClientRect(); return r.top < innerHeight - 100 && r.bottom > 0; });
+      if (!inView || !(await page.locator('.pnav [data-goto="msgCard"].on').count())) fail("bottom menu didn't jump to Messages"); else ok("the bottom menu jumps to each section");
+      const lc = await page.evaluate(() => { const m = document.querySelectorAll(".timeline .mile"), v = e => getComputedStyle(e).getPropertyValue("--stage-c").trim(), r = getComputedStyle(document.documentElement); return [v(m[0]) === r.getPropertyValue("--s-screen").trim(), v(m[3]) === r.getPropertyValue("--s-int").trim(), v(m[4]) === r.getPropertyValue("--s-appr").trim()]; });
+      if (lc.includes(false)) fail("journey steps aren't in lane colours: " + lc); else ok("the applicant's journey uses the same lane colours as the desk");
+      if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)) fail("portal wider than the phone"); else ok("the portal still fits a phone");
+      await page.evaluate(() => document.querySelector("#portal").scrollTo(0, 0)); await wait(page, 300);
+      await page.screenshot({ path: path.join(OUT, "67-portal-move.png") });
+      await ctx.close(); }
+    { const { ctx, page } = await open(browser, { user: { email: "marcus.bell@example.com", displayName: "" } }); await wait(page, 900);
+      const mc = (await page.locator("#moveCard").textContent()).replace(/\s+/g, " ");
+      if (!/Nothing needed from you right now/.test(mc) || await page.locator("#moveCard .ping").count()) fail("calm move card: " + mc); else ok("with nothing to do, the portal says so plainly");
       await ctx.close(); }
   }
   // ---- First-visit tour: once per person and role, with a way to see it again
@@ -1117,7 +1151,7 @@ try {
       const lic = page.locator('.or-item:has([data-upload="onb:copy_of_training_records_emt_cpr_etc"])');
       if (!/Requested/.test(await lic.textContent().catch(() => "")) || !(await lic.locator(".btn.primary").count())) fail("requested item not highlighted"); else ok("requested items stand out with an Upload button");
       // a scan with no file type (some phones) still uploads, as a PDF
-      await page.locator('[data-upload="onb:copy_of_training_records_emt_cpr_etc"]').evaluate(b => { const i = document.querySelector('input[type="file"]'); i.click = () => {}; b.click(); });
+      await page.locator('#orientCard [data-upload="onb:copy_of_training_records_emt_cpr_etc"]').evaluate(b => { const i = document.querySelector('input[type="file"]'); i.click = () => {}; b.click(); });
       await page.locator('input[type="file"]').setInputFiles({ name: "emt card scan.PDF", mimeType: "", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 800);
       const upf = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/o1/files/")).map(([, v]) => v));
       if (!upf.some(f => f.docKey === "onb:copy_of_training_records_emt_cpr_etc" && f.contentType === "application/pdf")) fail("typeless upload: " + JSON.stringify(upf)); else ok("a file with no type still uploads against its checklist item");
