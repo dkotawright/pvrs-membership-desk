@@ -396,7 +396,7 @@ export function startPortal(id, email, { backToDesk = false } = {}){
     }
     // Thank them and say what's still outstanding, so nobody wonders whether they're done.
     if (sent.size) { const has = k => sent.has(k) || P.files.some(f => f.docKey === k);
-      const left = [...(P.pd.docs || []).filter(d => !d.received && !has(d.key)).map(d => d.label), ...((P.pd.orientation || {}).items || []).filter(i => !i.date && (i.cert || i.req) && !has("onb:" + i.key)).map(i => i.label)];
+      const left = [...(P.pd.docs || []).filter(d => !d.received && !has(d.key)).map(d => d.label), ...((P.pd.orientation || {}).items || []).filter(i => !i.date && (i.cert || i.req) && !PAPER_RE.test(i.label) && !(formForItem(i.label) && !formForItem(i.label).optional) && !has("onb:" + i.key)).map(i => i.label)];
       setTimeout(() => toast(left.length ? `Thank you! Still needed: ${left.slice(0, 3).join("; ")}${left.length > 3 ? ` and ${left.length - 3} more` : ""}.` : "Thank you! That's everything we've asked for so far."), 1800); }
   });
 

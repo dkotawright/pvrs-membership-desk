@@ -7,7 +7,7 @@ import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysS
   progress, statusOf, PHASES, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
 import { showTour, maybeTour } from "./tour.js";
-import { FORMS, formByKey, formDocHTML, printDoc } from "./forms.js";
+import { FORMS, formByKey, formForItem, formDocHTML, printDoc } from "./forms.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL, VAPID_KEY } from "./config.js";
 
@@ -3678,7 +3678,9 @@ function openMoveToOrientation(id){
     } catch (err) { console.error(err); go.disabled = false; toast("Couldn't finish that. Try again."); } };
 }
 // Checklist items the new member can still send in (not dated yet, and not the application / orientation form).
-const orientDocItems = a => onbItems().filter(([k, l]) => !NOT_CERT_RE.test(l) && !get(a, `onb.items.${k}`));
+// Not things to ask for by upload: the paper insurance form, and lines that are signed on the phone at the session.
+const notUploadItem = l => /insurance|beneficiar/i.test(l) || !!(formForItem(l) && !formForItem(l).optional);
+const orientDocItems = a => onbItems().filter(([k, l]) => !NOT_CERT_RE.test(l) && !notUploadItem(l) && !get(a, `onb.items.${k}`));
 // Onboard tab → Request documents: marks the picked checklist items as requested (they're highlighted in the new
 // member's dashboard with an Upload button), adds anything extra as a normal document request, and opens the email.
 function openOrientDocs(id){

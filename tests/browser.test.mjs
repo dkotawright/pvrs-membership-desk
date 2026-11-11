@@ -1097,10 +1097,10 @@ try {
     // your own upload for a checklist line: filed under orientation and checked off
     const odTxt = await page.locator("#orDocs").textContent();
     if (!/Copy of training records/.test(odTxt) || !/Other orientation paperwork/.test(odTxt) || /Completed application/.test(odTxt)) fail("orientation documents list: " + odTxt.slice(0, 300)); else ok("the Onboard tab has an Orientation documents list");
-    await page.locator('[data-orup^="copy_of_training"]').evaluate(b => { const c = HTMLInputElement.prototype.click; HTMLInputElement.prototype.click = function(){}; b.click(); HTMLInputElement.prototype.click = c; });
+    await page.locator('[data-orup^="copy_of_driver"]').evaluate(b => { const c = HTMLInputElement.prototype.click; HTMLInputElement.prototype.click = function(){}; b.click(); HTMLInputElement.prototype.click = c; });
     await page.locator("#orPicker").setInputFiles({ name: "emt-card.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 1500);
-    const up = await page.evaluate(() => { const m = window.__mock.docs; return { recs: [...m.entries()].filter(([k]) => k.startsWith("applicants/o1/records/")).map(([, v]) => v), item: m.get("applicants/o1/private/main").onb?.items?.copy_of_training_records_emt_cpr_etc }; });
-    if (up.recs.length !== 1 || up.recs[0].label !== "Orientation: Copy of training records (EMT, CPR, etc.)" || !up.recs[0].path.startsWith("records/o1/") || !up.item) fail("orientation upload: " + JSON.stringify(up)); else ok("uploading for a checklist line files it under orientation and checks it off");
+    const up = await page.evaluate(() => { const m = window.__mock.docs; return { recs: [...m.entries()].filter(([k]) => k.startsWith("applicants/o1/records/")).map(([, v]) => v), item: m.get("applicants/o1/private/main").onb?.items?.copy_of_driver_s_license }; });
+    if (up.recs.length !== 1 || up.recs[0].label !== "Orientation: Copy of driver's license" || !up.recs[0].path.startsWith("records/o1/") || !up.item) fail("orientation upload: " + JSON.stringify(up)); else ok("uploading for a checklist line files it under orientation and checks it off");
     if (!/emt-card\.pdf/.test(await page.locator("#orDocs").textContent())) fail("uploaded file not listed"); else ok("the uploaded file shows on its line");
     await page.screenshot({ path: path.join(OUT, "57-orientation-documents.png") });
     await page.locator('.tabdock [data-tab="app"]').click(); await wait(page, 300);
@@ -1113,7 +1113,7 @@ try {
     // Request documents from the Onboard tab: marks the checklist items as requested and opens the email
     await page.locator('[data-oact="reqdocs"]').click(); await wait(page, 300);
     const chips = await page.locator("#odChips [data-k]").allTextContents();
-    if (chips.length < 6 || chips.some(c => /Completed application|Orientation form/.test(c)) || !chips.some(c => /health physical.*🔒/.test(c))) fail("request chips: " + chips.join("|")); else ok("Request documents lists every outstanding checklist document");
+    if (chips.length < 5 || chips.some(c => /Completed application|Orientation form|Insurance|Confidentiality|Emergency contact/.test(c)) || !chips.some(c => /health physical.*🔒/.test(c))) fail("request chips: " + chips.join("|")); else ok("Request documents lists every outstanding checklist document");
     await page.locator('#odChips [data-k^="verification_of_blood"]').click(); await page.locator("#odCustom").fill("Copy of AEMT card"); await page.locator("#odSave").click(); await wait(page, 2400);
     const rq = await page.evaluate(() => { const m = window.__mock.docs; return { pv: m.get("applicants/o1/private/main"), pd: m.get("portal/o1"), mail: document.querySelector("#emBody")?.value || "", subj: document.querySelector("#emSubject")?.value || "" }; });
     const reqd = rq.pd.orientation.items.filter(i => i.req).map(i => i.key);
