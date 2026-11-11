@@ -815,8 +815,12 @@ function syncDetail(){
       return `<button type="button" class="ph ${full ? "done" : cur && !closed ? "cur" : ""}" data-step="${go}" style="--stage-c:${stageVar(k)}" title="${esc(tip)}" aria-label="${esc(label)}: ${dn} of ${tot} done${cur ? ", current" : ""}">
         <span class="phd" aria-hidden="true">${full ? checkSVG : ""}</span><span class="phl">${esc(label)}</span><span class="phn">${full ? "Done" : dn || cur ? `${dn} of ${tot}` : ""}</span></button>`; }).join("");
     pr.innerHTML = `<div class="phases">${ph}<span class="ph ${p.cur === -1 && !closed ? "done" : ""}" style="--stage-c:${stageVar("act")}"><span class="phd" aria-hidden="true">${p.cur === -1 ? checkSVG : ""}</span><span class="phl">Active</span><span class="phn"></span></span></div>
-    <div class="t"><span class="tw"><strong>${esc(stt.head)}</strong>${stt.sub ? `<span class="ts">${esc(stt.sub)}</span>` : ""}</span>
-      ${p.next && !closed ? `<button class="btn small nextgo" type="button" data-act="nextgo" title="${esc(p.next)}">${p.cur === 5 ? "Schedule it" : p.cur === 6 ? "Open interview" : "Go to it"} →</button>` : ""}<span class="tc">${p.n} of ${MILESTONES.length} steps</span></div>`; }
+    ${(() => { // Your move: when this file has something on the To do list, the strip turns ink, pings, and carries that action's button.
+      const mv = S.admin && !closed ? (S.coord ? coordItems() : todoItems()).find(x => x.id === a._id && x.pri <= 2) : null;
+      const canAct = mv && mv.act && (S.canEdit || (S.sched && COORD_ACTS.has(mv.act)));
+      return `<div class="t${mv ? " move" : ""}">${mv ? PING : ""}<span class="tw"><strong>${esc(stt.head)}</strong><span class="ts">${esc(mv ? mv.text + (mv.sub ? ". " + mv.sub : "") : stt.sub || "")}</span></span>
+      ${canAct ? `<button class="btn small movego" type="button" data-todoact="${esc(mv.act)}" data-id="${esc(a._id)}">${esc(mv.btn)}</button>` : ""}
+      ${p.next && !closed ? `<button class="btn small nextgo" type="button" data-act="nextgo" title="${esc(p.next)}">${p.cur === 5 ? "Schedule it" : p.cur === 6 ? "Open interview" : "Go to it"} →</button>` : ""}<span class="tc">${p.n} of ${MILESTONES.length} steps</span></div>`; })()}`; }
   const ab = $("#aiBrief"); if (ab) { ab.innerHTML = briefHTML(get(a, "ai.brief")); const bb = document.querySelector("[data-aibrief]"); if (bb && !bb.disabled) bb.textContent = get(a, "ai.brief") ? "Redo brief" : "Make brief"; }
   const ist = $("#ivScoreTotal"); if (ist) ist.textContent = ivScoreText(a);
   const oc = $("#onbCount"); if (oc) { const its = onbItems(), n = its.filter(([k]) => get(a, `onb.items.${k}`)).length; oc.textContent = its.length ? `${n} of ${its.length} done` : ""; }

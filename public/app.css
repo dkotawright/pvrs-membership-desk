@@ -2088,3 +2088,43 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
 .ovhead h2{background:none;color:var(--fg);-webkit-text-fill-color:currentColor;font-weight:700}
 .msg.me .bub{background:var(--fg);color:var(--bg)}
 .cv-m.mine .cv-bub{background:var(--fg);color:var(--bg)}
+
+/* ---------- Lanes, stage 2 (Nov 11): a file's "your move" strip; portal Your move card, journey colours, bottom menu ---------- */
+.prog .t.move{background:var(--ink);color:var(--ink-fg);border-radius:14px;padding:10px 12px 10px 14px;animation:lnRise .35s ease-out both}
+.prog .t.move strong{color:var(--ink-fg)}
+.prog .t.move .ts{color:var(--ink-fg2)}
+.prog .t.move .tc{color:var(--ink-fg2)}
+.prog .t.move .movego{background:var(--gold);color:var(--gold-ink);border:0;font-weight:700;flex:none;height:32px;padding:0 14px}
+.prog .t.move .nextgo{background:#33333A;color:var(--ink-fg)}
+.movecard{background:var(--ink);color:var(--ink-fg);display:flex;flex-direction:column;gap:10px}
+.portal .card.movecard{background:var(--ink);color:var(--ink-fg)}
+.movecard .mv-eye{display:flex;align-items:center;gap:10px;color:var(--gold);font-weight:700;font-size:13.5px}
+.movecard .mv-head{font-family:var(--font-display);font-size:22px;font-weight:700;line-height:1.2;letter-spacing:-.02em}
+.movecard .info{color:var(--ink-fg2)}
+.movecard .mv-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.movecard .btn.primary{background:var(--gold);color:var(--gold-ink);height:48px;padding:0 22px;border-radius:14px;font-weight:700}
+.movecard.calm .mv-eye{color:var(--ink-fg2)}
+.portal .card.flash{animation:lnFlash 1.2s ease-out}
+@keyframes lnFlash{0%{box-shadow:0 0 0 3px var(--gold)}100%{box-shadow:0 0 0 3px transparent}}
+/* the applicant's journey, in the same lane colours as the desk */
+.timeline .mile{--stage-c:var(--s-screen)}
+.timeline .mile:nth-child(4){--stage-c:var(--s-int)}
+.timeline .mile:nth-child(5){--stage-c:var(--s-appr)}
+.timeline .mile:nth-child(n+6){--stage-c:var(--s-onb)}
+.timeline .mile{border-bottom:0;border-radius:14px;padding:10px 12px;margin-bottom:6px;background:color-mix(in srgb,var(--stage-c) 9%,var(--pane))}
+.timeline .mile.done .dot{background:var(--stage-c);border-color:var(--stage-c)}
+.timeline .mile.cur{box-shadow:inset 0 0 0 2px var(--stage-c)}
+.timeline .mile.cur .dot{border-color:var(--stage-c);box-shadow:0 0 0 3px color-mix(in srgb,var(--stage-c) 22%,transparent)}
+.tk-bar i.done,.tk-bar i.cur{background:var(--s-screen)}
+/* portal bottom menu (phones) */
+.pnav{display:none}
+@media (max-width:860px){
+  .portal{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+  .pnav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;position:fixed;z-index:30;left:14px;right:14px;bottom:calc(12px + env(safe-area-inset-bottom,0px));padding:6px;border-radius:20px;background:var(--ink);box-shadow:0 18px 30px -18px rgba(27,27,31,.8)}
+  .pnav button{appearance:none;border:0;background:transparent;color:var(--ink-fg2);font:inherit;font-weight:600;font-size:13.5px;height:46px;border-radius:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s ease,color .15s ease}
+  .pnav button.on{background:var(--ink-fg);color:var(--ink);font-weight:700}
+  .prog .t.move{flex-wrap:wrap}
+}
+@media (prefers-reduced-motion:reduce){ .prog .t.move,.portal .card.flash{animation:none} }
+.tracker{background:var(--fill);border:0}
+.tk-top span{color:var(--fg2)}
