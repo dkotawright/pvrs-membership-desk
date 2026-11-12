@@ -526,7 +526,7 @@ function boardHTML(rows, c, notSched, inOrientation){
   return `<div class="lanes" role="group" aria-label="The board">${cols.map(([k, label, n, sub]) => { const lane = k === "orient" ? "onb" : k, list = rows.filter(r => inCol(r, k));
     return `<section class="lane" style="--stage-c:${stageVar(lane)}" aria-label="${label}">
       <button class="stg lhead" type="button" data-filter="${k}"><span class="k">${label}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ""}<span class="v">${n}</span></button>
-      ${list.slice(0, 5).map(card).join("") || `<div class="lempty">${k === "orient" ? "Approve at the board and the file moves here on its own." : "Nobody here right now."}</div>`}
+      ${list.slice(0, 5).map(card).join("") || `<div class="lempty">${k === "orient" ? "Approve at the board and the file moves here on its own." : "All clear in this lane."}</div>`}
       ${list.length > 5 ? `<button class="lmore" type="button" data-filter="${k}">${list.length - 5} more</button>` : ""}</section>`; }).join("")}
     <button class="stg lact" type="button" data-filter="act" style="--stage-c:${stageVar("act")}"><span class="k">Active members</span><span class="v">${c.act || 0}</span></button></div>`;
 }
