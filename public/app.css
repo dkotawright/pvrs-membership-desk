@@ -466,10 +466,11 @@ mark{background:color-mix(in srgb,#ffd60a 45%,transparent);color:inherit;border-
 #print{display:none}
 @media print{
   @page{margin:14mm 14mm 16mm}
+  @page packet{margin:14mm 14mm 18mm;@bottom-right{content:counter(page);font-size:8pt;color:#666}}
   html,body{height:auto!important;overflow:visible!important;background:#fff!important;padding:0!important}
   body.printing>*:not(#print){display:none!important}
   body.printing #print{display:block;color:#111;font:10.5pt/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}
-  .pk{break-after:page;page-break-after:always}
+  .pk{break-after:page;page-break-after:always;page:packet}
   .pk:last-child{break-after:auto;page-break-after:auto}
   .pk header{display:flex;gap:16px;align-items:center;border-bottom:2px solid #00356f;padding-bottom:10px;margin-bottom:12px}
   .pk header img{width:150px;height:auto}
@@ -491,6 +492,8 @@ mark{background:color-mix(in srgb,#ffd60a 45%,transparent);color:inherit;border-
   .pk-res{margin:10px 0 0;font-size:11pt}
   .pk footer{margin-top:18px;padding-top:6px;border-top:1px solid #ccd;font-size:8pt;color:#666}
   .pk-scan{display:block;width:auto;max-width:100%;max-height:220mm;margin:8px auto;object-fit:contain}
+  .pk-toc{margin:0;padding-left:1.2em}
+  .pk-toc li{margin:3px 0}
 }
 
 /* ======================================================================

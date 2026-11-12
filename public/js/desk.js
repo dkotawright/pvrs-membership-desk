@@ -3807,10 +3807,26 @@ function orientRecordSection(a){
     <h2>Orientation</h2><table>${row("Session", s ? slotLong(s.start) : "")}${row("Mentor", get(a, "onb.mentor"))}${row("EMT card number", get(a, "onb.emtCard"))}${row("EMT card expires", get(a, "onb.emtExpires") ? fmtDate(get(a, "onb.emtExpires")) : "")}</table>
     <h2>Mandatory information, required before issuing any equipment and/or the ability to run calls</h2><table>${onbItems().map(([k, l]) => row(l, get(a, `onb.items.${k}`) ? fmtDate(get(a, `onb.items.${k}`)) : "")).join("")}</table>
     ${so ? `<h2>Trainer sign-offs</h2><table>${(so.items || []).map(i => { const d = (so.done || {})[i.key]; return row(i.label, d ? `${d.name || d.by} · ${new Date(d.at).toLocaleDateString()}` : ""); }).join("")}</table>` : ""}
+    ${(() => { const checks = [...S.checkins.values()].filter(c => c.appId === a._id).sort((x, y) => +x.n - +y.n); return checks.length ? `<h2>Check-ins</h2>${checks.map(c => `<div class="pq"><b>${esc(c.n)}-day check-in · ${esc(c.rating)} of 5${c.at ? " · " + esc(new Date(c.at).toLocaleDateString()) : ""}</b><p>How it's going: ${esc(c.going || "—")}</p><p>What would help: ${esc(c.help || "—")}</p></div>`).join("")}` : ""; })()}
     <h2>Sign-off</h2><table class="vote"><tr><th>Orientation chair</th><td></td><th>Date</th><td></td></tr><tr><th>New member</th><td></td><th>Date</th><td></td></tr></table>
     <footer>Potsdam Volunteer Rescue Squad · Printed ${esc(new Date().toLocaleDateString())}</footer></section>`;
 }
 function printOrientRecord(id){ const a = S.apps.get(id); if (a) printHTML(orientRecordSection(a)); }
+// The front of the packet: who they are, and a list of every page that follows, so the paper file stands on its own.
+function packetCover(a, titles){
+  const s = orientSession(a._id), row = (k, v) => v ? `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>` : "";
+  const who = [row("Phone", a.phone), row("Email", a.email), row("Lives in", loc(a)), row("Membership", a.type ? a.type + " membership" : ""),
+    row("Mentor", get(a, "onb.mentor")), row("One-on-one", s ? slotLong(s.start) + (s.location ? " · " + s.location : "") : ""),
+    row("Orientation started", get(a, "onb.orientStarted") ? longDate(get(a, "onb.orientStarted")) : ""),
+    row("Member since", get(a, "onb.memberSince") ? longDate(get(a, "onb.memberSince")) : ""),
+    row("Board approved", get(a, "board.date") ? longDate(get(a, "board.date")) : "")].join("");
+  return `<section class="pk"><header><img src="/img/logo.png" alt=""><div><div class="pk-k">Orientation packet</div><h1>${esc(a.name || "New member")}</h1>
+      <div class="pk-s">${esc([a.type ? a.type + " membership" : "", get(a, "onb.direct") ? "Started at orientation" : ""].filter(Boolean).join(" · "))}</div></div></header>
+    ${who ? `<h2>Member</h2><table>${who}</table>` : ""}
+    <h2>In this packet</h2><ol class="pk-toc">${titles.map(t => `<li>${esc(t)}</li>`).join("")}</ol>
+    <p>Save or print this, then the photos and PDFs that made it in can come off the desk. ${esc(first(a.name) || "They")} stay${a.name ? "s" : ""} on the desk, with the checklist.</p>
+    <footer>Potsdam Volunteer Rescue Squad · Printed ${esc(new Date().toLocaleDateString())}</footer></section>`;
+}
 // Photos and PDFs on the open file. Medical files have no path here; they stay with the paperwork account.
 function packetUploads(id){
   if (S.sel !== id) return [];
@@ -3863,24 +3879,24 @@ async function embedPacketFile(f){
   } catch (e) { console.error(e); return { drop: false, html: "" }; }
 }
 async function buildOrientPacket(a){
-  const pages = [orientRecordSection(a)];
-  if (a.form) pages.push(`<section class="pk">${formHTML(a.form, true)}</section>`);
+  const parts = [{ title: "Orientation checklist", html: orientRecordSection(a) }];
+  if (a.form) parts.push({ title: "Membership application", html: `<section class="pk">${formHTML(a.form, true)}</section>` });
   for (const d of (S.forms || []).filter(x => x.appId === a._id)) {
     const f = formByKey(d.id); if (!f || f.confidential) continue;
-    pages.push(`<section class="pk">${formDocHTML(f, d)}</section>`);
+    parts.push({ title: f.title, html: `<section class="pk">${formDocHTML(f, d)}</section>` });
   }
   const ups = packetUploads(a._id), drop = [], left = [];
   for (const f of ups) {
     if (!f.path || f.confidential || String(f.path).startsWith("confidential/")) continue;
     const res = await embedPacketFile(f);
-    if (res.drop) { pages.push(res.html); drop.push(f); } else left.push(f);
+    if (res.drop) { parts.push({ title: f.label || f.name || "File", html: res.html }); drop.push(f); } else left.push(f);
   }
   const medical = ups.filter(f => f.confidential || String(f.path || "").startsWith("confidential/"));
-  if (left.length || medical.length) pages.push(`<section class="pk"><h2>Not in this packet</h2>
+  if (left.length || medical.length) parts.push({ title: "Not in this packet", html: `<section class="pk"><h2>Not in this packet</h2>
     ${left.length ? `<p>These files could not be added, so they stay on the file when you remove uploads:</p><ul>${left.map(f => `<li>${esc(f.label || f.name)} · ${esc(f.name || "")}</li>`).join("")}</ul>` : ""}
     ${medical.length ? `<p>Medical and Social Security files stay with ${esc(PAPERWORK_EMAIL)}. They are not in this packet, and only that account can delete them.</p>` : ""}
-    <footer>Potsdam Volunteer Rescue Squad · Printed ${esc(new Date().toLocaleDateString())}</footer></section>`);
-  return { html: pages.join(""), drop, left, medical };
+    <footer>Potsdam Volunteer Rescue Squad · Printed ${esc(new Date().toLocaleDateString())}</footer></section>` });
+  return { html: packetCover(a, parts.map(p => p.title)) + parts.map(p => p.html).join(""), drop, left, medical };
 }
 async function removePacketFiles(id, drop){
   let n = 0;
@@ -3899,8 +3915,9 @@ function openOrientPacket(id, opts = {}){
   const ups = all.filter(canPrintFile), other = all.filter(f => !canPrintFile(f));
   const medical = packetUploads(id).filter(f => f.confidential || String(f.path || "").startsWith("confidential/")).length;
   const forms = (S.forms || []).filter(x => x.appId === id && !formByKey(x.id)?.confidential).length;
+  const checks = [...S.checkins.values()].filter(c => c.appId === id).length;
   const M = openModal(`<h3>${opts.afterMember ? "Done with orientation" : "Orientation packet"}</h3>
-    <p class="help">${opts.afterMember ? `${esc(first(a.name) || "They")} ${a.name ? "is" : "are"} a squad member. ` : ""}This prints one packet: the checklist, ${forms ? forms + " signed form" + (forms === 1 ? "" : "s") : "any forms they signed"}, and the photos and PDFs on the file. Print or save it, then you can remove those uploads. ${esc(first(a.name) || "They")} stay${a.name ? "s" : ""} on the desk.</p>
+    <p class="help">${opts.afterMember ? `${esc(first(a.name) || "They")} ${a.name ? "is" : "are"} a squad member. ` : ""}This prints one packet: a cover, the checklist, ${forms ? forms + " signed form" + (forms === 1 ? "" : "s") : "any forms they signed"}${checks ? ", their check-ins" : ""}, and the photos and PDFs on the file. Print or save it, then you can remove those uploads. ${esc(first(a.name) || "They")} stay${a.name ? "s" : ""} on the desk.</p>
     ${ups.length ? `<p class="help">${ups.length} file${ups.length === 1 ? "" : "s"} can go in the packet: ${esc(ups.map(f => f.name || f.label).slice(0, 6).join(", "))}${ups.length > 6 ? "…" : ""}.</p>` : `<p class="help">No photos or PDFs are on the file. The packet is the checklist and the signed forms.</p>`}
     ${other.length ? `<p class="help">${esc(other.map(f => f.name || f.label).slice(0, 4).join(", "))} stay${other.length === 1 ? "s" : ""} on the file. Word documents and other file types are not printed into the packet.</p>` : ""}
     ${medical ? `<p class="help">Medical and Social Security files (${medical}) stay with ${esc(PAPERWORK_EMAIL)}. They are not in the packet, and only that account can delete them.</p>` : ""}
@@ -3916,6 +3933,7 @@ function openOrientPacket(id, opts = {}){
         const built = await buildOrientPacket(S.apps.get(id) || a);
         M._drop = built.drop;
         printHTML(built.html);
+        edit(id, "onb.packetPrinted", today());
         const note = $("#pkNote"); if (note) {
           note.hidden = false;
           note.textContent = built.left.length
@@ -3932,6 +3950,7 @@ function openOrientPacket(id, opts = {}){
     if (clear.dataset.confirm !== "1") { clear.dataset.confirm = "1"; clear.textContent = `Confirm: remove ${M._drop.length} file${M._drop.length === 1 ? "" : "s"}`; return; }
     clear.disabled = true;
     const n = await removePacketFiles(id, M._drop);
+    if (n) { edit(id, "onb.packetCleared", today()); edit(id, "onb.packetRemoved", n); }
     closeModal();
     toast(n ? `Removed ${n} file${n === 1 ? "" : "s"}. ${first(a.name) || "They"} stay${a.name ? "s" : ""} on the desk.` : "Nothing was removed.");
   };
@@ -3947,7 +3966,8 @@ function renderOrientTab(a){
         ${S.canEdit && !get(a, "onb.memberSince") ? `<button class="copy" type="button" data-oact="back">${get(a, "onb.direct") ? "Take off orientation" : "Move back"}</button><button class="btn small" type="button" data-oact="member">Make squad member</button>` : ""}</div>
       <div class="row"><span class="lbl">One-on-one session<small>${s ? esc(slotLong(s.start)) + (s.location ? " · " + esc(s.location) : "") : "Not booked yet"}${att ? " · attended " + esc(fmtDate(att)) : ""}</small></span>
         ${S.canEdit ? `<button class="btn small" type="button" data-oact="book">${s ? "Change" : "Book"}</button>${att ? "" : `<button class="btn small primary" type="button" data-oact="attend">Mark attended</button>`}` : ""}</div>
-      <div class="row"><span class="lbl">Progress<small>${c.done} of ${c.total} done${l === null ? "" : l < 0 ? ` · ${-l} days late` : ` · due ${esc(longDate(orientDue(a)))}`}</small></span><button class="btn small" type="button" data-oact="record">Print record</button>${S.canEdit ? `<button class="btn small primary" type="button" data-oact="packet">Print packet</button>` : ""}</div>`; }
+      <div class="row"><span class="lbl">Progress<small>${c.done} of ${c.total} done${l === null ? "" : l < 0 ? ` · ${-l} days late` : ` · due ${esc(longDate(orientDue(a)))}`}</small></span><button class="btn small" type="button" data-oact="record">Print record</button>${S.canEdit ? `<button class="btn small primary" type="button" data-oact="packet">Print packet</button>` : ""}</div>
+      ${get(a, "onb.packetPrinted") ? `<div class="row"><span class="lbl">Paper packet<small>Printed ${esc(fmtDate(get(a, "onb.packetPrinted")))}${get(a, "onb.packetCleared") ? ` · ${+get(a, "onb.packetRemoved") || 0} upload${+get(a, "onb.packetRemoved") === 1 ? "" : "s"} removed ${esc(fmtDate(get(a, "onb.packetCleared")))}` : ""}</small></span></div>` : ""}`; }
   renderOrientDocs(a);
   const sb = $("#trainBox"); if (sb) { const so = S.signoffs.get(id);
     sb.innerHTML = so ? `<div class="row"><span class="lbl">Trainers<small>${esc((so.trainers || []).map(e => memberName(e)).join(", ") || "None")}</small></span></div>` + (so.items || []).map(i => { const d = (so.done || {})[i.key]; return `<div class="row"><span class="lbl">${esc(i.label)}<small>${d ? `Signed off by ${esc(d.name || d.by)} · ${esc(new Date(d.at).toLocaleDateString())}` : "Not signed off yet"}</small></span>${d ? `<span class="badge ok">Done</span>` : ""}</div>`; }).join("")
