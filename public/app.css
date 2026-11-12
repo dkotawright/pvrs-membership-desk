@@ -2156,3 +2156,105 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
   body.printing #print .formdoc{max-height:none;overflow:visible;font-size:11pt;color:#111}
   body.printing #print .formdoc th,body.printing #print .fd-org,body.printing #print .fd-meta,body.printing #print .fd-sign small{color:#444}
 }
+
+/* ======================================================================
+   Daylight (Nov 12): the same lanes, opened up. Public pages sit on the paper instead of inside a black slab,
+   the desk's Start here band is shorter so the people and the list stay in view, and lane headers are light
+   cards with a colour chip so names are easier to scan. Toasts sit at the top so they don't cover the tabs.
+   ====================================================================== */
+:root{
+  --s-screen:#3D4ADB; --s-int:#B8610A; --s-appr:#A12B86; --s-onb:#0E7C74; --s-act:#187A3C;
+  --bg:#F6F3EC;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --s-screen:#B0B4FF; --s-int:#F0B45A; --s-appr:#E7A0D4; --s-onb:#6ED4CC; --s-act:#7AD492 }}
+:root[data-theme="dark"]{
+  --s-screen:#B0B4FF; --s-int:#F0B45A; --s-appr:#E7A0D4; --s-onb:#6ED4CC; --s-act:#7AD492 }
+
+/* sidebar: a little warmth, roomier targets */
+.side{background:radial-gradient(120% 70% at 0% 0%,rgba(244,199,120,.18),transparent 46%),var(--ink)}
+.side .nav-i{height:34px;border-radius:12px}
+.side .brand{padding:10px 12px}
+
+/* overview: shorter "start here" so the board and the list share the screen */
+.starthere{padding:16px 18px;gap:14px;border-radius:22px}
+.starthere h2{font-size:22px;line-height:1.2}
+.starthere p{font-size:14.5px}
+.sh-acts .btn{height:40px}
+.sh-next{padding:12px}
+.lane{padding:10px;gap:8px}
+.lcard{padding:12px;border-left:4px solid var(--stage-c)}
+.lcard.need{box-shadow:0 0 0 2px var(--stage-c)}
+.lempty{background:color-mix(in srgb,var(--pane) 72%,transparent);border-style:solid;border-width:1px}
+
+/* lane headers: a light card, a colour chip, and the count as a pill */
+.stg.lhead,.stg.lact{background:var(--pane);color:var(--fg);box-shadow:0 0 0 1px color-mix(in srgb,var(--stage-c) 34%,transparent)}
+.stg.lhead .k,.stg.lact .k{color:var(--fg);display:inline-flex;align-items:center;gap:8px}
+.stg.lhead .s{color:var(--fg2)}
+.stg.lhead .k::before,.stg.lact .k::before{content:"";width:10px;height:10px;border-radius:4px;background:var(--stage-c);flex:none}
+.stg.lhead .v,.stg.lact .v{color:color-mix(in srgb,var(--stage-c) 78%,var(--fg));background:color-mix(in srgb,var(--stage-c) 16%,var(--pane));border-radius:999px;min-width:28px;height:28px;padding:0 8px;display:inline-grid;place-items:center}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .stg.lhead,:root:not([data-theme="light"]) .stg.lact{background:var(--pane);color:var(--fg)}
+  :root:not([data-theme="light"]) .stg.lhead .k,:root:not([data-theme="light"]) .stg.lact .k,:root:not([data-theme="light"]) .stg.lhead .s{color:var(--fg)}
+  :root:not([data-theme="light"]) .stg.lhead .v,:root:not([data-theme="light"]) .stg.lact .v{color:color-mix(in srgb,var(--stage-c) 70%,var(--fg));background:color-mix(in srgb,var(--stage-c) 18%,var(--pane))}
+}
+:root[data-theme="dark"] .stg.lhead,:root[data-theme="dark"] .stg.lact{background:var(--pane);color:var(--fg)}
+:root[data-theme="dark"] .stg.lhead .k,:root[data-theme="dark"] .stg.lact .k,:root[data-theme="dark"] .stg.lhead .s{color:var(--fg)}
+:root[data-theme="dark"] .stg.lhead .v,:root[data-theme="dark"] .stg.lact .v{color:color-mix(in srgb,var(--stage-c) 70%,var(--fg));background:color-mix(in srgb,var(--stage-c) 18%,var(--pane))}
+
+/* the list: the next step wears the lane colour, so it is the thing you read */
+.nm{font-size:15px;letter-spacing:-.01em}
+.arow{padding:12px}
+.arow .next strong{color:color-mix(in srgb,var(--stage-c) 84%,var(--fg))}
+.search{height:38px}
+
+/* a calm portal card is paper, not a second black banner. A real "your move" stays ink. */
+.portal .card.movecard.calm{background:var(--pane);color:var(--fg);box-shadow:var(--soft),inset 4px 0 0 var(--s-act)}
+.movecard.calm .mv-eye{color:var(--s-act)}
+.movecard.calm .mv-head{color:var(--fg)}
+.movecard.calm .info{color:var(--fg2)}
+
+/* notices sit in the top-right corner, narrow, so they don't cover a name or the tab bar */
+.app:not([hidden]) ~ .toast,.portal:not([hidden]) ~ .toast{left:auto;right:max(16px,env(safe-area-inset-right,0px));top:calc(14px + env(safe-area-inset-top,0px));bottom:auto;max-width:min(260px,calc(100vw - 32px));white-space:normal;text-align:left;transform:translateY(10px)}
+.app:not([hidden]) ~ .toast.show,.portal:not([hidden]) ~ .toast.show{transform:none;opacity:1}
+
+/* home: open on the paper, with the four steps of joining in a row */
+.gate.home{background:radial-gradient(640px 240px at 50% 0,rgba(194,52,43,.09),transparent 70%),radial-gradient(520px 220px at 78% 12%,rgba(244,199,120,.28),transparent 72%),var(--bg)}
+.gate.home .hero{background:transparent;box-shadow:none;color:var(--fg);padding:12px 4px 0;border-radius:0}
+.gate.home .hero h1{color:var(--fg);-webkit-text-fill-color:currentColor;font-size:clamp(36px,5vw,58px)}
+.gate.home .hero .lead{color:var(--fg2);margin-bottom:22px}
+.gate.home .eyebrow.light{color:var(--red)}
+.homepath{list-style:none;margin:0 auto 28px;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;max-width:920px;text-align:left}
+.homepath li{display:flex;align-items:center;gap:10px;background:var(--pane);border-radius:16px;padding:12px 14px;box-shadow:var(--soft)}
+.homepath b{flex:none;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:var(--ink);color:var(--ink-fg);font-family:var(--font-display);font-size:13px}
+.homepath span{display:flex;flex-direction:column;min-width:0;font-weight:700;font-size:14.5px;color:var(--fg);line-height:1.25}
+.homepath small{font-weight:500;color:var(--fg2);font-size:12.5px;margin-top:2px}
+.homecard,.homecard.featured{background:var(--pane);box-shadow:var(--soft);border:0}
+.homecard.featured{background:linear-gradient(180deg,color-mix(in srgb,var(--red) 9%,var(--pane)),var(--pane) 92px);box-shadow:var(--soft),0 0 0 1px color-mix(in srgb,var(--red) 16%,transparent)}
+.homecard:hover,.homecard.featured:hover{transform:translateY(-3px);box-shadow:0 18px 36px -22px rgba(27,27,31,.45)}
+
+/* sign-in: the four lanes as equal, numbered steps instead of a staircase */
+.lanesteps{counter-reset:lane;max-width:100%}
+.lanesteps span,.lanesteps span:nth-child(1),.lanesteps span:nth-child(2),.lanesteps span:nth-child(3),.lanesteps span:nth-child(4){width:100%;margin-left:0}
+.lanesteps span::before{counter-increment:lane;content:counter(lane);flex:none;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:rgba(255,255,255,.22);font-family:var(--font-display);font-weight:700;font-size:13px}
+.joincta{margin-top:8px}
+.gate .field input{min-height:46px;font-size:16px}
+
+/* application form: labels in the ink colour, and a solid bar so the Continue button doesn't ghost the next field */
+.af label,.aflabel{color:var(--fg)}
+.check{color:var(--fg)}
+.applyfoot{background:var(--pane);border-top:1px solid var(--sep);margin:12px 0 0;padding:12px 0 4px;box-shadow:none}
+
+@media (max-width:860px){
+  .homepath{grid-template-columns:1fr 1fr;max-width:none}
+  .gate.home .hero h1{font-size:34px}
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .lanesteps span::before{background:rgba(19,19,22,.14)}
+  :root:not([data-theme="light"]) .homepath b{background:var(--ink-fg);color:var(--ink)}
+}
+:root[data-theme="dark"] .lanesteps span::before{background:rgba(19,19,22,.14)}
+:root[data-theme="dark"] .homepath b{background:var(--ink-fg);color:var(--ink)}
+@media (prefers-reduced-motion:reduce){
+  .homecard:hover,.homecard.featured:hover{transform:none}
+}
