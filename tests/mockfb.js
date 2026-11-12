@@ -114,8 +114,9 @@ export const runTransaction = async (_db, fn) => {
 export const getStorage = () => ({});
 export const ref = (_s, path) => ({ path });
 export const uploadBytes = async () => ({});
-export const getDownloadURL = async () => "about:blank";
-export const deleteObject = async () => {};
+const TINY_GIF = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+export const getDownloadURL = async r => /\.(png|jpe?g|gif|webp)$/i.test(r?.path || "") ? TINY_GIF : "about:blank";
+export const deleteObject = async r => { (M.deleted = M.deleted || []).push(r?.path || ""); };
 // Push notifications: the browser bits are faked; a test sets M.pushOk = true to pretend the browser supports them.
 export const getMessaging = () => ({});
 export const isSupported = async () => !!M.pushOk;
