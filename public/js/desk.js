@@ -267,6 +267,7 @@ function renderChips(rows){
   $("#boardBtn").hidden = !S.admin;
   { const bb = $("#boardBtn"); let n = bb.querySelector(".navbadge"); if (!n) { n = document.createElement("b"); n.className = "navbadge soft"; bb.appendChild(n); } n.textContent = counts.board || ""; n.hidden = !counts.board; }
   $("#rosterTitle").textContent = filterLabel(S.filter);
+  const addBtn = $("#orientAddBtn"); if (addBtn) addBtn.hidden = !(S.canEdit && S.filter === "orient");
   S.counts = counts;
 }
 function renderList(){
@@ -288,7 +289,8 @@ function paintList(){
   if (!rows.length) { L.innerHTML = S.member ? `<div class="empty"><h3>Messages only</h3>Your account is for squad messages. Ask the membership coordinator if you need to interview someone.</div>`
     : S.role === "interviewer" ? `<div class="empty"><h3>No interviews assigned</h3>Applicants you're assigned to interview show up here.</div>`
     : `<div class="empty"><h3>No applicants yet</h3>When an application comes in, click <strong>New applicant</strong> or press <kbd>N</kbd> to start their file.</div>`; return; }
-  if (!vis.length) { L.innerHTML = `<div class="empty"><h3>${S.filter==="board"&&!q?"Board queue is empty":"No matches"}</h3>${S.filter==="board"&&!q?"Applicants show up here once the committee approves them.":q?`Nothing matches “${esc(S.q.trim())}”${S.filter!=="all"?` in ${esc(filterLabel(S.filter))}`:""}.`:"Try a different stage."}</div>`; return; }
+  if (!vis.length) { const orientEmpty = S.filter === "orient" && !q;
+    L.innerHTML = `<div class="empty"><h3>${S.filter==="board"&&!q?"Board queue is empty":orientEmpty?"Nobody here yet":"No matches"}</h3>${S.filter==="board"&&!q?"Applicants show up here once the committee approves them.":orientEmpty?(S.canEdit?`People the board approves show up here. Use <strong>Add someone</strong> for a person who didn't apply and is already in orientation.`:"People the board approves show up here."):q?`Nothing matches “${esc(S.q.trim())}”${S.filter!=="all"?` in ${esc(filterLabel(S.filter))}`:""}.`:"Try a different stage."}</div>`; return; }
   L.innerHTML = vis.map(({a,p}) => {
     const d = daysSince(get(a,"app.received"));
     const iv = a._booked ? `${slotDay(a._booked.start)} · ${slotTime(a._booked.start)}` : get(a,"sched.scheduled") ? `${fmtDate(get(a,"sched.scheduled"))}${get(a,"sched.time")?" · "+get(a,"sched.time"):""}` : "";
@@ -296,11 +298,12 @@ function paintList(){
       ? `<strong>${esc(stat(a, p).head)}</strong>`
       : (get(a,"sched.completed") ? "Interview completed" : iv ? `Interview: <strong>${esc(iv)}</strong>` : "Interview not scheduled yet");
     const inProc = d != null && IN_PROCESS.includes(p.stage);
-    return `<button class="arow${S.bulk?.has(a._id) ? " picked" : ""}" type="button" data-id="${esc(a._id)}" aria-current="${S.sel===a._id}"${S.bulk ? ` aria-pressed="${S.bulk.has(a._id)}"` : ""} style="--stage-c:${stageVar(p.stage)}">
+    const rowStage = inOrient(a) && p.stage !== "act" ? "onb" : p.stage;
+    return `<button class="arow${S.bulk?.has(a._id) ? " picked" : ""}" type="button" data-id="${esc(a._id)}" aria-current="${S.sel===a._id}"${S.bulk ? ` aria-pressed="${S.bulk.has(a._id)}"` : ""} style="--stage-c:${stageVar(rowStage)}">
       ${S.bulk ? `<span class="bulkck" aria-hidden="true">${S.bulk.has(a._id) ? "✓" : ""}</span>` : ""}<span class="av" aria-hidden="true">${esc(initials(a.name))}</span>
       <span class="ab">
         <span class="r1"><span class="nm">${hl(a.name||"Unnamed applicant", q)}</span><span class="pill">${esc(S.admin ? stat(a, p).pill : STAGES[p.stage].label)}</span></span>
-        <span class="meta">${milestoneChip(a)}${get(a,"app.source") === "online" ? `<span class="srctag" title="Applied online">Online</span>` : ""}${[a.type,loc(a),inProc?`${d} day${d===1?"":"s"}`:null].filter(Boolean).map(esc).join(" · ")||"Details not entered"}</span>
+        <span class="meta">${milestoneChip(a)}${get(a,"app.source") === "online" ? `<span class="srctag" title="Applied online">Online</span>` : ""}${get(a,"onb.direct") ? `<span class="srctag" title="Added straight to orientation, no application">Orientation</span>` : ""}${[a.type,loc(a),inProc?`${d} day${d===1?"":"s"}`:null].filter(Boolean).map(esc).join(" · ")||"Details not entered"}</span>
         <span class="next">${nextLine}</span>
         ${S.admin?`<span class="bar" title="${p.n} of ${MILESTONES.length} steps"><span style="width:${(p.n/MILESTONES.length*100).toFixed(1)}%"></span></span>`:""}
       </span>
@@ -416,6 +419,7 @@ function todoItems(){
     }
   }
   for (const a of S.apps.values()) {
+    if (get(a, "onb.direct")) continue;   // no application to review, no interview, no board
     const p = progress(a); if (!IN_PROCESS.includes(p.stage)) continue;
     const id = a._id, g = k => get(a, k), rs = refStatus(a), fn = first(a.name) || "them";
     const age = daysSince(g("app.received")) || 0;
@@ -527,6 +531,7 @@ function boardHTML(rows, c, notSched, inOrientation){
     return `<section class="lane" style="--stage-c:${stageVar(lane)}" aria-label="${label}">
       <button class="stg lhead" type="button" data-filter="${k}"><span class="k">${label}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ""}<span class="v">${n}</span></button>
       ${list.slice(0, 5).map(card).join("") || `<div class="lempty">${k === "orient" ? "Approve at the board and the file moves here on its own." : "All clear in this lane."}</div>`}
+      ${k === "orient" && S.canEdit ? `<button class="lmore" type="button" data-oadd>Add someone</button>` : ""}
       ${list.length > 5 ? `<button class="lmore" type="button" data-filter="${k}">${list.length - 5} more</button>` : ""}</section>`; }).join("")}
     <button class="stg lact" type="button" data-filter="act" style="--stage-c:${stageVar("act")}"><span class="k">Active members</span><span class="v">${c.act || 0}</span></button></div>`;
 }
@@ -820,22 +825,23 @@ function syncDetail(){
   const t = Math.max(a.updatedAt||0, a.secUpdatedAt||0), by = (a.secUpdatedAt||0) > (a.updatedAt||0) ? a.secUpdatedBy : a.updatedBy;
   const who = personName(by);
   const stt = stat(a, p);
-  $("#dSub").innerHTML = `<span class="pill" style="--stage-c:${stageVar(p.stage)}">${esc(S.admin ? stt.pill : STAGES[p.stage].label)}</span>${[a.type,loc(a)].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join("")}${t?`<span class="upd">Updated ${ago(t)}${who?` by ${esc(who)}`:""}</span>`:""}`;
+  $("#dSub").innerHTML = `<span class="pill" style="--stage-c:${stageVar(S.admin ? lane : p.stage)}">${esc(S.admin ? stt.pill : STAGES[p.stage].label)}</span>${[a.type,loc(a)].filter(Boolean).map(x=>`<span>${esc(x)}</span>`).join("")}${t?`<span class="upd">Updated ${ago(t)}${who?` by ${esc(who)}`:""}</span>`:""}`;
   const pr = $("#dProg");
   // Five labelled phases instead of fourteen anonymous dashes, and one plain sentence about where they stand.
-  if (pr) { const closed = !["screen", "int", "appr", "onb", "act"].includes(p.stage);
-    const ph = PHASES.map(([k, label, lo, hi]) => { const tot = hi - lo + 1, dn = p.done.slice(lo, hi + 1).filter(Boolean).length, cur = p.cur >= lo && p.cur <= hi, full = dn === tot;
+  // Someone added straight to orientation has no application, so Onboard is the current phase.
+  if (pr) { const closed = !["screen", "int", "appr", "onb", "act"].includes(p.stage), direct = !!get(a, "onb.direct");
+    const ph = PHASES.map(([k, label, lo, hi]) => { const tot = hi - lo + 1, dn = p.done.slice(lo, hi + 1).filter(Boolean).length, cur = direct ? k === "onb" : p.cur >= lo && p.cur <= hi, full = !direct && dn === tot;
       const firstOpen = p.done.slice(lo, hi + 1).indexOf(false), go = lo + (firstOpen < 0 ? 0 : firstOpen);
       const tip = MILESTONES.slice(lo, hi + 1).map((m, n) => `${p.done[lo + n] ? "✓" : "○"} ${m[0]}`).join("\n");
       return `<button type="button" class="ph ${full ? "done" : cur && !closed ? "cur" : ""}" data-step="${go}" style="--stage-c:${stageVar(k)}" title="${esc(tip)}" aria-label="${esc(label)}: ${dn} of ${tot} done${cur ? ", current" : ""}">
-        <span class="phd" aria-hidden="true">${full ? checkSVG : ""}</span><span class="phl">${esc(label)}</span><span class="phn">${full ? "Done" : dn || cur ? `${dn} of ${tot}` : ""}</span></button>`; }).join("");
+        <span class="phd" aria-hidden="true">${full ? checkSVG : ""}</span><span class="phl">${esc(label)}</span><span class="phn">${full ? "Done" : direct && k === "onb" ? "Now" : dn || cur ? `${dn} of ${tot}` : ""}</span></button>`; }).join("");
     pr.innerHTML = `<div class="phases">${ph}<span class="ph ${p.cur === -1 && !closed ? "done" : ""}" style="--stage-c:${stageVar("act")}"><span class="phd" aria-hidden="true">${p.cur === -1 ? checkSVG : ""}</span><span class="phl">Active</span><span class="phn"></span></span></div>
     ${(() => { // Your move: when this file has something on the To do list, the strip turns ink, pings, and carries that action's button.
       const mv = S.admin && !closed ? (S.coord ? coordItems() : todoItems()).find(x => x.id === a._id && x.pri <= 2) : null;
       const canAct = mv && mv.act && (S.canEdit || (S.sched && COORD_ACTS.has(mv.act)));
       return `<div class="t${mv ? " move" : ""}">${mv ? PING : ""}<span class="tw"><strong>${esc(stt.head)}</strong><span class="ts">${esc(mv ? mv.text + (mv.sub ? ". " + mv.sub : "") : stt.sub || "")}</span></span>
       ${canAct ? `<button class="btn small movego" type="button" data-todoact="${esc(mv.act)}" data-id="${esc(a._id)}">${esc(mv.btn)}</button>` : ""}
-      ${p.next && !closed ? `<button class="btn small nextgo" type="button" data-act="nextgo" title="${esc(p.next)}">${p.cur === 5 ? "Schedule it" : p.cur === 6 ? "Open interview" : "Go to it"} →</button>` : ""}<span class="tc">${p.n} of ${MILESTONES.length} steps</span></div>`; })()}`; }
+      ${p.next && !closed && !direct ? `<button class="btn small nextgo" type="button" data-act="nextgo" title="${esc(p.next)}">${p.cur === 5 ? "Schedule it" : p.cur === 6 ? "Open interview" : "Go to it"} →</button>` : ""}<span class="tc">${p.n} of ${MILESTONES.length} steps</span></div>`; })()}`; }
   const ab = $("#aiBrief"); if (ab) { ab.innerHTML = briefHTML(get(a, "ai.brief")); const bb = document.querySelector("[data-aibrief]"); if (bb && !bb.disabled) bb.textContent = get(a, "ai.brief") ? "Redo brief" : "Make brief"; }
   const ist = $("#ivScoreTotal"); if (ist) ist.textContent = ivScoreText(a);
   const oc = $("#onbCount"); if (oc) { const its = onbItems(), n = its.filter(([k]) => get(a, `onb.items.${k}`)).length; oc.textContent = its.length ? `${n} of ${its.length} done` : ""; }
@@ -1475,7 +1481,13 @@ function watchFiles(id){
 /* ---------- portal invite = welcome ---------- */
 // The first invite is the applicant's welcome, all in one step: portal access + sign-in link, a welcome message
 // waiting in their portal's Messages, and the welcome email ready to send. Later clicks just resend the link.
-const welcomeText = a => `Hi ${first(a.name)}, welcome, and thank you for applying to the Potsdam Volunteer Rescue Squad!
+const welcomeText = a => get(a, "onb.direct")
+  ? `Hi ${first(a.name)}, welcome to orientation with the Potsdam Volunteer Rescue Squad!
+
+This page is your orientation dashboard. Your checklist is here: upload what's asked, pick a time to come in, and message us if you get stuck.
+
+Sign in any time with this email address. The sign-in email often lands in spam or junk.`
+  : `Hi ${first(a.name)}, welcome, and thank you for applying to the Potsdam Volunteer Rescue Squad!
 
 This page is your applicant portal. Here's what happens next:
 • We check your driving record and verify your driver's license.
@@ -1505,7 +1517,8 @@ async function inviteToPortal(id, showEmail = true){
 
 /* ---------- emails ---------- */
 const TEMPLATES = {
-  portal: a => ({ subject: "Welcome to PVRS: your applicant portal",
+  portal: a => get(a, "onb.direct") ? ({ subject: "PVRS orientation: your dashboard",
+    body: `Hi ${first(a.name)},\n\nWelcome to orientation with the Potsdam Volunteer Rescue Squad. Your checklist, uploads, and a time to come in are here:\n\n${location.origin}/signin\n\nSign in with ${lower(a.email)}. We just sent you a separate sign-in link. It often lands in spam or junk.\n\nThank you,\n${sig()}` }) : ({ subject: "Welcome to PVRS: your applicant portal",
     body: `Hi ${first(a.name)},\n\nWelcome, and thank you for applying to the Potsdam Volunteer Rescue Squad! We've received your application. You can follow it, upload documents, message us and book your interview in your applicant portal:\n\n${location.origin}\n\nSign in with this email address (${lower(a.email)}). We just sent you a separate sign-in link, and you can request a new one from that page any time. No password needed.\n\nQuestions? Email ${S.settings.docsEmail || CONTACT_EMAIL}.\n\nThank you,\n${sig()}` }),
   docs: (a, list = []) => ({ subject: "PVRS application: documents needed",
     body: `Hi ${first(a.name)},\n\nTo keep your application moving, please upload the following in your applicant portal:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\n${location.origin}\n\nIf the upload gives you trouble, email them to ${S.settings.docsEmail || CONTACT_EMAIL} instead.\n\nThank you,\n${sig()}` }),
@@ -1824,6 +1837,7 @@ function openPalette(){
   const openFile = (id, tab) => go(() => { select(id); if (tab && tab !== S.tab) switchTab(tab); });
   const commands = [
     { label: "New applicant", hint: "N", show: S.canEdit, words: "new add create applicant", run: go(openNew) },
+    { label: "Add to orientation", show: S.canEdit, words: "orientation onboard add someone no application new member didn't apply", run: go(openAddOrientation) },
     { label: "Overview", show: true, words: "overview home dashboard to do", run: go(() => narrow ? mnavGo("ov") : (S.sel ? deselect() : renderOverview())) },
     { label: "Board meeting", show: S.admin, words: "board meeting agenda packet vote", run: go(openBoardMtg) },
     { label: "Recruiting flyer (print)", show: S.admin, words: "flyer poster qr recruit print", run: go(printFlyer) },
@@ -2060,7 +2074,7 @@ function onKeys(e){
   else if (S.sel && S.canEdit && (e.key === "e" || e.key === "E")) { e.preventDefault(); openEmailPicker(); }
 }
 function bindEvents(){
-  $("#list").addEventListener("click", e => { const c = e.target.closest(".arow"); if (!c) return;
+  $("#list").addEventListener("click", e => { if (e.target.closest("[data-oadd]")) return openAddOrientation(); const c = e.target.closest(".arow"); if (!c) return;
     if (S.bulk) { const id = c.dataset.id; S.bulk.has(id) ? S.bulk.delete(id) : S.bulk.add(id); renderList(); paintBulk(); return; }
     select(c.dataset.id); });
   if (S.owner) { $("#bulkBtn").hidden = false; $("#bulkBtn").addEventListener("click", () => bulkToggle(!S.bulk));
@@ -2085,6 +2099,7 @@ function bindEvents(){
   D.addEventListener("focusout", e => { if (e.target.matches("[data-k]")) flushAll(); });
   D.addEventListener("keydown", e => { if (e.target.id === "replyText" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendReply(); } });
   D.addEventListener("click", async e => {
+    if (e.target.closest("[data-oadd]")) return openAddOrientation();
     const t = e.target;
     const ivb = t.closest("[data-iv]"); if (ivb) { const k = ivb.dataset.iv; if (k === "exit") exitIvMode(); else ivGo(k === "next" ? 1 : -1); return; }
     const tab = t.closest("[data-tab]");
@@ -2212,6 +2227,7 @@ function bindEvents(){
   $("#aiBtn").addEventListener("click", openMedControl);
   $("#slotsBtn").addEventListener("click", openSlots);
   $("#newBtn").addEventListener("click", openNew);
+  $("#orientAddBtn").addEventListener("click", openAddOrientation);
   $("#boardBtn").addEventListener("click", () => openBoardMtg());
   $("#pwBtn").addEventListener("click", openPassword);
   $("#orientBtn").addEventListener("click", openOrientBoard);
@@ -2250,6 +2266,52 @@ function openNew(){
       app:{ received:$("#f-n-received").value || today() }, createdAt:Date.now(), updatedAt:Date.now(), createdBy:S.me, updatedBy:S.me };
     try { const r = doc(collection(db, "applicants")); await setDoc(r, data); S.shared.set(r.id, data); rebuild(r.id); writeLog(r.id, [{ path: "_created", from: "", to: name }]); closeModal(); S.tab = "app"; select(r.id); toast("Added " + name); }
     catch (err) { console.error(err); toast("Couldn't add the applicant."); }
+  };
+}
+// Someone who never applied and is already in orientation. They land on the Onboard list with the checklist
+// open, and they skip the application, interview, Sterling, and the board.
+function openAddOrientation(){
+  if (!S.canEdit) return ownerOnlyToast();
+  const M = openModal(`<form id="orientAddForm" style="display:contents" novalidate><h3>Add someone to orientation</h3>
+    <p class="help">For someone who didn't apply and is already going through orientation. They show up under Onboard, with the checklist, and they skip the application, interview, and board.</p>
+    <div class="ios">${F.text("n.name","Full name","First Last")}${F.text("n.phone","Phone","(315) 555-0100","tel")}${F.text("n.email","Email","name@example.com","email")}</div>
+    <div class="ios">${F.seg("n.type","Membership type",TYPES.map(t=>[t,t]),true)}${F.seg("n.location","Location",[["Potsdam","Potsdam"],["other","Other"]])}<div id="oLocRow" hidden>${F.text("n.locationOther","Where?","Town")}</div>
+      <label class="row"><span class="lbl">Send a sign-in link<small>Opens their orientation dashboard. The email often lands in spam.</small></span><input type="checkbox" id="oSend" checked style="width:auto"></label></div>
+    <div class="acts"><button class="btn" type="button" id="oCancel">Cancel</button><button class="btn primary" type="submit" id="oAddGo">Add to orientation</button></div></form>`);
+  const draft = { type: "Regular", location: "Potsdam" };
+  const paintSeg = () => M.querySelectorAll(".seg").forEach(s => s.querySelectorAll("button").forEach(b => b.classList.toggle("on", draft[s.dataset.k.slice(2)] === b.dataset.v)));
+  const paint = () => { const r = $("#oLocRow"); if (r) r.hidden = draft.location !== "other"; };
+  paintSeg(); paint(); $("#f-n-name")?.focus();
+  M.onclick = e => {
+    const b = e.target.closest(".seg button");
+    if (b) { draft[b.parentElement.dataset.k.slice(2)] = b.dataset.v; paintSeg(); paint(); if (draft.location === "other") $("#f-n-locationOther")?.focus(); }
+    if (e.target.id === "oCancel") closeModal();
+  };
+  $("#orientAddForm").onsubmit = async e => {
+    e.preventDefault();
+    const name = $("#f-n-name").value.trim();
+    if (!name) { $("#f-n-name").focus(); return toast("Enter their name."); }
+    const email = lower($("#f-n-email").value.trim());
+    const send = !!$("#oSend")?.checked;
+    if (send && !okEmail(email)) return toast(email ? "That email doesn't look right." : "Add an email to send the sign-in link, or uncheck it.");
+    const data = { name, phone: $("#f-n-phone").value.trim(), email, type: draft.type, location: draft.location, ...(draft.location === "other" ? { locationOther: $("#f-n-locationOther").value.trim() } : {}), stage: "onb",
+      createdAt: Date.now(), updatedAt: Date.now(), createdBy: S.me, updatedBy: S.me };
+    const go = $("#oAddGo"); if (go) go.disabled = true;
+    try {
+      const r = doc(collection(db, "applicants"));
+      await setDoc(r, data);
+      S.shared.set(r.id, data); rebuild(r.id);
+      writeLog(r.id, [{ path: "_created", from: "", to: name + " (orientation)" }]);
+      edit(r.id, "onb.direct", true);
+      edit(r.id, "onb.orientStarted", today());
+      flushAll();
+      await syncPortal(r.id, true);
+      closeModal();
+      S.filter = "orient";
+      select(r.id);
+      toast(first(name) + " is in orientation");
+      if (send) inviteToPortal(r.id, false);
+    } catch (err) { console.error(err); if (go) go.disabled = false; toast("Couldn't add them."); }
   };
 }
 /* ---------- board meeting mode ---------- */
@@ -3514,7 +3576,9 @@ const sterlingClear = a => !!get(a, "bg.sterDone") && get(a, "bg.sterResult") ==
 const isClosedFile = a => isDeclined(a) || a.status === "withdrawn";
 // Status is moved by hand: Applicant → (Sterling complete and clear) → New member, then Squad member when they finish.
 const orientReady = a => get(a, "board.result") === "approved" && !isClosedFile(a) && sterlingClear(a) && !get(a, "onb.orientStarted");
-const orientOpen = a => get(a, "board.result") === "approved" && !isClosedFile(a) && sterlingClear(a) && !!get(a, "onb.orientStarted");
+// onb.direct: added straight to orientation, with no application and no board vote. Orientation is open for them
+// without Sterling. Everyone else still waits for a board approval and a clear Sterling result.
+const orientOpen = a => !isClosedFile(a) && !!get(a, "onb.orientStarted") && (!!get(a, "onb.direct") || (get(a, "board.result") === "approved" && sterlingClear(a)));
 const orientWaiting = a => get(a, "board.result") === "approved" && !isClosedFile(a) && !sterlingClear(a);
 const orientCounts = a => { const its = onbItems(); return { total: its.length, done: its.filter(([k]) => get(a, `onb.items.${k}`)).length }; };
 const orientAllDone = a => { const c = orientCounts(a); return c.total > 0 && c.done >= c.total; };
@@ -3553,13 +3617,17 @@ function orientToDo(){
   const td = today();
   for (const a of S.apps.values()) { if (isClosedFile(a)) continue;
     const id = a._id, push = (pri, text, sub, tab = "onb", act, btn) => out.push({ id, a, pri, text, sub, tab, act, btn, age: 0 });
+    if (get(a, "onb.direct") && !get(a, "portal.invited")) {
+      if (okEmail(a.email)) push(0, `Welcome ${first(a.name) || a.name} to orientation`, "Send the sign-in link", "onb", "invite", "Welcome");
+      else push(1, `Add an email for ${first(a.name) || a.name}`, "They need one to sign in to the orientation dashboard", "app");
+    }
     if (orientOpen(a) && orientAllDone(a) && !get(a, "onb.memberSince")) push(1, `${first(a.name) || a.name} finished orientation`, "Ready to become a squad member", "onb", "omember", "Make squad member");
     if (orientOpen(a)) {
       const s = orientSession(id), key = orientItemKey(), attended = key && get(a, `onb.items.${key}`);
       if (s && !attended) { const d = isoDay(s.start);
         if (d === td) push(0, `Orientation today with ${first(a.name) || a.name}`, slotTime(s.start) + (s.location ? " · " + s.location : ""), "onb", "oattend", "Mark attended");
         else if (d < td) push(1, `Did ${first(a.name) || a.name} attend orientation?`, "Was " + longDate(d), "onb", "oattend", "Mark attended"); }
-      if (!s && !attended) push(3, `${first(a.name) || a.name} hasn't booked orientation`, "Sterling is complete. They can pick a time in their portal.", "onb", "obook", "Book");
+      if (!s && !attended) push(3, `${first(a.name) || a.name} hasn't booked orientation`, get(a, "onb.direct") ? "They can pick a time in their portal." : "Sterling is complete. They can pick a time in their portal.", "onb", "obook", "Book");
       const left = orientDaysLeft(a); if (left !== null && left < 0 && !orientAllDone(a)) { const c = orientCounts(a); push(1, `${first(a.name) || a.name} is behind on orientation`, `${c.done} of ${c.total} done · was due ${longDate(orientDue(a))}`); }
     }
     for (const [cn, c] of S.checkins) if (c.appId === id && !get(a, `onb.checkinRead.${c.n}`)) push(c.rating <= 2 ? 0 : 2, `Read ${first(a.name) || a.name}'s ${c.n}-day check-in`, `Rated it ${c.rating} of 5`);
@@ -3573,7 +3641,7 @@ const shortOnb = l => (SHORT_ONB.find(([re]) => re.test(l)) || [])[1] || l;
 /* the board: everyone in orientation against every requirement */
 function openOrientBoard(){
   const cols = onbItems();
-  const M = openModal(`<div class="or-head"><h3>Orientation</h3><small class="help" style="margin:0">Required before issuing equipment or running calls</small><span style="flex:1"></span>${S.canEdit ? `<button class="btn small" type="button" data-otimes>Orientation times</button>` : ""}</div>
+  const M = openModal(`<div class="or-head"><h3>Orientation</h3><small class="help" style="margin:0">Required before issuing equipment or running calls</small><span style="flex:1"></span>${S.canEdit ? `<button class="btn small" type="button" data-oadd>Add someone</button><button class="btn small" type="button" data-otimes>Orientation times</button>` : ""}</div>
     <p class="help">${S.canEdit ? "Click a box to mark it done today; click again to undo." : "View only."} You move people in by hand once Sterling is complete and clear.</p><div id="orBoard"></div>
     <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`, true);
   M.classList.add("wide");
@@ -3593,6 +3661,7 @@ function openOrientBoard(){
   paint(); S._boardPaint = paint; M._cleanup = () => { S._boardPaint = null; M.classList.remove("wide"); };
   M.onclick = e => { const t = e.target;
     if (t.closest("[data-x]")) return closeModal();
+    if (t.closest("[data-oadd]")) { closeModal(); return setTimeout(openAddOrientation, 60); }
     if (t.closest("[data-otimes]")) { closeModal(); return setTimeout(openOrientTimes, 60); }
     const f = t.closest("[data-orfile]"); if (f) { closeModal(); select(f.dataset.orfile); switchTab("onb"); return; }
     const b = t.closest("[data-obook]"); if (b) { closeModal(); return setTimeout(() => openOrientBook(b.dataset.obook), 60); }
@@ -3712,7 +3781,7 @@ function openOrientDocs(id){
     openEmail("orientdocs", [...asked.map(([, l]) => l), ...custom], id);
   };
 }
-function moveBackToApplicant(id){ const a = S.apps.get(id); if (!S.canEdit || !a) return; edit(id, "onb.orientStarted", ""); toast(`${first(a.name) || "They"} moved back to the applicant view.`); }
+function moveBackToApplicant(id){ const a = S.apps.get(id); if (!S.canEdit || !a) return; edit(id, "onb.orientStarted", ""); if (get(a, "onb.direct")) edit(id, "onb.direct", false); toast(`${first(a.name) || "They"} moved back to the applicant view.`); }
 // New member → Squad member: gives them a Member account, so their next sign-in opens the desk (Messages) instead of the dashboard.
 function openMakeMember(id){
   const a = S.apps.get(id); if (!S.canEdit || !a) return ownerOnlyToast();
@@ -3749,8 +3818,8 @@ function renderOrientTab(a){
   else if (!orientOpen(a) && !inOrient(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Applicant<small>Moves to Onboard as soon as the board result is saved as Approved.</small></span></div>`; }
   else if (!orientOpen(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Onboard<small>Approved by the board${get(a, "board.date") ? " " + esc(fmtDate(get(a, "board.date"))) : ""}. Orientation opens once Sterling is complete and clear. ${get(a, "bg.sterDone") ? (get(a, "bg.sterResult") ? "Sterling is marked Needs review." : "Enter the Sterling result above.") : get(a, "bg.sterReq") ? "Sterling requested " + esc(fmtDate(get(a, "bg.sterReq"))) + "." : "Sterling not requested yet."}</small></span></div>`; }
   else { const s = orientSession(id), c = orientCounts(a), l = orientDaysLeft(a), key = orientItemKey(), att = key && get(a, `onb.items.${key}`);
-    el.innerHTML = `<div class="row"><span class="lbl">Status: ${get(a, "onb.memberSince") ? "Squad member" : "New member"}<small>In orientation since ${esc(fmtDate(get(a, "onb.orientStarted")))}${get(a, "onb.memberSince") ? " · member since " + esc(fmtDate(get(a, "onb.memberSince"))) : ""}</small></span>
-        ${S.canEdit && !get(a, "onb.memberSince") ? `<button class="copy" type="button" data-oact="back">Move back</button><button class="btn small" type="button" data-oact="member">Make squad member</button>` : ""}</div>
+    el.innerHTML = `<div class="row"><span class="lbl">Status: ${get(a, "onb.memberSince") ? "Squad member" : "New member"}<small>In orientation since ${esc(fmtDate(get(a, "onb.orientStarted")))}${get(a, "onb.direct") ? " · started here, no application on file" : ""}${get(a, "onb.memberSince") ? " · member since " + esc(fmtDate(get(a, "onb.memberSince"))) : ""}</small></span>
+        ${S.canEdit && !get(a, "onb.memberSince") ? `<button class="copy" type="button" data-oact="back">${get(a, "onb.direct") ? "Take off orientation" : "Move back"}</button><button class="btn small" type="button" data-oact="member">Make squad member</button>` : ""}</div>
       <div class="row"><span class="lbl">One-on-one session<small>${s ? esc(slotLong(s.start)) + (s.location ? " · " + esc(s.location) : "") : "Not booked yet"}${att ? " · attended " + esc(fmtDate(att)) : ""}</small></span>
         ${S.canEdit ? `<button class="btn small" type="button" data-oact="book">${s ? "Change" : "Book"}</button>${att ? "" : `<button class="btn small primary" type="button" data-oact="attend">Mark attended</button>`}` : ""}</div>
       <div class="row"><span class="lbl">Progress<small>${c.done} of ${c.total} done${l === null ? "" : l < 0 ? ` · ${-l} days late` : ` · due ${esc(longDate(orientDue(a)))}`}</small></span><button class="btn small" type="button" data-oact="record">Print record</button></div>`; }

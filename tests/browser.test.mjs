@@ -1617,6 +1617,65 @@ try {
       if (!/decline hepatitis B vaccination/.test(await page.locator("#modal").textContent().catch(() => ""))) fail("vault can't open the signed declination"); else ok("the paperwork account can open and print the signed declination");
       await ctx.close(); }
   }
+  // ---- Add someone straight to orientation, with no application
+  {
+    const { ctx, page } = await open(browser); await wait(page, 500);
+    if (await page.locator("#orientAddBtn").isVisible()) fail("Add someone showing on the applicant list"); else ok("Add someone stays off the applicant list");
+    const lane = page.locator('.lane[aria-label="Onboard"] [data-oadd]');
+    if (!(await lane.count())) fail("no Add someone on the Onboard lane"); else ok("the Onboard lane has Add someone");
+    await lane.click(); await wait(page, 300);
+    if (!/didn't apply/i.test(await page.locator("#modal").textContent())) fail("add form copy"); else ok("the form is for someone who didn't apply");
+    await page.locator("#f-n-name").fill("Casey Morgan");
+    await page.locator("#f-n-phone").fill("315-555-0199");
+    await page.locator("#f-n-email").fill("casey@example.com");
+    await snap(page, "71-add-orientation-form");
+    await page.locator("#oAddGo").click(); await wait(page, 1800);
+    const added = await page.evaluate(() => {
+      const m = window.__mock.docs;
+      const hit = [...m.entries()].find(([k, v]) => /^applicants\/[^/]+$/.test(k) && v.name === "Casey Morgan");
+      if (!hit) return null;
+      const id = hit[0].split("/")[1];
+      const pv = m.get(`applicants/${id}/private/main`) || {};
+      const pd = m.get(`portal/${id}`);
+      const msgs = [...m.entries()].filter(([k]) => k.startsWith(`portal/${id}/messages/`)).map(([, v]) => v.text || "");
+      const appItem = (pd?.orientation?.items || []).find(i => /^Completed application/.test(i.label));
+      return { id, direct: !!pv.onb?.direct, started: pv.onb?.orientStarted || "", received: hit[1].app?.received || "", board: pv.board?.result || "", items: pd?.orientation?.items?.length || 0, appDate: appItem?.date || "", msgs };
+    });
+    if (!added?.direct || !added.started) fail("direct flags: " + JSON.stringify(added)); else ok("their file is orientation-only and orientation has started");
+    if (added.received || added.board) fail("application or board was filled in: " + JSON.stringify(added)); else ok("no application and no board vote were recorded");
+    if (added.items < 5 || added.appDate) fail("portal checklist: " + JSON.stringify(added)); else ok("their portal is the orientation dashboard, and the application stays unchecked");
+    if (!added.msgs.some(t => /orientation dashboard/i.test(t)) || added.msgs.some(t => /thank you for applying/i.test(t))) fail("welcome: " + (added.msgs[0] || "").slice(0, 180)); else ok("the welcome is about orientation");
+    const box = await page.locator("#orientBox").textContent();
+    if (!/no application on file/.test(box) || !/Status: New member/.test(box)) fail("status: " + (box || "").slice(0, 240)); else ok("the Onboard tab says they started here with no application");
+    await snap(page, "71-add-orientation");
+    await page.locator('#chips [data-f="all"]').click(); await wait(page, 400);
+    if (/Casey Morgan/.test((await page.locator(".arow").allTextContents()).join("|"))) fail("Casey is on the applicant list"); else ok("they are not on the applicant list");
+    await page.locator('#chips [data-f="orient"]').click(); await wait(page, 400);
+    const or = (await page.locator(".arow").allTextContents()).join("|");
+    if (!/Casey Morgan/.test(or) || !/Orientation/.test(or)) fail("onboard row: " + or.replace(/\s+/g, " ").slice(0, 300)); else ok("they show on the Onboard list, in orientation");
+    if (await page.locator("#orientAddBtn").isHidden()) fail("Add someone hidden on Onboard"); else ok("Add someone is on the Onboard list");
+    await page.locator("#orientBtn").click(); await wait(page, 400);
+    const board = await page.locator("#modal").textContent();
+    const waitPart = board.split("Waiting on Sterling")[1] || "";
+    if (/Casey Morgan/.test(waitPart)) fail("Casey is waiting on Sterling");
+    else if (!/Casey Morgan/.test(board) || !(await page.locator(".or-grid").count())) fail("Casey missing from the orientation board: " + board.slice(0, 240));
+    else ok("they are on the orientation board, not waiting on Sterling");
+    await page.locator("#modal [data-x]").click(); await wait(page, 200);
+    await page.locator("#orientAddBtn").click(); await wait(page, 300);
+    await page.locator("#oSend").uncheck();
+    await page.locator("#f-n-name").fill("Pat Direct");
+    await page.locator("#oAddGo").click(); await wait(page, 800);
+    const pat = await page.evaluate(() => {
+      const m = window.__mock.docs;
+      const hit = [...m.entries()].find(([k, v]) => /^applicants\/[^/]+$/.test(k) && v.name === "Pat Direct");
+      if (!hit) return null;
+      const id = hit[0].split("/")[1];
+      const msgs = [...m.entries()].filter(([k]) => k.startsWith(`portal/${id}/messages/`));
+      return { direct: !!m.get(`applicants/${id}/private/main`)?.onb?.direct, msgs: msgs.length, email: hit[1].email || "" };
+    });
+    if (!pat?.direct || pat.email || pat.msgs) fail("no-email add: " + JSON.stringify(pat)); else ok("someone with no email can still be added, and no welcome is sent");
+    await ctx.close();
+  }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {
     const { ctx, page } = await open(browser, { url: "/apply?src=flyer", user: null }); await wait(page, 600);
