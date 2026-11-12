@@ -2171,10 +2171,12 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
 :root[data-theme="dark"]{
   --s-screen:#B0B4FF; --s-int:#F0B45A; --s-appr:#E7A0D4; --s-onb:#6ED4CC; --s-act:#7AD492 }
 
-/* sidebar: a little warmth, roomier targets */
+/* sidebar: a little warmth, roomier targets. Step colours are dots, not squares. */
 .side{background:radial-gradient(120% 70% at 0% 0%,rgba(244,199,120,.18),transparent 46%),var(--ink)}
 .side .nav-i{height:34px;border-radius:12px}
 .side .brand{padding:10px 12px}
+.side .nav-i .ndot{width:16px;height:16px;background:transparent;display:grid;place-items:center}
+.side .nav-i .ndot::before{width:9px;height:9px;border-radius:50%;background:var(--stage-c,var(--fg3))}
 
 /* overview: shorter "start here" so the board and the list share the screen */
 .starthere{padding:16px 18px;gap:14px;border-radius:22px}
