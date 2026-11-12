@@ -112,7 +112,7 @@ kbd{font-family:var(--font);font-size:11px;font-weight:600;color:var(--fg3);bord
 /* roster */
 .roster{border-right:1px solid var(--sep)}
 .top{padding:14px 14px 10px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--sep)}
-.titlebar{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.titlebar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .tt{display:flex;align-items:baseline;gap:8px;min-width:0}
 h1{font-family:var(--font-display);font-size:20px;font-weight:700;letter-spacing:-.01em;margin:0;line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .count{font-size:13px;color:var(--fg3);font-variant-numeric:tabular-nums}
