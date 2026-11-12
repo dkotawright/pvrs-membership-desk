@@ -1676,6 +1676,36 @@ try {
     if (!pat?.direct || pat.email || pat.msgs) fail("no-email add: " + JSON.stringify(pat)); else ok("someone with no email can still be added, and no welcome is sent");
     await ctx.close();
   }
+  // ---- Finishing orientation prints one packet, then the uploads can be removed
+  {
+    const gif = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+    const seed = [
+      ["applicants/pkt", { name: "Casey Packet", email: "casey.packet@example.com", type: "Regular", stage: "onb", updatedAt: Date.now() }],
+      ["applicants/pkt/private/main", { onb: { direct: true, orientStarted: "2026-11-01" } }],
+      ["portal/pkt", { email: "casey.packet@example.com", name: "Casey Packet", orientation: { start: "2026-11-01", items: [] } }],
+      ["portal/pkt/files/f1", { name: "license.png", path: "uploads/pkt/license.png", contentType: "image/png", label: "Copy of driver's license", uploadedAt: Date.now() }],
+      ["applicants/pkt/records/r1", { name: "cpr.pdf", path: "records/pkt/cpr.pdf", contentType: "application/pdf", label: "Orientation: CPR card", uploadedAt: Date.now() }],
+      ["applicants/pkt/records/r2", { name: "Private document", path: "", confidential: true, label: "Orientation: Copy of health physical", uploadedAt: Date.now() }],
+      ["portal/pkt/forms/confidentiality", { key: "confidentiality", name: "Casey Packet", by: "casey.packet@example.com", signedAt: Date.now(), sig: gif, values: {} }],
+    ];
+    const { ctx, page } = await open(browser, { seed }); await wait(page, 800);
+    await page.evaluate(() => { window.print = () => { window.__printed = document.getElementById("print")?.innerHTML || ""; }; });
+    await pickApplicant(page, "Casey Packet");
+    if (!(await page.locator('[data-oact="packet"]').count())) fail("no print packet button"); else ok("the Onboard tab has Print packet");
+    await page.locator('[data-oact="packet"]').click(); await wait(page, 300);
+    if (!/one packet/i.test(await page.locator("#modal").textContent())) fail("packet window"); else ok("the packet window explains the print and the removal");
+    await page.locator("#pkPrint").click(); await wait(page, 1500);
+    const printed = await page.evaluate(() => window.__printed || "");
+    if (!/Casey Packet/.test(printed) || !/Confidentiality Statement/.test(printed) || !/pk-scan/.test(printed)) fail("packet html: " + printed.replace(/\s+/g, " ").slice(0, 400)); else ok("the packet has the checklist, the signed form, and the photo");
+    if (!/cpr\.pdf/.test(printed) || !/Not in this packet/.test(printed)) fail("pdf not listed as left out"); else ok("a file that didn't fit the packet is listed and kept");
+    if (await page.locator("#pkClear").isHidden()) fail("remove button hidden"); else ok("after printing, the uploads that made it in can be removed");
+    await page.locator("#pkClear").click(); await wait(page, 100);
+    if (!/Confirm: remove/.test(await page.locator("#pkClear").textContent())) fail("no confirm"); else ok("removing files asks to confirm");
+    await page.locator("#pkClear").click(); await wait(page, 600);
+    const after = await page.evaluate(() => { const m = window.__mock; return { file: m.docs.has("portal/pkt/files/f1"), pdf: m.docs.has("applicants/pkt/records/r1"), medical: m.docs.has("applicants/pkt/records/r2"), person: m.docs.has("applicants/pkt"), deleted: m.deleted || [] }; });
+    if (after.file || !after.pdf || !after.medical || !after.person || after.deleted.join() !== "uploads/pkt/license.png") fail("cleanup: " + JSON.stringify(after)); else ok("the photo is deleted, the person and the files that weren't in the packet stay");
+    await ctx.close();
+  }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {
     const { ctx, page } = await open(browser, { url: "/apply?src=flyer", user: null }); await wait(page, 600);
