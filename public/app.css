@@ -2128,3 +2128,31 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
 @media (prefers-reduced-motion:reduce){ .prog .t.move,.portal .card.flash{animation:none} }
 .tracker{background:var(--fill);border:0}
 .tk-top span{color:var(--fg2)}
+
+/* ---------- Orientation forms signed on the phone (Nov 11) ---------- */
+.fm-body{display:flex;flex-direction:column;gap:12px;font-size:14.5px;line-height:1.5;max-height:min(62vh,640px);overflow:auto;padding-right:4px}
+.fm-body p{margin:0}.fm-body ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}.fm-body h4{margin:8px 0 0;font-size:14px}
+.fm-more{color:var(--fg2);font-size:13.5px}
+.fm-f{display:flex;flex-direction:column;gap:5px;font-weight:600;font-size:13.5px}
+.fm-f input,.fm-f textarea{font:inherit;font-weight:400;font-size:16px;min-height:44px;padding:9px 12px;border-radius:12px;border:1.5px solid var(--border);background:var(--fill);color:var(--fg);box-sizing:border-box;width:100%}
+.fm-q{border:1.5px solid var(--border);border-radius:14px;padding:10px 12px;margin:0;display:flex;flex-wrap:wrap;gap:8px 18px}
+.fm-q legend{font-weight:600;font-size:14px;padding:0 4px;float:left;width:100%;margin-bottom:4px}
+.fm-q label{display:flex;align-items:center;gap:8px;min-height:44px;font-weight:600}.fm-q input{width:20px;height:20px}
+.fm-pad{width:100%;height:150px;border:2px dashed var(--fg3);border-radius:14px;background:#fff;touch-action:none;display:block}
+.fm-padrow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:400}
+.fm-opt{display:block;color:var(--fg2);font-size:12.5px;font-weight:400}
+.fm-list .badge{white-space:nowrap}
+.formdoc{font-size:14.5px;line-height:1.5;display:flex;flex-direction:column;gap:10px;max-height:min(66vh,680px);overflow:auto}
+.formdoc p,.formdoc h2,.formdoc h3{margin:0}.formdoc h2{font-size:20px}.formdoc h3{font-size:14.5px;margin-top:6px}.formdoc ul{margin:0;padding-left:20px}
+.formdoc table{border-collapse:collapse;width:100%}.formdoc th,.formdoc td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);vertical-align:top}.formdoc th{width:32%;font-weight:600;color:var(--fg2)}
+.fd-org{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fg2)}
+.fd-sign{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:end;margin-top:8px}
+.fd-sign>div{display:flex;flex-direction:column;gap:3px;border-bottom:1.5px solid currentColor;padding-bottom:3px;min-height:54px;justify-content:flex-end}
+.fd-sign small{order:2;font-size:12px;color:var(--fg2);margin-bottom:-22px;padding-top:6px}.fd-sign{margin-bottom:22px}
+.fd-sign img{max-height:70px;max-width:100%;object-fit:contain;object-position:left bottom;background:#fff;border-radius:6px}
+.fd-typed{font-family:"Snell Roundhand","Brush Script MT",cursive;font-size:24px}.fd-blank{height:30px}
+.fd-meta{font-size:12px;color:var(--fg2)}
+@media print{
+  body.printing #print .formdoc{max-height:none;overflow:visible;font-size:11pt;color:#111}
+  body.printing #print .formdoc th,body.printing #print .fd-org,body.printing #print .fd-meta,body.printing #print .fd-sign small{color:#444}
+}

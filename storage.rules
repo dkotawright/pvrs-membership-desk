@@ -21,8 +21,10 @@ service firebase.storage {
       allow read: if isAdmin();
       allow delete: if verified() && myEmail() == 'dkota@pvrs.org';
       allow create: if ownsPortal(appId)
-        && request.resource.size <= 15 * 1024 * 1024
-        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+        && request.resource.size <= 25 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf'
+            || request.resource.contentType == 'application/msword'
+            || request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     }
 
     // Records the owner uploads to an applicant's file. Admins can open them; nobody else can see them.
@@ -40,7 +42,9 @@ service firebase.storage {
       allow read, delete: if verified() && myEmail() == 'orientationpaperwork@pvrs.org';
       allow create: if (ownsPortal(appId) || (verified() && myEmail() == 'dkota@pvrs.org'))
         && request.resource.size <= 25 * 1024 * 1024
-        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf'
+            || request.resource.contentType == 'application/msword'
+            || request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     }
 
     // Files posted in a squad channel. Only that channel's members (and the owner) can add or open them.

@@ -111,9 +111,13 @@ service cloud.firestore {
       allow read, delete: if isPaperwork();
       allow update: if isPaperwork() && onlyChanged(['filedAt']);
       allow create: if verified()
-        && request.resource.data.keys().hasOnly(['appId','appName','label','name','path','size','contentType','uploadedAt','uploadedBy','from'])
+        && request.resource.data.keys().hasOnly(['appId','appName','label','name','path','size','contentType','uploadedAt','uploadedBy','from','form'])
         && request.resource.data.appId is string
-        && request.resource.data.path.matches('confidential/' + request.resource.data.appId + '/.*')
+        // a file in confidential/{appId}/, or (no file) a medical form the new member signed on their phone while signing was open
+        && ((!('form' in request.resource.data) && request.resource.data.path.matches('confidential/' + request.resource.data.appId + '/.*'))
+            || (request.resource.data.path == '' && request.resource.data.form is map && request.resource.data.from == 'applicant'
+                && request.resource.data.form.key == 'hepb' && request.resource.data.form.sig is string && request.resource.data.form.sig.size() <= 400000
+                && portalOf(request.resource.data.appId).data.get('signUntil', 0) > nowMs()))
         && request.resource.data.uploadedBy == myEmail()
         && request.resource.data.uploadedAt is int && request.resource.data.uploadedAt > nowMs() - 300000 && request.resource.data.uploadedAt < nowMs() + 300000
         && request.resource.data.size is int && request.resource.data.size <= 25 * 1024 * 1024
@@ -250,6 +254,10 @@ service cloud.firestore {
     match /{path=**}/refUpdates/{updateId} {
       allow read: if isOwner();
     }
+    match /{path=**}/forms/{key} { allow read: if isAdmin(); }
+    match /{path=**}/uploadErrors/{errId} {
+      allow read: if isAdmin();
+    }
     // Lets admins see every applicant upload in one query (the Overview activity feed)
     match /{path=**}/files/{fileId} {
       allow read: if isAdmin();
@@ -314,6 +322,23 @@ service cloud.firestore {
       // A different reference, sent by the applicant when the owner asks for one (portal.refReplace lists which).
       // The owner's desk copies it into the private references and marks it applied.
       // 30- and 90-day check-ins from new members. One answer each; the applicant can't change it afterwards.
+      // Orientation forms signed on the new member's phone. They can sign only while the orientation chair has signing
+      // open for them (portal.signUntil), once per form; the owner may countersign or clear one. The Hep B declination is
+      // medical: it goes to the vault and leaves only a nameless "Private document" in files.
+      match /forms/{key} {
+        allow read: if isAdmin() || ownsPortal(id);
+        allow create: if ownsPortal(id) && portalOf(id).data.get('signUntil', 0) > nowMs()
+          && key in ['confidentiality','confquiz','bylaws','emergency'] && request.resource.data.key == key
+          && request.resource.data.by == myEmail()
+          && request.resource.data.signedAt is int && request.resource.data.signedAt > nowMs() - 300000 && request.resource.data.signedAt < nowMs() + 300000
+          && request.resource.data.keys().hasOnly(['key','title','values','name','sig','signedAt','by'])
+          && request.resource.data.title is string && request.resource.data.title.size() <= 200
+          && request.resource.data.values is map && request.resource.data.values.size() <= 40
+          && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 200
+          && request.resource.data.sig is string && request.resource.data.sig.size() > 0 && request.resource.data.sig.size() <= 400000;
+        allow update: if isOwner() && onlyChanged(['witness']);
+        allow delete: if isOwner();
+      }
       match /checkins/{n} {
         allow read: if isAdmin() || ownsPortal(id);
         allow create: if ownsPortal(id) && n in ['30', '90']
@@ -340,12 +365,24 @@ service cloud.firestore {
         allow delete: if isOwner();
       }
 
+      // When an upload is turned away (wrong kind of file, too big, no permission, lost connection) the portal leaves
+      // a short note here so the desk can see exactly what happened. No file contents, just the reason.
+      match /uploadErrors/{errId} {
+        allow read: if isAdmin();
+        allow create: if ownsPortal(id)
+          && request.resource.data.keys().hasOnly(['name', 'size', 'type', 'label', 'code', 'message', 'at', 'by', 'device'])
+          && request.resource.data.by == myEmail()
+          && request.resource.data.at is int
+          && request.resource.data.get('message', '') is string && request.resource.data.get('message', '').size() <= 500
+          && request.resource.data.get('name', '') is string && request.resource.data.get('name', '').size() <= 300;
+        allow delete: if isOwner();
+      }
       // Files the applicant uploaded
       match /files/{fileId} {
         allow read: if isAdmin() || ownsPortal(id);
         allow create: if ownsPortal(id)
           && request.resource.data.uploadedBy == myEmail()
-          && request.resource.data.size is int && request.resource.data.size <= 15 * 1024 * 1024
+          && request.resource.data.size is int && request.resource.data.size <= 25 * 1024 * 1024
           && ((request.resource.data.keys().hasOnly(['docKey','label','name','path','size','contentType','uploadedAt','uploadedBy'])
                && request.resource.data.path.matches('uploads/' + id + '/.*'))
               || confidentialStub());

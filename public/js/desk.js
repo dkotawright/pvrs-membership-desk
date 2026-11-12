@@ -7,6 +7,7 @@ import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysS
   progress, statusOf, PHASES, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
 import { showTour, maybeTour } from "./tour.js";
+import { FORMS, formByKey, formForItem, formDocHTML, printDoc } from "./forms.js";
 import { RATINGS, refQuestions, TRUST_Q } from "./reference.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL, VAPID_KEY } from "./config.js";
 
@@ -326,18 +327,30 @@ function restoreFocus(fk){
 const okEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || "").trim());
 // New-member checklist (Onboard tab). The owner edits the list in Settings; each item's key comes from its label.
 // PVRS's mandatory new-member sheet (Dkota's paper form, Nov 4), required before issuing equipment or running calls. Edit in Settings.
-const DEFAULT_ONB = ["Completed application", "Copy of driver's license", "Copy of training records (EMT, CPR, etc.)", "Insurance beneficiary card, completed",
+const DEFAULT_ONB = ["Acknowledgement of Sterling Volunteers background check", "Completed application", "Copy of driver's license", "Copy of training records (EMT, CPR, etc.)", "Insurance beneficiary card, completed",
+  "Emergency contact form", "Copy of health physical", "Record of PPD", "Record of Hep B or signed refusal", "Verification of completion of IS-100", "Verification of completion of IS-700",
+  "Verification of Blood Borne Pathogen training", "SOP/Constitution acceptance form", "Confidentiality statement", "Orientation form completed, signed by member and orientation committee member"];
+// The Nov 4 sheet (11 lines). Anyone still on it moves to the current sheet; dates on its combined lines carry over (ONB_SPLIT).
+const PREV_ONB = ["Completed application", "Copy of driver's license", "Copy of training records (EMT, CPR, etc.)", "Insurance beneficiary card, completed",
   "Copy of health physical, record of PPD, Hep B record or refusal", "Verification of completion of IS-100, IS-700", "Verification of Blood Borne Pathogen training",
   "SOP/Constitution acceptance form", "Confidentiality statement", "Equipment request", "Orientation form completed, signed by member and orientation committee member"];
+const ONB_SPLIT = [["Copy of health physical, record of PPD, Hep B record or refusal", ["Copy of health physical", "Record of PPD", "Record of Hep B or signed refusal"]],
+  ["Verification of completion of IS-100, IS-700", ["Verification of completion of IS-100", "Verification of completion of IS-700"]]];
 // The starter list from before the real sheet: anyone still on it moves to the real list automatically.
 const OLD_ONB = ["ID badge issued", "Uniform and gear issued", "Building access set up", "Paging / dispatch app set up", "Orientation completed", "CPR / BLS", "EVOC (drivers)", "ICS-100", "ICS-700", "HIPAA training", "Bloodborne pathogens training"];
 const onbKey = l => String(l).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40) || "item";
-const onbRaw = () => Array.isArray(S.settings.onbItems) && S.settings.onbItems.join("|") !== OLD_ONB.join("|") ? S.settings.onbItems : DEFAULT_ONB;
+const onbCustom = () => Array.isArray(S.settings.onbItems) && ![OLD_ONB, PREV_ONB].some(l => l.join("|") === S.settings.onbItems.join("|"));
+const onbRaw = () => onbCustom() ? S.settings.onbItems : DEFAULT_ONB;
 const onbItems = () => onbRaw().map(l => { const label = String(l).split("|")[0].trim(); return [onbKey(label), label]; });
 const onbLink = key => { const hit = onbRaw().find(l => onbKey(String(l).split("|")[0].trim()) === key), u = hit && String(hit).split("|")[1]?.trim(); return u && /^https:\/\//.test(u) ? u : ""; };
 // Starter list for trainer sign-offs; edit it in Settings.
-const DEFAULT_SKILLS = ["Rig and equipment walkthrough", "Radio and dispatch procedures", "Stretcher and stair chair", "First duty shift", "Second duty shift"];
-const skillItems = () => (Array.isArray(S.settings.skillItems) ? S.settings.skillItems : DEFAULT_SKILLS).map(l => [onbKey(l), l]);
+// PVRS's Orientation Matrix (PEMS-2601). The first group must be done before going on calls.
+const DEFAULT_SKILLS = ["Policies & Procedures issued & acknowledged", "Constitution issued & acknowledged", "Uniform (pants, shirt, boots)", "Communications (pager or radio & assignment)", "E-mail distribution list(s)",
+  "Building access", "Building orientation", "Assignment of preceptor", "Agency HazCom", "Ambulance familiarization", "Radio familiarization", "Hospital familiarization", "Vehicle fueling",
+  "Electronic scheduler (with information entered)", "ID badge", "Equipment/supply restock", "Bloodborne Pathogens course", "Credentials on file (license, medical and specialty certifications, NIMS-100/700)",
+  "Certifications to NCEMS, Medical Control, emsCharts (BLS/ILS/ALS)", "Controlled substances: in-service, access, CPH notify (ALS)"];
+const OLD_SKILLS = ["Rig and equipment walkthrough", "Radio and dispatch procedures", "Stretcher and stair chair", "First duty shift", "Second duty shift"];
+const skillItems = () => (Array.isArray(S.settings.skillItems) && S.settings.skillItems.join("|") !== OLD_SKILLS.join("|") ? S.settings.skillItems : DEFAULT_SKILLS).map(l => [onbKey(l), l]);
 // Expiration dates to watch (To do 30 days ahead and once expired), for anyone in process or approved.
 const EXPIRES = [["dl.expires", "Driver's license", "checks"], ["onb.cprExpires", "CPR / BLS card", "onb"], ["onb.emtExpires", "EMS certification", "onb"]];
 // Data retention: declined/withdrawn files untouched for longer than settings.retentionYears get flagged for the owner
@@ -372,6 +385,8 @@ function todoItems(){
   const out = [];
   if (S.owner) { const seen = new Set(); for (const a of S.apps.values()) for (const b of dupesOf(a)) { const key = [a._id, b._id].sort().join("|"); if (seen.has(key)) continue; seen.add(key);
     out.push({ id: a._id, a, pri: 0, text: `Possible duplicate: ${a.name || "Unnamed"}`, sub: `Also on file as ${b.name || "Unnamed"} (${dupeWhy(a, b)})`, tab: "app", act: "dupe", btn: "Review", age: 0 }); } }
+  { const seenErr = new Set(); for (const e of S.upErrs || []) { const a = S.apps.get(e.appId); if (!a || seenErr.has(e.appId) || Date.now() - (e.at || 0) > 14 * 864e5) continue; seenErr.add(e.appId);
+      out.push({ id: a._id, a, pri: 0, text: `${first(a.name) || a.name}'s upload was turned away`, sub: `${e.name || "A file"}: ${failWhy(e)}`, tab: inOrient(a) ? "onb" : "app", age: 0 }); } }
   const old = pastRetention();
   if (old.length) out.push({ id: old[0]._id, a: old[0], pri: 3, text: `Review ${old.length === 1 ? "an old file" : old.length + " old files"} past the ${retentionYears()}-year retention`, sub: old.map(a => a.name).slice(0, 3).join(", ") + (old.length > 3 ? "…" : ""), tab: "notes", act: "retention", btn: "Review", age: 0 });
   for (const a of S.apps.values()) {
@@ -1087,9 +1102,9 @@ function portalPayload(a){
     refs: refList(a).map(r => ({ slot: r.i, name: r.name, received: r.received, ...(r.replace ? { replace: true } : {}) })),
     refReplace: refList(a).filter(r => r.replace).map(r => r.i),
     bookingOpen: get(a,"portal.bookingOpen") === "yes" && !isDeclined(a),
-    orientation: orientPayload(a), checkin: checkinDue(a) };
+    orientation: orientPayload(a), checkin: checkinDue(a), signUntil: orientOpen(a) ? +get(a, "onb.signUntil") || 0 : 0 };
 }
-const portalKey = p => JSON.stringify([p.bring || "", p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.refReplace || [], p.bookingOpen, p.orientation || null, p.checkin || null]);
+const portalKey = p => JSON.stringify([p.bring || "", p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.refReplace || [], p.bookingOpen, p.orientation || null, p.checkin || null, p.signUntil || 0]);
 const portalTimers = {};
 function schedulePortal(id, delay = 1500){ if (!S.canEdit) return; clearTimeout(portalTimers[id]); portalTimers[id] = setTimeout(() => syncPortal(id), delay); }
 async function syncPortal(id, force = false){
@@ -2076,6 +2091,12 @@ function bindEvents(){
     if (tab) { switchTab(tab.dataset.tab); return; }
     const po = t.closest("[data-printother]"); if (po) { const x = S.apps.get(S.sel)?.otherForms?.[+po.dataset.printother]; if (x) printForm(x); return; }
     const oa = t.closest("[data-oact]"); if (oa && S.sel) { const k = oa.dataset.oact; if (k === "move") return openMoveToOrientation(S.sel); if (k === "member") return openMakeMember(S.sel); if (k === "back") return moveBackToApplicant(S.sel); if (k === "book") return openOrientBook(S.sel); if (k === "attend") return markAttended(S.sel); if (k === "record") return printOrientRecord(S.sel); if (k === "trainers") return openTrainers(S.sel); if (k === "reqdocs") return openOrientDocs(S.sel); }
+    const uec = t.closest("[data-uperrclear]"); if (uec) { for (const e of (S.upErrs || []).filter(x => x.appId === uec.dataset.uperrclear)) deleteDoc(doc(db, "portal", e.appId, "uploadErrors", e.id)).catch(() => {}); return; }
+    const sw = t.closest("[data-signwin]"); if (sw && S.sel) { if (!S.canEdit) return ownerOnlyToast(); const on = sw.dataset.signwin === "1", id = S.sel;
+      if (on && !get(S.apps.get(id), "portal.invited")) return toast("Give them portal access first (Welcome), then open signing.");
+      edit(id, "onb.signUntil", on ? Date.now() + SIGN_HOURS * 36e5 : 0); syncPortal(id, true); clearTimeout(S._signT); if (on) S._signT = setTimeout(syncDetail, SIGN_HOURS * 36e5 + 1000);
+      toast(on ? `Signing is open for ${SIGN_HOURS} hours. They'll see the forms on their dashboard.` : "Signing is closed."); return; }
+    const dfm = t.closest("[data-deskform]"); if (dfm && S.sel) return openSignedForm(S.sel, dfm.dataset.deskform);
     const oru = t.closest("[data-orup]"); if (oru && S.sel) return pickOrientDoc(S.sel, oru.dataset.orup, oru.dataset.orlabel);
     const oap = t.closest("[data-oapprove]"); if (oap) { edit(S.sel, `onb.items.${oap.dataset.oapprove}`, today()); toast("Approved"); return; }
     const ord = t.closest("[data-oread]"); if (ord) { edit(S.sel, `onb.checkinRead.${ord.dataset.oread}`, today()); return; }
@@ -2624,6 +2645,66 @@ function activityCard(){
     : `<div class="oempty">No uploads or bookings yet.</div>`}</div></section>`;
 }
 let feedPrimed = false;
+// Uploads the portal turned away, with the reason (portal/{id}/uploadErrors). Shown on that person's Onboard tab and
+// at the top of To do, so a failed upload is never a mystery.
+function watchUploadErrors(){
+  onSnapshot(collectionGroup(db, "uploadErrors"), snap => {
+    S.upErrs = snap.docs.map(d => ({ id: d.id, appId: d.ref.parent.parent.id, ...d.data() })).sort((x, y) => (y.at || 0) - (x.at || 0));
+    if (S.sel) syncDetail(); else renderOverview();
+  }, () => {});
+}
+const WHY_FAIL = { "wrong-type": "it wasn't a PDF, photo or Word file", "too-big": "it was over 25 MB", "storage/unauthorized": "the upload wasn't allowed (permission)", "permission-denied": "the upload wasn't allowed (permission)",
+  "storage/retry-limit-exceeded": "the connection dropped", "storage/canceled": "it was cancelled", "storage/quota-exceeded": "storage is full" };
+const failWhy = e => WHY_FAIL[e.code] || e.message || e.code || "unknown reason";
+function upErrHTML(id){
+  const list = (S.upErrs || []).filter(e => e.appId === id).slice(0, 5); if (!list.length) return "";
+  return `<div class="note warn" id="upErrNote"><b>${list.length === 1 ? "An upload was turned away" : list.length + " uploads were turned away"}</b>${list.map(e => `<div style="margin-top:4px">${esc(e.name || "A file")}${e.label ? " for " + esc(e.label) : ""}: ${esc(failWhy(e))} · ${esc(ago(e.at))}${e.device ? " · " + esc(e.device) : ""}</div>`).join("")}
+    ${S.canEdit ? `<div style="margin-top:8px"><button class="btn small" type="button" data-uperrclear="${esc(id)}">Clear</button></div>` : ""}</div>`;
+}
+// Forms new members signed on their phone (portal/{id}/forms). The owner's desk checks the matching checklist line off.
+function watchForms(){
+  onSnapshot(collectionGroup(db, "forms"), snap => {
+    S.forms = snap.docs.map(d => ({ id: d.id, appId: d.ref.parent.parent.id, ...d.data() }));
+    tidyOnb(); if (S.sel) syncDetail();
+  }, () => {});
+}
+const signedForm = (id, key) => (S.forms || []).find(x => x.appId === id && x.id === key);
+// Owner's desk housekeeping for the checklist: signed forms and a clear Sterling check tick their lines, and dates
+// from the old sheet's combined lines carry over to the split ones. Only fills blanks; never clears anything.
+let tidyT;
+function tidyOnb(){ if (!S.canEdit || !S.ready) return; clearTimeout(tidyT); tidyT = setTimeout(() => {
+  const items = onbItems(), keyOf = re => (items.find(([, l]) => re.test(l)) || [])[0], blank = (a, k) => k && !get(a, `onb.items.${k}`);
+  for (const x of S.forms || []) { const a = S.apps.get(x.appId), f = formByKey(x.id), k = f && f.item && keyOf(f.item);
+    if (a && blank(a, k) && x.signedAt) edit(x.appId, `onb.items.${k}`, isoDay(x.signedAt)); }
+  const ster = keyOf(/sterling/i);
+  for (const [id, a] of S.apps) { if (!inOrient(a)) continue;
+    if (orientOpen(a) && blank(a, ster) && get(a, "bg.sterDone")) edit(id, `onb.items.${ster}`, get(a, "bg.sterDone"));
+    if (!onbCustom()) for (const [old, news] of ONB_SPLIT) { const d = get(S.apps.get(id), `onb.items.${onbKey(old)}`); if (d) for (const n of news) if (blank(S.apps.get(id), onbKey(n))) edit(id, `onb.items.${onbKey(n)}`, d); } }
+}, 1200); }
+const SIGN_HOURS = 3;
+function signRowHTML(a){
+  if (!orientOpen(a)) return "";
+  const until = +get(a, "onb.signUntil") || 0, open = until > Date.now(), invited = !!get(a, "portal.invited");
+  return `<div class="row" id="signRow"><span class="lbl">Signing on their phone<small>${open ? `<b>Open until ${esc(new Date(until).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }))}.</b> ${esc(first(a.name) || "They")} can sign the forms from their dashboard now.` : `Closed. Open it when you sit down together; it closes by itself after ${SIGN_HOURS} hours.${invited ? "" : " They need portal access first."}`}</small></span>
+    ${S.canEdit ? (open ? `<button class="btn small" type="button" data-signwin="0">Close now</button>` : `<button class="btn small primary" type="button" data-signwin="1">Open signing</button>`) : ""}</div>`;
+}
+function signedFormsHTML(a){
+  const id = a._id;
+  return `<div class="row"><span class="lbl"><b>Forms signed on their phone</b><small>The insurance beneficiary form stays on paper. A Hepatitis B declination shows on its own line above as a 🔒 secure document.</small></span></div>` + FORMS.filter(f => !f.confidential).map(f => { const d = signedForm(id, f.key);
+    return `<div class="row ordoc"><span class="lbl">${esc(f.title)}${f.confidential ? " 🔒" : ""}<small>${d ? `Signed ${esc(new Date(d.signedAt).toLocaleDateString())}${d.confidential ? ` · sent to ${esc(PAPERWORK_EMAIL)}` : d.witness ? ` · countersigned by ${esc(d.witness.name)}` : f.counter ? " · needs your countersignature" : ""}` : f.optional ? "Only if they decline the vaccine" : "Not signed yet"}</small></span>
+      ${d ? `<span class="badge ok">Signed</span>` : ""}${d && !d.confidential ? `<button class="btn small${f.counter && !d.witness && S.canEdit ? " primary" : ""}" type="button" data-deskform="${f.key}">${f.counter && !d.witness && S.canEdit ? "View and countersign" : "View"}</button>` : ""}</div>`; }).join("");
+}
+function openSignedForm(id, key){
+  const a = S.apps.get(id), f = formByKey(key), d = signedForm(id, key); if (!a || !f || !d || d.confidential) return;
+  const M = openModal(`${formDocHTML(f, d)}<div class="acts">${S.canEdit ? `<button class="copy" type="button" id="sfClear">Clear so they can sign again</button>` : ""}<button class="btn" type="button" data-x>Close</button><button class="btn" type="button" id="sfPrint">Print or save as PDF</button>
+    ${S.canEdit && f.counter && !d.witness ? `<button class="btn primary" type="button" id="sfWit">Countersign as ${esc(S.name || "me")}</button>` : ""}</div>`, true);
+  M.onclick = async e => { const t = e.target;
+    if (t.closest("[data-x]")) return closeModal();
+    if (t.closest("#sfPrint")) { closeModal(); return printDoc(formDocHTML(f, signedForm(id, key) || d)); }
+    if (t.closest("#sfWit")) { try { await updateDoc(doc(db, "portal", id, "forms", key), { witness: { name: S.name || S.me, by: S.me, at: Date.now() } }); closeModal(); toast("Countersigned"); } catch (err) { console.error(err); toast("Couldn't save. Try again."); } return; }
+    const c = t.closest("#sfClear"); if (c) { if (c.dataset.confirm !== "1") { c.dataset.confirm = "1"; c.textContent = "Clear this signed form?"; return; }
+      try { await deleteDoc(doc(db, "portal", id, "forms", key)); closeModal(); toast("Cleared. They can sign it again while signing is open."); } catch (err) { console.error(err); toast("Couldn't clear it."); } } };
+}
 function watchActivity(){
   onSnapshot(collectionGroup(db, "files"), snap => {
     const prev = new Set(S.feedFiles.map(f => f.key));
@@ -3443,7 +3524,7 @@ const orientSession = id => S.portal.get(id)?.orient || null;
 const orientItemKey = () => (onbItems().find(([, l]) => /orientation/i.test(l)) || [])[0] || "";
 // A new member can upload proof for every checklist item (whatever it's called in Settings), except the
 // application itself and the signed orientation form, which stay with you. `req` = you asked for it (Request documents).
-const NOT_CERT_RE = /^completed application|^orientation/i;
+const NOT_CERT_RE = /^completed application|^orientation|^acknowledge?ment/i;
 function orientPayload(a){
   if (!orientOpen(a)) return null;
   const c = orientCounts(a);
@@ -3597,7 +3678,9 @@ function openMoveToOrientation(id){
     } catch (err) { console.error(err); go.disabled = false; toast("Couldn't finish that. Try again."); } };
 }
 // Checklist items the new member can still send in (not dated yet, and not the application / orientation form).
-const orientDocItems = a => onbItems().filter(([k, l]) => !NOT_CERT_RE.test(l) && !get(a, `onb.items.${k}`));
+// Not things to ask for by upload: the paper insurance form, and lines that are signed on the phone at the session.
+const notUploadItem = l => /insurance|beneficiar/i.test(l) || !!(formForItem(l) && !formForItem(l).optional);
+const orientDocItems = a => onbItems().filter(([k, l]) => !NOT_CERT_RE.test(l) && !notUploadItem(l) && !get(a, `onb.items.${k}`));
 // Onboard tab → Request documents: marks the picked checklist items as requested (they're highlighted in the new
 // member's dashboard with an Upload button), adds anything extra as a normal document request, and opens the email.
 function openOrientDocs(id){
@@ -3693,8 +3776,8 @@ function renderOrientDocs(a){
     return `<div class="row ordoc"><span class="lbl">${esc(label)}${isConfidential(label) ? " 🔒" : ""}<small>${theirs.length + mine.length ? "" : key ? (asked ? `Asked ${esc(fmtDate(asked))}, nothing in yet` : "Nothing in yet") : "Anything else for their orientation file"}</small>${[...theirs.map(f => fileRow(f, false)), ...mine.map(f => fileRow(f, true))].join("")}</span>
       ${state}${S.canEdit && key && !done && theirs.length ? `<button class="btn small primary" type="button" data-oapprove="${esc(key)}">Approve</button>` : ""}
       ${S.canEdit ? `<button class="btn small" type="button" data-orup="${esc(key)}" data-orlabel="${esc(label)}">Upload</button>` : ""}</div>`; };
-  el.innerHTML = `<div class="note">${S.canEdit ? "Upload a scan or photo for any line and it's checked off. What the new member sends from their dashboard shows here too." : "What the new member and the orientation chair have sent in."} 🔒 lines go only to ${esc(PAPERWORK_EMAIL)}.</div>`
-    + onbItems().filter(([, l]) => !NOT_CERT_RE.test(l)).map(([k, l]) => row(k, l)).join("") + row("", "Other orientation paperwork");
+  el.innerHTML = upErrHTML(a._id) + signRowHTML(a) + `<div class="note">${S.canEdit ? "Upload a scan or photo for any line and it's checked off. What the new member sends from their dashboard shows here too." : "What the new member and the orientation chair have sent in."} 🔒 lines go only to ${esc(PAPERWORK_EMAIL)}.</div>`
+    + onbItems().filter(([, l]) => !NOT_CERT_RE.test(l)).map(([k, l]) => row(k, l)).join("") + row("", "Other orientation paperwork") + signedFormsHTML(a);
 }
 // One file into an applicant's staff records (or the vault when the label is medical / Social Security).
 const REC_EXT = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", heic: "image/heic", heif: "image/heif", webp: "image/webp", gif: "image/gif" };
@@ -3933,7 +4016,7 @@ export function startDesk({ email, role, owner, name, paperwork = false }){
     renderList(); if (S.sel) syncDetail();
     if (S.role === "interviewer" && !S.sel) renderOverview();
     openFromLink();
-    if (S.canEdit) { syncAllPortals(); mirrorStages(); } else if (S.coord) coordSyncAll();
+    if (S.canEdit) { syncAllPortals(); mirrorStages(); tidyOnb(); } else if (S.coord) coordSyncAll();
   }, lost);
   onSnapshot(collection(db, "slots"), snap => {
     S.slots = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
@@ -3955,7 +4038,7 @@ export function startDesk({ email, role, owner, name, paperwork = false }){
       if (!S.sel) renderOverview();
       reconcilePortalEmails();
     }, () => {});
-    watchActivity();
+    watchActivity(); watchUploadErrors(); watchForms();
     if (S.sched) watchMessages();
     if (S.owner) { watchSubmissions(); watchRefUpdates(); watchRefResponses(); }
     if (S.owner) {
