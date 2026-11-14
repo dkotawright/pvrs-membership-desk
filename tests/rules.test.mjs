@@ -82,6 +82,10 @@ await t("an application saying how they heard about PVRS is accepted", addDoc(co
 await t("a how-they-heard answer with extra fields is rejected", addDoc(collection(anon, "submissions"), sub({ heard: { source: "Social media", evil: "x" } })), false);
 await t("the owner can't open confidential paperwork details", getDocs(collection(owner, "vault")), false);
 await t("the paperwork account can", getDocs(collection(paper, "vault")), true);
+await t("an admin can open confidential paperwork", getDocs(collection(admin, "vault")), true);
+await t("a member can't", getDocs(collection(member, "vault")), false);
+await t("an applicant can't", getDocs(collection(applicant, "vault")), false);
+await t("an admin can't delete it", deleteDoc(doc(admin, "vault/none")), false);
 await t("an applicant can send a replacement reference we asked for", addDoc(collection(applicant, "portal/a1/refUpdates"), { slot: 2, name: "New", relationship: "Coach", email: "n@example.com", phone: "", address: "", at: now(), by: "app@example.com" }), true);
 await t("…but not for one we didn't ask about", addDoc(collection(applicant, "portal/a1/refUpdates"), { slot: 1, name: "New", relationship: "Coach", email: "n@example.com", phone: "", address: "", at: now(), by: "app@example.com" }), false);
 await t("the owner reads replacement references", getDocs(collectionGroup(owner, "refUpdates")), true);
@@ -280,6 +284,7 @@ await env.withSecurityRulesDisabled(async c => { const db = c.firestore();
   await setDoc(doc(db, "slots/cs0"), { start: now() + 3 * DAY, duration: 30, location: "Station", bookedBy: null }); });
 const cory = fsOf("cory@pvrs.org");
 await t("a coordinator reads every file", getDocs(collection(cory, "applicants")), true);
+await t("a coordinator can't open confidential paperwork", getDocs(collection(cory, "vault")), false);
 await t("and private records", getDoc(doc(cory, "applicants/c1/private/main")), true);
 await t("a coordinator posts a time for someone else", setDoc(doc(cory, "slots/cs1"), { start: now() + 3 * DAY, duration: 30, location: "Station", bookedBy: null, createdAt: now(), host: "admin@pvrs.org", hostName: "Casey" }), true);
 await t("an admin still can't", setDoc(doc(admin, "slots/cs2"), { start: now() + 3 * DAY, duration: 30, location: "Station", bookedBy: null, createdAt: now(), host: "cory@pvrs.org", hostName: "Cory" }), false);
@@ -320,6 +325,8 @@ await t("the owner can add paperwork", uploadBytes(ref(st("dkota@pvrs.org"), "co
 await t("the applicant can't read it back", getBytes(ref(st("app@example.com"), "confidential/a1/1.pdf")), false);
 await t("the owner can't open it", getBytes(ref(st("dkota@pvrs.org"), "confidential/a1/1.pdf")), false);
 await t("the paperwork account can", getBytes(ref(st("orientationpaperwork@pvrs.org"), "confidential/a1/1.pdf")), true);
+await t("an admin can open it", getBytes(ref(st("admin@pvrs.org"), "confidential/a1/1.pdf")), true);
+await t("a member can't open it", getBytes(ref(st("member@pvrs.org"), "confidential/a1/1.pdf")), false);
 
 await t("a channel member uploads to the channel", uploadBytes(ref(st("admin@pvrs.org"), "chat/ch1/1.pdf"), pdf, meta), true);
 await t("someone not in it can't", uploadBytes(ref(st("member@pvrs.org"), "chat/ch1/2.pdf"), pdf, meta), false);

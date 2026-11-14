@@ -1711,6 +1711,24 @@ try {
     if (!/Paper packet/.test(noted) || !/1 upload removed/.test(noted)) fail("packet note: " + (noted || "").replace(/\s+/g, " ").slice(0, 240)); else ok("the file remembers that the packet was printed and the upload was removed");
     await ctx.close();
   }
+  // ---- Secure documents open for the Admin role on the file (applicant stage and orientation), nobody else on the desk (Nov 14)
+  {
+    const d = n => localDay(Date.now() - n * 864e5);
+    const seed = [["staff/admin@pvrs.org", { role: "admin", name: "Casey Admin" }], ["staff/cory@pvrs.org", { role: "coordinator", name: "Cory" }],
+      ["applicants/v1", { name: "Val Vault", email: "v1@example.com", app: { received: d(5) }, updatedAt: Date.now() }], ["applicants/v1/private/main", {}],
+      ["applicants/v2", { name: "Ori Entation", email: "v2@example.com", app: { received: d(40) }, updatedAt: Date.now() }], ["applicants/v2/private/main", { board: { result: "approved", date: d(5) } }],
+      ["vault/x1", { appId: "v1", appName: "Val Vault", label: "Medical documentation", name: "physical.pdf", path: "confidential/v1/1-physical.pdf", size: 10, contentType: "application/pdf", uploadedAt: Date.now(), uploadedBy: "v1@example.com", from: "applicant" }],
+      ["vault/x2", { appId: "v2", appName: "Ori Entation", label: "Record of PPD", name: "ppd.jpg", path: "confidential/v2/1-ppd.jpg", size: 10, contentType: "image/jpeg", uploadedAt: Date.now(), uploadedBy: "v2@example.com", from: "applicant" }]];
+    const look = async user => { const { ctx, page } = await open(browser, { user, seed }); await wait(page, 900);
+      await pickApplicant(page, "Val Vault"); await wait(page, 500); const app = await page.locator("#secureDocs").textContent().catch(() => "");
+      await pickApplicant(page, "Ori Entation"); await wait(page, 700); const or = await page.locator("#orDocs #secureDocs").textContent().catch(() => "");
+      await ctx.close(); return { app, or }; };
+    const ad = await look({ email: "admin@pvrs.org", displayName: "Casey" });
+    if (!/physical\.pdf/.test(ad.app)) fail("admin: no secure doc on the applicant's file: " + ad.app); else ok("an admin can open an applicant's secure documents");
+    if (!/ppd\.jpg/.test(ad.or) || /physical/.test(ad.or)) fail("admin: orientation secure docs: " + ad.or); else ok("and a new member's, under Orientation documents, only their own");
+    const ow = await look(OWNER), co = await look({ email: "cory@pvrs.org", displayName: "Cory" });
+    if (ow.app || ow.or || co.app || co.or) fail("secure docs shown to owner/coordinator"); else ok("the owner and the coordinator still can't open secure documents");
+  }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {
     const { ctx, page } = await open(browser, { url: "/apply?src=flyer", user: null }); await wait(page, 600);
