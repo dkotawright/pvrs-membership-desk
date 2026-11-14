@@ -81,7 +81,7 @@ function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis,
     ${lib.length ? `<h3 class="or-h">Documents</h3><div class="docbtns">${lib.map(d => `<button class="btn small" type="button" data-olib="${esc(d.id)}">${esc(d.name)}</button>`).join("")}</div>` : ""}${check}</section>`;
 }
 // "Your move": the one thing this person can do right now, or a plain "nothing needed" so nobody wonders.
-function moveHTML({ pd, files, slots, oslots, nm, dis, now, forms = [] }){
+function moveHTML({ pd, files, slots, oslots, nm, dis, now, forms = [], lane = "screen", pick = null, busy = false }){
   const has = k => files.some(f => f.docKey === k), o = pd.orientation, iv = pd.interview;
   const ivDone = (pd.steps || []).some(s => s.label === "Interview" && s.state === "done");
   const openIv = slots.some(s => !s.bookedBy && s.start > now + DAY), openOr = oslots.some(s => !s.bookedBy && s.start > now + DAY);
@@ -94,11 +94,18 @@ function moveHTML({ pd, files, slots, oslots, nm, dis, now, forms = [] }){
   else if (nm && !pd.orient && openOr) m = { head: "Pick your orientation time", sub: "A one-on-one with our orientation chair.", btn: go("orientCard", "See times") };
   else if (req) m = up("onb:" + req.key, req.label);
   else if (doc) m = up(doc.key, doc.label);
-  else if (!nm && !ivDone && !iv && pd.bookingOpen && openIv) m = { head: "Pick your interview time", sub: "Choose whichever open time works best for you.", btn: go("ivCard", "See times") };
+  else if (!nm && !ivDone && !iv && pd.bookingOpen && openIv) {
+    // the soonest three open times sit right on the card; the full list stays in the Interview card
+    const all = slots.filter(s => !s.bookedBy && s.start > now + DAY).sort((a, b) => a.start - b.start), top = all.slice(0, 3), ps = all.find(s => s.id === pick);
+    const short = ms => new Date(ms).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    m = { head: "Pick your interview time", sub: "Choose whichever open time works best for you.", wide: true,
+      btn: `<div class="mv-times">${top.map(s => `<button class="mv-time" type="button" data-slot="${esc(s.id)}" aria-pressed="${pick === s.id}" ${dis}><span>${esc(short(s.start))}${s.hostName ? `<small> with ${esc(s.hostName)}</small>` : ""}</span><b>${esc(slotTime(s.start))}</b></button>`).join("")}</div>
+        ${ps ? `<button class="btn primary" type="button" data-book ${busy ? "disabled" : ""}>Book ${esc(short(ps.start))}, ${esc(slotTime(ps.start))}</button>` : ""}<button class="btn mv-all" type="button" data-goto="ivCard" ${dis}>${all.length > top.length ? `See all ${all.length} times` : "See times"}</button>` };
+  }
   else if (!nm && iv && !ivDone && iv.start > now) m = { head: `Your interview is ${slotLong(iv.start)}`, sub: iv.location || "", btn: `<button class="btn primary" type="button" data-ics ${dis}>Add to my calendar</button>` };
   else if (nm && pd.orient && pd.orient.start > now) m = { head: `Your orientation is ${slotLong(pd.orient.start)}`, sub: pd.orient.location || "", btn: `<button class="btn primary" type="button" data-oics ${dis}>Add to my calendar</button>` };
-  return m ? `<section class="card glass movecard" id="moveCard" aria-label="Your move"><div class="mv-eye"><span class="ping" aria-hidden="true"><i></i><i></i></span>Your move</div>
-      <div class="mv-head">${esc(m.head)}</div>${m.sub ? `<p class="info" style="margin:0">${esc(m.sub)}</p>` : ""}<div class="mv-acts">${m.btn}</div></section>`
+  return m ? `<section class="card glass movecard" id="moveCard" aria-label="Your move" style="--stage-c:var(--s-${lane})"><div class="mv-eye"><span class="ping" aria-hidden="true"><i></i><i></i></span>Your move</div>
+      <div class="mv-head">${esc(m.head)}</div>${m.sub ? `<p class="info" style="margin:0">${esc(m.sub)}</p>` : ""}<div class="mv-acts${m.wide ? " wide" : ""}">${m.btn}</div></section>`
     : `<section class="card glass movecard calm" id="moveCard" aria-label="Nothing needed"><div class="mv-eye">All set for now</div>
       <div class="mv-head">Nothing needed from you right now</div><p class="info" style="margin:0">We'll let you know here, and by email, as soon as there's a next step.</p></section>`;
 }
@@ -140,12 +147,12 @@ export function portalHTML({ back = false, pd, files = [], slots = [], msgs = []
   else ivBody = slotPicker(days, pick, dis, busy);
 
   return `<div class="wrap">
-    <section class="card glass phead" style="--stage-c:var(--s-${lane})"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
-      <div class="ptop"><div><div class="eyebrow">${nm ? "New member" : "Applicant portal"}</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
-      <div class="info">${nm ? "Welcome to the squad. Here's your orientation." : esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div>
-      ${preview ? `<span class="badge wait">Preview</span>` : `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">${back ? `<a class="btn small primary" href="/">‹ Back to the desk</a>` : ""}<button class="btn small" type="button" data-tour>How this works</button><button class="btn small" type="button" data-signout>Sign out</button></span>`}</div></section>
+    <section class="phead" style="--stage-c:var(--s-${lane})"><div class="pbar"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
+      ${preview ? `<span class="badge wait">Preview</span>` : `<span class="pbar-acts">${back ? `<a class="btn small primary" href="/">‹ Back to the desk</a>` : ""}<button class="btn small" type="button" data-tour>How this works</button><button class="btn small" type="button" data-signout>Sign out</button></span>`}</div>
+      <div class="pgreet"><div class="eyebrow">${nm ? "New member" : "Applicant portal"}</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
+      <div class="info">${nm ? "Welcome to the squad. Here's your orientation." : esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div></section>
 
-${moveHTML({ pd, files, slots, oslots, nm, dis, now, forms })}
+${moveHTML({ pd, files, slots, oslots, nm, dis, now, forms, lane, pick, busy })}
 ${nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checkinDone, dis, forms }) : `${ivSoonHTML(iv, ivDone, now, dis)}
     <section class="card glass" id="appCard"><h2>Your application</h2>${trackerHTML(pd.steps || [])}${timelineHTML(pd.steps || [])}</section>`}
 

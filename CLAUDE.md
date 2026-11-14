@@ -99,6 +99,13 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## DAYLIGHT redesign, stage 1 (Nov 14; Dkota picked mockup A "Daylight", canvas https://claude.ai/artifact/HvaDVsmsgfieeV5ZDBTcso; B "Night shift" not chosen)
+- Dkota said the app and the applicant portal looked "basic and rough". **Look** = last section of app.css ("DAYLIGHT, stage 1"): cool white ground `#F4F6FB`, white cards, each lane a soft tinted panel, NO black slabs in light mode (the `--ink*` tokens are now white/dark-text in light mode, so sidebar, Start here, Your move, tab dock, phone menus and the sign-in welcome panel are light; `--gold` is indigo). Bricolage Grotesque headings + Figtree (index.html font link). Pill buttons. Dark mode keeps the old dark panels (the dark blocks restore `--ink-fg`, `--gold`).
+- **Portal**: header is `.phead` (no longer a `.card`): small logo plate + How this works / Sign out in `.pbar`, then eyebrow / big greeting. Your move takes the lane colour (`moveHTML` gets `lane, pick, busy`); when booking is open the three soonest times are buttons on the card (`.mv-time[data-slot]`), picking one shows Book right there, and "See times" / "See all N times" still jumps to the Interview card. Journey (`.timeline .mile`) is one connected line with the current step in a tinted box.
+- **Desk**: lane headers are a name + big count on the tint, cards plain white (no left bar or ring; the ping still marks "your move"), file header has no colour bar, tab dock is a light pill.
+- Still to do (told Dkota): file page layout from the mockup (tabs at the top, fields stacked in cards, header actions that wrap), orientation dashboard, Messages, Interview times, Board meeting, Settings.
+- Tests: 442 browser.
+
 ## FEMA course links (Nov 14)
 - The IS-100 and IS-700 checklist lines carry a built-in link to FEMA's free online course (`FEMA_LINKS` in desk.js, used by `onbLink` when the line has no `| https://…` link of its own in Settings). The new member's dashboard shows "Don't have it yet? Take the free FEMA course online" under the line, next to Upload. The URLs could not be opened from the cloud session (fema.gov is blocked there); Dkota was asked to tap them once.
 

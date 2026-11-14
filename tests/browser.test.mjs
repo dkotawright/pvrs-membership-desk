@@ -848,7 +848,7 @@ try {
       await page.screenshot({ path: path.join(OUT, "64-lanes-signin.png") });
       await ctx.close(); }
     { const { ctx, page } = await open(browser, { user: { email: "marcus.bell@example.com", displayName: "" }, w: 390, h: 844 }); await wait(page, 900);
-      if (!(await page.locator(".portal .card.phead").count())) fail("portal header has no lane colour"); else ok("the applicant portal's header is in their lane's colour");
+      if (!(await page.locator(".portal .phead").count())) fail("portal header has no lane colour"); else ok("the applicant portal's header is in their lane's colour");
       await page.screenshot({ path: path.join(OUT, "65-lanes-portal.png") });
       await ctx.close(); }
   }
