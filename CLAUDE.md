@@ -99,6 +99,9 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## FEMA course links (Nov 14)
+- The IS-100 and IS-700 checklist lines carry a built-in link to FEMA's free online course (`FEMA_LINKS` in desk.js, used by `onbLink` when the line has no `| https://…` link of its own in Settings). The new member's dashboard shows "Don't have it yet? Take the free FEMA course online" under the line, next to Upload. The URLs could not be opened from the cloud session (fema.gov is blocked there); Dkota was asked to tap them once.
+
 ## Onboard tab: two sections (Nov 14, Dkota)
 - "New-member checklist" is renamed **Paperwork and documents** (same data, `onb.items.*`, `settings.onbItems`).
 - New **Equipment and access** section under it: what the squad issues / sets up (`issueItems()`, `settings.issueItems`, default `DEFAULT_ISSUE`: uniform, pager or radio, door access, ID badge, Pulsara, Active911, scheduler, e-mail lists, emsCharts). Dates in `onb.issue.<key>` (private). Desk only: not on the new member's dashboard, not counted in orientation progress. Edited in Settings → Onboard lists (`#sIssue`). Printed on the orientation record.

@@ -346,7 +346,11 @@ const onbKey = l => String(l).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(
 const onbCustom = () => Array.isArray(S.settings.onbItems) && ![OLD_ONB, PREV_ONB].some(l => l.join("|") === S.settings.onbItems.join("|"));
 const onbRaw = () => onbCustom() ? S.settings.onbItems : DEFAULT_ONB;
 const onbItems = () => onbRaw().map(l => { const label = String(l).split("|")[0].trim(); return [onbKey(label), label]; });
-const onbLink = key => { const hit = onbRaw().find(l => onbKey(String(l).split("|")[0].trim()) === key), u = hit && String(hit).split("|")[1]?.trim(); return u && /^https:\/\//.test(u) ? u : ""; };
+// FEMA's free online courses, shown next to the IS-100 / IS-700 lines unless the line has its own link in Settings.
+const FEMA_LINKS = [[/IS-?\s?100/i, "https://training.fema.gov/is/courseoverview.aspx?code=IS-100.c"], [/IS-?\s?700/i, "https://training.fema.gov/is/courseoverview.aspx?code=IS-700.b"]];
+const onbLink = key => { const hit = onbRaw().find(l => onbKey(String(l).split("|")[0].trim()) === key), u = hit && String(hit).split("|")[1]?.trim();
+  if (u && /^https:\/\//.test(u)) return u;
+  const label = (onbItems().find(([k]) => k === key) || [])[1] || ""; return (FEMA_LINKS.find(([re]) => re.test(label)) || [])[1] || ""; };
 // Starter list for trainer sign-offs; edit it in Settings.
 // PVRS's Orientation Matrix (PEMS-2601). The first group must be done before going on calls.
 const DEFAULT_SKILLS = ["Policies & Procedures issued & acknowledged", "Constitution issued & acknowledged", "Uniform (pants, shirt, boots)", "Communications (pager or radio & assignment)", "E-mail distribution list(s)",
