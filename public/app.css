@@ -2026,16 +2026,6 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
 
 /* applicant / new-member portal */
 .portal .card{background:var(--pane);border:0;border-radius:24px;box-shadow:var(--soft);-webkit-backdrop-filter:none;backdrop-filter:none;animation:lnRise .45s ease-out both}
-.portal .card.phead{background:var(--stage-c);color:#fff}
-.portal .card.phead .eyebrow{color:#fff;opacity:.9;letter-spacing:.08em}
-.portal .card.phead .hello{color:#fff;font-size:30px;font-weight:700}
-.portal .card.phead .info{color:#fff;opacity:.92}
-.portal .card.phead .btn{background:rgba(255,255,255,.18);color:#fff;border:0}
-.portal .card.phead .btn:hover{background:rgba(255,255,255,.28)}
-.portal .card.phead .plate{background:var(--bg);border-radius:16px}
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .portal .card.phead,:root:not([data-theme="light"]) .portal .card.phead .hello,:root:not([data-theme="light"]) .portal .card.phead .info,:root:not([data-theme="light"]) .portal .card.phead .eyebrow{color:#131316} :root:not([data-theme="light"]) .portal .card.phead .btn{background:rgba(19,19,22,.16);color:#131316} }
-:root[data-theme="dark"] .portal .card.phead,:root[data-theme="dark"] .portal .card.phead .hello,:root[data-theme="dark"] .portal .card.phead .info,:root[data-theme="dark"] .portal .card.phead .eyebrow{color:#131316}
-:root[data-theme="dark"] .portal .card.phead .btn{background:rgba(19,19,22,.16);color:#131316}
 .slotbtn{border-radius:12px;transition:transform .15s ease,background .15s ease}
 .slotbtn:hover{transform:translateY(-1px)}
 .mile.cur .dot{box-shadow:0 0 0 4px color-mix(in srgb,var(--s-int) 22%,transparent)}
@@ -2264,3 +2254,180 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
 @media (prefers-reduced-motion:reduce){
   .homecard:hover,.homecard.featured:hover{transform:none}
 }
+
+/* ======================================================================
+   DAYLIGHT, stage 1 (Nov 14, Dkota picked mockup A): light and airy. Cool white ground, white cards, each lane a
+   soft tinted panel in its own colour, no black slabs (sidebar, Start here, Your move, tab bar and phone menus
+   are light now). Bricolage Grotesque headings + Figtree. Dark mode keeps its dark panels.
+   Portal: slim header, Your move with the times on the card, the journey as one connected line.
+   ====================================================================== */
+:root{
+  --bg:#F4F6FB; --fg:#171A2B; --fg2:#565C73; --fg3:#666C82;
+  --sep:rgba(23,26,43,.08); --border:rgba(23,26,43,.16); --hover:rgba(23,26,43,.05);
+  --fill:#EEF1F8; --fill2:#DCE1EE; --shadow:rgba(23,26,43,.14);
+  --navy:#171A2B; --red:#C8102E; --red-fill:#C8102E; --accent:#4338CA; --accent-soft:rgba(67,56,202,.1); --chart:#4338CA;
+  --sel:#EEF0FF; --tab-on:#EEF0FF;
+  --soft:0 1px 3px rgba(23,26,43,.08),0 14px 34px -26px rgba(23,26,43,.4);
+  --ink:#FFFFFF; --ink-2:#F4F6FB; --ink-fg:#171A2B; --ink-fg2:#565C73; --gold:#4338CA; --gold-ink:#FFFFFF;
+  --s-screen:#4338CA; --s-int:#B45309; --s-appr:#86198F; --s-onb:#0F766E; --s-act:#15803D;
+  --font:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --font-display:"Bricolage Grotesque","Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --ink-fg:#FAF8F3; --ink-fg2:#D9D6CF; --gold:#F4C778; --gold-ink:#2B1B00 }}
+:root[data-theme="dark"]{ --ink-fg:#FAF8F3; --ink-fg2:#D9D6CF; --gold:#F4C778; --gold-ink:#2B1B00 }
+
+.btn,.newbtn,.btn.primary.newbtn,.side .newbtn{border-radius:999px}
+.toast{background:#171A2B;color:#fff}
+
+/* sidebar: a white panel, the current place in soft indigo */
+.side{background:var(--ink);box-shadow:var(--soft)}
+.side .navh,.side .nav-i b{color:var(--ink-fg2)}
+.side .nav-i:hover{background:var(--hover);color:var(--ink-fg)}
+.side .nav-i.on,.side .nav-i[aria-current="true"],.side .nav-i[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.side .nav-i[aria-pressed="true"] b,.side .nav-i.on b{color:inherit}
+.side .brand{background:#F4F6FB}
+.side .me .av,.me .av{background:var(--fg);color:var(--bg)}
+
+/* Start here: a panel in soft indigo, not a black band */
+.starthere{background:color-mix(in srgb,var(--s-screen) 10%,var(--pane));color:var(--fg);padding:24px 26px;border-radius:28px}
+.starthere h2{color:var(--fg);font-size:28px}
+.starthere p{color:var(--fg2)}.starthere p b{color:var(--fg)}
+.sh-eye{color:var(--accent);text-transform:uppercase;letter-spacing:.06em;font-size:12.5px}
+.sh-acts .btn{height:46px;padding:0 22px;border-radius:999px}
+.sh-acts .sh-alt,.sh-acts kbd{background:var(--pane);color:var(--fg)}
+.sh-acts .sh-ghost{color:var(--fg2)}
+.sh-next{background:var(--pane);border-radius:22px;box-shadow:var(--soft)}
+.sh-item{color:var(--fg);background:var(--fill);margin-bottom:4px;border-radius:14px;padding:10px 12px}
+.sh-item:hover{background:var(--fill2)}
+.sh-item i{background:var(--stage-c);border-radius:50%}
+.sh-item small,.sh-more{color:var(--fg2)}
+
+/* the board: lane name and a big count on the tint, plain white cards */
+.lane{padding:12px;gap:10px;border-radius:24px;background:color-mix(in srgb,var(--stage-c) 10%,var(--pane))}
+.stg.lhead,.stg.lact{background:transparent;box-shadow:none;padding:6px 8px 0}
+.stg.lhead .k,.stg.lact .k{font-size:17px;color:color-mix(in srgb,var(--stage-c) 62%,var(--fg))}
+.stg.lhead .k::before,.stg.lact .k::before{display:none}
+.stg.lhead .v,.stg.lact .v{background:transparent;font-size:22px;height:auto;min-width:0;padding:0;color:color-mix(in srgb,var(--stage-c) 85%,var(--fg))}
+.stg.lact{background:color-mix(in srgb,var(--stage-c) 10%,var(--pane));padding:8px 16px;border-radius:999px;gap:12px}
+.lcard{border-left:0;padding:14px;border-radius:18px;box-shadow:0 1px 2px rgba(23,26,43,.08)}
+.lcard.need{box-shadow:0 1px 2px rgba(23,26,43,.08)}
+.lc-top .av,.av{border-radius:50%}
+.lc-top .av{width:38px;height:38px}
+.lc-st{font-weight:600;color:color-mix(in srgb,var(--stage-c) 80%,var(--fg))}
+.lc-bar{height:6px;background:var(--fill2)}
+.lempty{border:0;background:color-mix(in srgb,var(--pane) 70%,transparent)}
+
+/* applicant file: tinted header without the colour bar; light tab bar */
+.dhead{box-shadow:none}
+.prog .t.move{background:color-mix(in srgb,var(--stage-c,var(--s-screen)) 16%,var(--pane));color:var(--fg);border-radius:16px}
+.prog .t.move strong{color:var(--fg)}
+.prog .t.move .ts,.prog .t.move .tc{color:var(--fg2)}
+.prog .t.move .movego{background:var(--fg);color:var(--bg)}
+.prog .t.move .nextgo{background:var(--pane);color:var(--fg)}
+.tabdock,.mnav{background:var(--ink);box-shadow:0 0 0 1px var(--sep),0 16px 30px -18px rgba(23,26,43,.45)}
+.tabdock{border-radius:999px}
+.tabdock .tabs button{color:var(--ink-fg2);border-radius:999px}
+.tabdock .tabs button:hover{color:var(--ink-fg)}
+.tabdock .tabs button[aria-selected="true"],.mnav button.on{background:var(--accent-soft);color:var(--accent)}
+.mnav button{color:var(--ink-fg2)}
+
+/* public pages */
+.welcome,.hero{box-shadow:var(--soft)}
+.homepath b{background:var(--accent-soft);color:var(--accent)}
+.hc-ic{background:var(--accent)}
+
+/* ---- portal ---- */
+.portal .wrap{gap:16px}
+.portal .card{border-radius:28px;padding:22px 20px;gap:14px}
+.portal h2{font-family:var(--font-display);font-size:20px;letter-spacing:-.01em}
+.portal .btn{min-height:44px;padding-inline:18px}
+.phead{display:flex;flex-direction:column;gap:18px;padding:0 4px}
+.pbar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.pbar-acts{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.pbar-acts .btn:not(.primary){background:transparent;border:0;box-shadow:none;color:var(--fg2);padding-inline:12px}
+.phead .plate{background:#fff;border:0;border-radius:14px;padding:6px 10px;box-shadow:0 1px 3px rgba(23,26,43,.12)}
+.phead .plate img{width:auto;max-width:190px;max-height:40px}
+.phead .eyebrow{color:color-mix(in srgb,var(--stage-c) 80%,var(--fg));letter-spacing:.08em;font-weight:700}
+.portal .phead .hello{font-size:38px;line-height:1.05;margin:4px 0 6px}
+.phead .info{color:var(--fg2);font-size:15px}
+
+/* Your move: a panel in the lane's colour, the open times as big buttons on it */
+.portal .card.movecard{background:color-mix(in srgb,var(--stage-c,var(--s-screen)) 13%,var(--pane));color:var(--fg);box-shadow:none}
+.movecard .mv-eye{color:color-mix(in srgb,var(--stage-c,var(--s-screen)) 80%,var(--fg));text-transform:uppercase;letter-spacing:.06em;font-size:12.5px}
+.movecard .ping{--ping:var(--stage-c,var(--s-screen))}
+.movecard .mv-head{font-size:26px;line-height:1.1;color:var(--fg)}
+.movecard .info{color:color-mix(in srgb,var(--stage-c,var(--s-screen)) 30%,var(--fg))}
+.movecard .btn.primary{background:var(--fg);color:var(--bg);border-radius:999px}
+.movecard .mv-acts.wide{flex-direction:column;align-items:stretch}
+.mv-times{display:flex;flex-direction:column;gap:8px}
+.mv-time{appearance:none;border:0;font:inherit;font-weight:600;font-size:16px;color:var(--fg);background:var(--pane);min-height:56px;padding:8px 16px;border-radius:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;text-align:left;box-shadow:0 1px 2px rgba(23,26,43,.12);transition:transform .15s ease}
+.mv-time:hover{transform:translateY(-1px)}
+.mv-time b{font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--stage-c,var(--s-screen)) 85%,var(--fg))}
+.mv-time small{font-weight:500;color:var(--fg2)}
+.mv-time[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.mv-time[aria-pressed="true"] b,.mv-time[aria-pressed="true"] small{color:inherit}
+.mv-time:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.movecard .mv-all{background:transparent;border:0;box-shadow:none;align-self:flex-start;padding-inline:0;font-weight:600;color:color-mix(in srgb,var(--stage-c,var(--s-screen)) 80%,var(--fg))}
+.portal .card.movecard.calm{background:var(--pane);box-shadow:var(--soft)}
+
+/* the journey: one connected line */
+.tracker{background:transparent;padding:0;margin:0 0 8px}
+.tk-bar i{height:8px}
+.timeline{display:flex;flex-direction:column}
+.timeline .mile{position:relative;background:transparent;box-shadow:none;border-radius:0;margin:0;padding:0 0 18px;gap:14px;align-items:flex-start;font-size:15.5px;color:var(--fg)}
+.timeline .mile:last-child{padding-bottom:0}
+.timeline .mile::before{content:"";position:absolute;left:13px;top:28px;bottom:0;width:2px;background:var(--fill2)}
+.timeline .mile:last-child::before{display:none}
+.timeline .mile.done::before{background:var(--stage-c)}
+.timeline .mile .dot{width:28px;height:28px;margin:0;border:2px solid var(--fill2);background:var(--pane);position:relative;z-index:1;box-shadow:none}
+.timeline .mile.cur{box-shadow:none}
+.timeline .mile.cur .dot{border:3px solid var(--stage-c);background:color-mix(in srgb,var(--stage-c) 13%,var(--pane));box-shadow:none}
+.timeline .mile.cur .dot::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--stage-c)}
+.timeline .mtext{display:flex;flex-direction:column;gap:1px;min-width:0;padding-top:3px;flex:1}
+.timeline .mlabel{font-weight:600}
+.timeline .mtext small{color:var(--fg2);font-size:13.5px;font-weight:400}
+.timeline .mile:not(.done):not(.cur) .mlabel{color:var(--fg2);font-weight:500}
+.timeline .mile.cur .mtext{background:color-mix(in srgb,var(--stage-c) 13%,var(--pane));border-radius:16px;padding:10px 14px;margin-top:-6px}
+.timeline .mile.cur .mlabel{font-weight:700}
+
+/* rows, messages, bottom menu */
+.portal .doc{background:var(--fill);border:0;border-radius:14px;padding:10px 14px;margin-bottom:8px;min-height:44px}
+.portal .doc .dt{font-weight:600}.portal .doc .dt small{font-weight:400}
+.portal .badge{font-size:12.5px;padding:3px 10px}
+.portal .or-item{padding:11px 2px;font-size:15px}
+.portal .or-ck{width:24px;height:24px}
+.msg.them .bub{background:var(--accent-soft)}
+.portal .composer textarea{border-radius:22px;font-size:16px}
+.portal .composer .btn{height:44px;background:var(--accent);color:#fff}
+@media (max-width:860px){
+  .pnav{background:var(--ink);border-radius:26px;box-shadow:0 0 0 1px var(--sep),0 14px 30px -14px rgba(23,26,43,.45)}
+  .pnav button{color:var(--ink-fg2);height:50px;border-radius:20px}
+  .pnav button.on{background:var(--accent-soft);color:var(--accent)}
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .portal .composer .btn{color:#131316}
+  :root:not([data-theme="light"]) .toast{background:#0B0B0D}
+}
+:root[data-theme="dark"] .portal .composer .btn{color:#131316}
+@media (prefers-reduced-motion:reduce){ .mv-time:hover{transform:none} }
+/* Daylight: sidebar text follows the panel (older layers set it white) */
+.side,.side .me,.side .me .who b{color:var(--ink-fg)}
+.side .me{border-top-color:var(--sep)}
+.side .me small,.side .me .sub,.side .me .role,.side .me #conn,.side .me .iconbtn,.side .me button,.side .nav-i .n,.side .nav-i .cnt,.side .nav-i .count{color:var(--ink-fg2)}
+.side .nav-i.on,.side .nav-i[aria-current="true"],.side .nav-i[aria-pressed="true"]{box-shadow:none}
+.prog .t.move .ping{--ping:var(--stage-c,var(--s-screen))}
+.starthere{align-items:stretch}
+.starthere .sh-main{justify-content:center}
+@media (max-width:520px){ .phead .plate img{max-width:150px;max-height:34px} .pbar-acts .btn:not(.primary){padding-inline:8px} }
+/* Daylight: the sign-in welcome panel is light now, so its weather box and contact line use the panel's text colours */
+.welcome-links{color:var(--ink-fg2)}
+.welcome-links a{color:var(--accent);border-bottom-color:var(--accent-soft)}
+.welcome-links a:hover{border-bottom-color:var(--accent)}
+.wx-temp,.wx-facts dd,.wx-day b{color:var(--ink-fg)}
+.wx-cond,.wx-facts dt,.wx-day,.wx-day small,.wx-sun,.wx-src,.wx-day svg{color:var(--ink-fg2)}
+.wx-day{background:var(--pane)}
+.wx-ic svg{color:#D97706}
+.wx-alert,.wx-alert b,.wx-alert span{color:color-mix(in srgb,var(--s-int) 75%,var(--ink-fg))}
+.pbar{flex-wrap:nowrap}
+.phead .plate{flex:0 1 auto;min-width:0}
+.pbar-acts{flex:none}
