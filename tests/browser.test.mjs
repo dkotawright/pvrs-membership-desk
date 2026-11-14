@@ -1727,7 +1727,13 @@ try {
     if (!/physical\.pdf/.test(ad.app)) fail("admin: no secure doc on the applicant's file: " + ad.app); else ok("an admin can open an applicant's secure documents");
     if (!/ppd\.jpg/.test(ad.or) || /physical/.test(ad.or)) fail("admin: orientation secure docs: " + ad.or); else ok("and a new member's, under Orientation documents, only their own");
     const ow = await look(OWNER), co = await look({ email: "cory@pvrs.org", displayName: "Cory" });
-    if (ow.app || ow.or || co.app || co.or) fail("secure docs shown to owner/coordinator"); else ok("the owner and the coordinator still can't open secure documents");
+    if (co.app || co.or) fail("secure docs shown to the coordinator"); else ok("the coordinator still can't open secure documents");
+    if (!/physical\.pdf/.test(ow.app) || !/Mark filed/.test(ow.app) || /Mark filed/.test(ad.app)) fail("owner secure docs: " + ow.app); else ok("the owner can open them and has Mark filed; admins don't");
+    { const { ctx, page } = await open(browser, { seed }); await wait(page, 900); await pickApplicant(page, "Val Vault"); await wait(page, 500);
+      await page.locator('[data-vaultfile="x1"]').click(); await wait(page, 500);
+      const v = await page.evaluate(() => window.__mock.docs.get("vault/x1"));
+      if (!v.filedAt || !/Filed ✓/.test(await page.locator("#secureDocs").textContent())) fail("mark filed didn't save"); else ok("Mark filed saves and shows Filed");
+      await ctx.close(); }
   }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {

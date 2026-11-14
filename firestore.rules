@@ -21,8 +21,8 @@ service cloud.firestore {
     function isAdmin()   { return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role in ['admin', 'coordinator']); }
     // Interview coordinator: sees what an admin sees, and runs interview scheduling (times, booking, who interviews,
     // opening booking, applicant messages). Everything else stays owner-only.
-    // The Admin role itself (not the coordinator, not the owner). Since Nov 14 (Dkota's choice) admins may open
-    // confidential paperwork alongside the paperwork account.
+    // The Admin role itself (not the coordinator). Since Nov 14 (Dkota's choice) admins and the owner may open
+    // confidential paperwork alongside the paperwork account; the owner may also mark it filed.
     function isRoleAdmin() { return verified() && exists(staffPath()) && get(staffPath()).data.role == 'admin'; }
     function isCoord()   { return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'coordinator'); }
     // Interviewers the owner assigned to this applicant (applicants/{id}.interviewers, a list of emails).
@@ -111,9 +111,9 @@ service cloud.firestore {
         && d.confidential == true && d.path == '' && d.name == 'Private document';
     }
     match /vault/{fileId} {
-      allow read: if isPaperwork() || isRoleAdmin();
+      allow read: if isPaperwork() || isRoleAdmin() || isOwner();
       allow delete: if isPaperwork();
-      allow update: if isPaperwork() && onlyChanged(['filedAt']);
+      allow update: if (isPaperwork() || isOwner()) && onlyChanged(['filedAt']);
       allow create: if verified()
         && request.resource.data.keys().hasOnly(['appId','appName','label','name','path','size','contentType','uploadedAt','uploadedBy','from','form'])
         && request.resource.data.appId is string

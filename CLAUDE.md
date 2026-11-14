@@ -100,10 +100,10 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - Tests: 181 browser checks.
 
 ## Admins can open secure documents (Nov 14, Dkota's choice from a two-question prompt: "Admins can open them" / role "Admins")
-- Reverses part of the Oct 18 rule: confidential paperwork (`vault/{id}`, Storage `confidential/{appId}/…`) is now readable by the **Admin role** (`isRoleAdmin()` in both rules files: `staff/{email}.role == 'admin'` exactly) as well as orientationpaperwork@pvrs.org. NOT the owner (he didn't pick himself), NOT the coordinator, interviewers, members or applicants. Only the paperwork account deletes or marks filed.
+- Reverses part of the Oct 18 rule: confidential paperwork (`vault/{id}`, Storage `confidential/{appId}/…`) is now readable by the **Admin role** (`isRoleAdmin()` in both rules files: `staff/{email}.role == 'admin'` exactly) as well as orientationpaperwork@pvrs.org. The **owner** was added the same day ("Add me to be able to see now") and may also mark entries filed (`filedAt`, `data-vaultfile`); admins can't. NOT the coordinator, interviewers, members or applicants. Only the paperwork account deletes or marks filed.
 - Desk (`watchVault`, `secureHTML`, `openVaultDoc`, `#secureDocs`): for role admin, a "🔒 Secure documents" block lists that person's vault entries with Open, on the Application tab's Documents (applicant / interview stage) and at the top of Orientation documents (Onboard tab). Signed Hep B declinations open as the form.
 - Other desk wording still says secure documents go to the paperwork account; that stays true for everyone except admins.
-- Don't widen this further (owner, coordinator) without asking Dkota.
+- Don't widen this further (coordinator, others) without asking Dkota.
 
 ## Orientation forms on the phone + uploads any time (Nov 11, from Dkota's photos of the paper forms)
 - **Forms** `public/js/forms.js` (`FORMS`, wording copied from PVRS's sheets): Confidentiality Statement (10/2015), Confidentiality Quiz (6 true/false + 5 written scenarios; no answer key was supplied, so it is not graded, the chair reads it), Constitution and Bylaws receipt, Emergency Contact Form, Hepatitis B Vaccine Declination (optional). The **Arch insurance beneficiary form stays paper** (it is mailed out and carries SSNs): its checklist line reads "Paper form at your session", no upload. The Sterling line has no form ("(No form)" on the sheet); the desk ticks it from the finished check. The FCRA summary is a handout, not built in.

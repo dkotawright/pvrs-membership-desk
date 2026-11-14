@@ -1244,7 +1244,7 @@ function openRequestDocs(id){
   const picked = new Set(), custom = [];
   const M = openModal(`<h3>Request documents</h3><p class="help">They'll see these in their portal with an upload button.</p>
     <div class="chips" style="flex-wrap:wrap" id="rqChips">${DOC_ITEMS.map((d,i) => `<button class="chip" type="button" data-i="${i}" aria-pressed="${have.includes(d)}" ${have.includes(d)?"disabled":""}>${have.includes(d)?"✓ ":""}${esc(d)}${isConfidential(d)?" 🔒":""}</button>`).join("")}</div>
-    <p class="help">🔒 Medical and Social Security items go through secure document upload to ${esc(PAPERWORK_EMAIL)}. You'll see that they arrived, not what's in them.</p>
+    <p class="help">🔒 Medical and Social Security items go through secure document upload to ${esc(PAPERWORK_EMAIL)}. Only you, admins and that account can open them.</p>
     <div class="ios"><div class="row"><input id="rqCustom" class="inlinefield" type="text" placeholder="Something else…" aria-label="Another document" style="flex:1"><button class="btn small" type="button" id="rqAdd">Add</button></div><div id="rqCustomList"></div></div>
     ${!get(a,"portal.invited") ? `<p class="help">${a.email ? "They don't have portal access yet. An invite will be sent to " + esc(a.email) + "." : "Add their email on the Application tab so they can get portal access."}</p>` : ""}
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="rqSave">Request</button></div>`, true);
@@ -1420,7 +1420,7 @@ function openUploadRecords(id, preset){
   const a = S.apps.get(id); if (!a) return;
   const M = openModal(`<h3>Upload records</h3><p class="help">For ${esc(a.name || "this applicant")}. Staff only: admins can open and print these; the applicant never sees them. PDFs or photos, up to 25 MB each.</p>
     <div class="field"><label for="recLabel">What is it?</label><select id="recLabel">${RECORD_LABELS.map(l => `<option${l === preset ? " selected" : ""}>${esc(l)}${isConfidential(l) ? " 🔒" : ""}</option>`).join("")}</select></div>
-    <p class="help lockline" id="recConf" hidden>🔒 Secure document: this goes only to ${esc(PAPERWORK_EMAIL)}. Once uploaded, you won't be able to open it.</p>
+    <p class="help lockline" id="recConf" hidden>🔒 Secure document: only you, admins and ${esc(PAPERWORK_EMAIL)} can open this.</p>
     <label class="dropzone" id="recDrop" for="recFiles"><input type="file" id="recFiles" accept="application/pdf,image/*" multiple hidden>
       <b>Drop files here</b><span>or click to choose from your Mac</span></label>
     <div id="recQueue" class="ios" hidden></div>
@@ -2194,6 +2194,8 @@ function bindEvents(){
       edit(S.sel, `refs.r${i}.returned`, get(a,`refs.r${i}.returned`) ? "" : today()); return; }
     const rc = t.closest("[data-docrcv]"); if (rc) { const a = S.apps.get(S.sel); const k = rc.dataset.docrcv; edit(S.sel, `docs.requested.${k}.received`, get(a,`docs.requested.${k}.received`) === "yes" ? "" : "yes"); return; }
     const rm = t.closest("[data-docrm]"); if (rm) { if (rm.dataset.confirm !== "1") { rm.dataset.confirm = "1"; rm.textContent = "Confirm"; return; } edit(S.sel, `docs.requested.${rm.dataset.docrm}.removed`, true); return; }
+    const vf = t.closest("[data-vaultfile]"); if (vf) { const x = (S.vault || []).find(v => v.id === vf.dataset.vaultfile); if (!x || !S.canEdit) return;
+      updateDoc(doc(db, "vault", x.id), { filedAt: x.filedAt ? null : Date.now() }).then(() => toast(x.filedAt ? "Marked not filed" : "Marked filed")).catch(e => { console.error(e); toast("Couldn't save. Try again."); }); return; }
     const vd = t.closest("[data-vault]"); if (vd) return openVaultDoc(vd.dataset.vault);
     const fl = t.closest("[data-file]"); if (fl) return openFile(fl.dataset.file);
     if (t.closest("[data-reply]")) return sendReply();
@@ -2770,14 +2772,16 @@ function openSignedForm(id, key){
 }
 // Secure documents (medical, Social Security). People with the Admin role can open them on the file, in both the
 // applicant stage (Application tab) and orientation (Onboard tab). Everyone else still sees only that one arrived.
-function watchVault(){ if (S.role !== "admin") return;
+const vaultOK = () => S.role === "admin" || S.role === "owner";
+function watchVault(){ if (!vaultOK()) return;
   onSnapshot(collection(db, "vault"), snap => { S.vault = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((x, y) => (y.uploadedAt || 0) - (x.uploadedAt || 0)); if (S.sel) syncDetail(); }, () => {});
 }
 function secureHTML(id){
-  if (S.role !== "admin") return "";
+  if (!vaultOK()) return "";
   const list = (S.vault || []).filter(x => x.appId === id);
-  return `<div class="note" id="secureDocs"><b>🔒 Secure documents</b> · only admins and ${esc(PAPERWORK_EMAIL)} can open these${list.length ? "" : `<div style="margin-top:4px">None sent yet.</div>`}
-    ${list.map(x => `<div style="margin-top:6px"><button class="filelink" type="button" data-vault="${esc(x.id)}">${esc(x.form ? x.form.title || x.name : x.name)}</button> · ${esc(x.label || "Paperwork")} · ${esc(new Date(x.uploadedAt).toLocaleDateString())} · ${x.from === "staff" ? "added by PVRS" : "from them"}</div>`).join("")}</div>`;
+  return `<div class="note" id="secureDocs"><b>🔒 Secure documents</b> · only you, admins and ${esc(PAPERWORK_EMAIL)} can open these${list.length ? "" : `<div style="margin-top:4px">None sent yet.</div>`}
+    ${list.map(x => `<div style="margin-top:6px"><button class="filelink" type="button" data-vault="${esc(x.id)}">${esc(x.form ? x.form.title || x.name : x.name)}</button> · ${esc(x.label || "Paperwork")} · ${esc(new Date(x.uploadedAt).toLocaleDateString())} · ${x.from === "staff" ? "added by PVRS" : "from them"}${x.filedAt ? ` · filed ${esc(new Date(x.filedAt).toLocaleDateString())}` : ""}
+      ${S.canEdit ? ` <button class="btn small${x.filedAt ? "" : " primary"}" type="button" data-vaultfile="${esc(x.id)}">${x.filedAt ? "Filed ✓" : "Mark filed"}</button>` : ""}</div>`).join("")}</div>`;
 }
 async function openVaultDoc(vid){
   const x = (S.vault || []).find(v => v.id === vid); if (!x) return;
@@ -3779,7 +3783,7 @@ function openOrientDocs(id){
   const items = orientDocItems(a), picked = new Set(items.map(([k]) => k)), custom = [];
   const M = openModal(`<h3>Request orientation documents</h3><p class="help">${esc(first(a.name) || "They")} will see these marked <b>Requested</b> on the orientation dashboard, each with an Upload button. Tap any you don't need right now.</p>
     <div class="chips" style="flex-wrap:wrap" id="odChips">${items.map(([k, l]) => `<button class="chip" type="button" data-k="${esc(k)}" aria-pressed="true">${esc(l)}${isConfidential(l) ? " 🔒" : ""}</button>`).join("") || `<span class="help">Every checklist item is already done.</span>`}</div>
-    <p class="help">🔒 Medical and Social Security items go through secure document upload to ${esc(PAPERWORK_EMAIL)}. You'll see that they arrived, not what's in them.</p>
+    <p class="help">🔒 Medical and Social Security items go through secure document upload to ${esc(PAPERWORK_EMAIL)}. Only you, admins and that account can open them.</p>
     <div class="ios"><div class="row"><input id="odCustom" class="inlinefield" type="text" placeholder="Something else…" aria-label="Another document" style="flex:1"><button class="btn small" type="button" id="odAdd">Add</button></div><div id="odCustomList"></div></div>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="odSave">Request</button></div>`, true);
   const paintCustom = () => { $("#odCustomList").innerHTML = custom.map((c, i) => `<div class="row"><span class="lbl">${esc(c)}</span><button class="copy" type="button" data-rmc="${i}">Remove</button></div>`).join(""); };

@@ -37,14 +37,14 @@ service firebase.storage {
     }
 
     // Confidential paperwork (medical, Social Security). orientationpaperwork@pvrs.org can open or delete it, and
-    // people with the Admin role can open it (Dkota, Nov 14). Not the coordinator, interviewers or members.
-    // The applicant (into their own folder) and the owner can add files but can't read them back.
+    // the owner and people with the Admin role can open it (Dkota, Nov 14). Not the coordinator, interviewers or members.
+    // The applicant can add files to their own folder but can't read them back.
     function isRoleAdmin() {
       return verified() && firestore.exists(/databases/(default)/documents/staff/$(myEmail()))
         && firestore.get(/databases/(default)/documents/staff/$(myEmail())).data.role == 'admin';
     }
     match /confidential/{appId}/{fileName} {
-      allow read: if (verified() && myEmail() == 'orientationpaperwork@pvrs.org') || isRoleAdmin();
+      allow read: if (verified() && (myEmail() == 'orientationpaperwork@pvrs.org' || myEmail() == 'dkota@pvrs.org')) || isRoleAdmin();
       allow delete: if verified() && myEmail() == 'orientationpaperwork@pvrs.org';
       allow create: if (ownsPortal(appId) || (verified() && myEmail() == 'dkota@pvrs.org'))
         && request.resource.size <= 25 * 1024 * 1024

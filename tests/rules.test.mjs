@@ -80,12 +80,17 @@ await t("an online application with 2 references is rejected", addDoc(collection
 await t("an online application without a license number is rejected", addDoc(collection(anon, "submissions"), sub({}, { dlNumber: "" })), false);
 await t("an application saying how they heard about PVRS is accepted", addDoc(collection(anon, "submissions"), sub({ heard: { source: "Social media", detail: "Instagram" } })), true);
 await t("a how-they-heard answer with extra fields is rejected", addDoc(collection(anon, "submissions"), sub({ heard: { source: "Social media", evil: "x" } })), false);
-await t("the owner can't open confidential paperwork details", getDocs(collection(owner, "vault")), false);
+await t("the owner can open confidential paperwork", getDocs(collection(owner, "vault")), true);
 await t("the paperwork account can", getDocs(collection(paper, "vault")), true);
 await t("an admin can open confidential paperwork", getDocs(collection(admin, "vault")), true);
 await t("a member can't", getDocs(collection(member, "vault")), false);
 await t("an applicant can't", getDocs(collection(applicant, "vault")), false);
 await t("an admin can't delete it", deleteDoc(doc(admin, "vault/none")), false);
+await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), "vault/vf1"), { appId: "a1", name: "x.pdf", path: "confidential/a1/x.pdf", filedAt: null }));
+await t("the owner marks one filed", updateDoc(doc(owner, "vault/vf1"), { filedAt: now() }), true);
+await t("but can't change anything else on it", updateDoc(doc(owner, "vault/vf1"), { name: "y.pdf" }), false);
+await t("an admin can't mark it filed", updateDoc(doc(admin, "vault/vf1"), { filedAt: null }), false);
+await t("the owner can't delete it", deleteDoc(doc(owner, "vault/vf1")), false);
 await t("an applicant can send a replacement reference we asked for", addDoc(collection(applicant, "portal/a1/refUpdates"), { slot: 2, name: "New", relationship: "Coach", email: "n@example.com", phone: "", address: "", at: now(), by: "app@example.com" }), true);
 await t("…but not for one we didn't ask about", addDoc(collection(applicant, "portal/a1/refUpdates"), { slot: 1, name: "New", relationship: "Coach", email: "n@example.com", phone: "", address: "", at: now(), by: "app@example.com" }), false);
 await t("the owner reads replacement references", getDocs(collectionGroup(owner, "refUpdates")), true);
@@ -323,7 +328,7 @@ await t("an applicant uploads private paperwork to their folder", uploadBytes(re
 await t("a stranger can't add files to someone else's folder", uploadBytes(ref(st("x@example.com"), "confidential/a1/2.pdf"), pdf, meta), false);
 await t("the owner can add paperwork", uploadBytes(ref(st("dkota@pvrs.org"), "confidential/a1/3.pdf"), pdf, meta), true);
 await t("the applicant can't read it back", getBytes(ref(st("app@example.com"), "confidential/a1/1.pdf")), false);
-await t("the owner can't open it", getBytes(ref(st("dkota@pvrs.org"), "confidential/a1/1.pdf")), false);
+await t("the owner can open it", getBytes(ref(st("dkota@pvrs.org"), "confidential/a1/1.pdf")), true);
 await t("the paperwork account can", getBytes(ref(st("orientationpaperwork@pvrs.org"), "confidential/a1/1.pdf")), true);
 await t("an admin can open it", getBytes(ref(st("admin@pvrs.org"), "confidential/a1/1.pdf")), true);
 await t("a member can't open it", getBytes(ref(st("member@pvrs.org"), "confidential/a1/1.pdf")), false);
