@@ -113,7 +113,7 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 
 ## Why applicant uploads were refused (found Nov 14)
 - The desk's failure note showed "the upload wasn't allowed (permission)" while the same person could write the note to Firestore. Storage rules call `firestore.get()` (`ownsPortal`), which needs the role **Firebase Rules Firestore Service Agent** on `service-<project number>@gcp-sa-firebasestorage.iam.gserviceaccount.com`. firebase-tools skips that grant entirely under `--non-interactive` (rulesDeploy.js `checkStorageRulesIamPermissions`), and every deploy here is non-interactive.
-- deploy.yml now has a step "Let Storage rules read Firestore" (gcloud add-iam-policy-binding, continue-on-error). If the deploy account lacks permission to grant it, the step logs the error and Dkota has to add the role by hand in Cloud console → IAM.
+- The deploy account can't grant it (setIamPolicy denied), so Dkota granted it by hand in Cloud console → IAM (he reported doing so Nov 14). deploy.yml has a read-only step "Check that Storage rules can read Firestore" that prints `UPLOAD-ROLE: PRESENT` or `MISSING` in the deploy job log (continue-on-error).
 
 ## Request a missing orientation document from its line (Nov 14)
 - Orientation documents (Onboard tab): each unfinished line that takes an upload has **Request** / **Ask again** (`data-orreq`, `requestOrientDoc`, `askOrientDocs`); paper (insurance) and sign-at-session lines don't (`notUploadItem`). It opens the orientdocs email for that one document.
