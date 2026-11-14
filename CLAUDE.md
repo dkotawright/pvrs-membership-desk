@@ -99,6 +99,10 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## Undo a completed orientation line (Nov 14)
+- Orientation documents: a line marked Done has **Undo** (`data-oundo`, owner). It clears `onb.items.<key>` and sets `onb.undone.<key>` so `tidyOnb` doesn't tick it again by itself (signed forms, Sterling, old split lines). Files stay. Approving or uploading again ticks it as usual (Approve clears the marker).
+- The grant step in deploy.yml was denied (github-deploy lacks setIamPolicy); Dkota was given the manual IAM steps. Check whether he has done them before assuming uploads work.
+
 ## Why applicant uploads were refused (found Nov 14)
 - The desk's failure note showed "the upload wasn't allowed (permission)" while the same person could write the note to Firestore. Storage rules call `firestore.get()` (`ownsPortal`), which needs the role **Firebase Rules Firestore Service Agent** on `service-<project number>@gcp-sa-firebasestorage.iam.gserviceaccount.com`. firebase-tools skips that grant entirely under `--non-interactive` (rulesDeploy.js `checkStorageRulesIamPermissions`), and every deploy here is non-interactive.
 - deploy.yml now has a step "Let Storage rules read Firestore" (gcloud add-iam-policy-binding, continue-on-error). If the deploy account lacks permission to grant it, the step logs the error and Dkota has to add the role by hand in Cloud console → IAM.
