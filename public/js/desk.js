@@ -167,7 +167,8 @@ function tabHTML(tab){
       <section class="group noiv"><h3><span>Check-ins</span></h3><div class="ios" id="checkinBox"></div></section>` : ""}
     ${group("Duty crew",[`<div class="row"><span class="lbl">Applicant phone<small id="phoneEcho">—</small></span><button class="copy" type="button" data-copy="phone">Copy</button></div>`,F.date("notify.chief","Chief notified"),F.init("notify.chiefInit")])}
     ${group("Email account",[`<div class="row"><span class="lbl">Applicant email<small id="emailEcho">—</small></span><button class="copy" type="button" data-copy="email">Copy</button></div>`,F.date("notify.tech","Technology chair notified"),F.init("notify.techInit")])}
-    ${group("New-member checklist",[F.note("After the board approves them: the date each item was done. Edit the list in Settings.", "onbnote"),...onbItems().map(([k,l]) => F.date(`onb.items.${k}`, esc(l)))],"",`<small id="onbCount" style="font-weight:500;color:var(--fg3)"></small>`)}
+    ${group("Paperwork and documents",[F.note("What we need from them. After the board approves them: the date each item was done. Edit the list in Settings.", "onbnote"),...onbItems().map(([k,l]) => F.date(`onb.items.${k}`, esc(l)))],"",`<small id="onbCount" style="font-weight:500;color:var(--fg3)"></small>`)}
+    ${group("Equipment and access",[F.note("What we issue and set up for them (uniform, doors, apps). Enter the date each one was done. Edit the list in Settings.", "issuenote"),...issueItems().map(([k,l]) => F.date(`onb.issue.${k}`, esc(l)))],"",`<small id="issueCount" style="font-weight:500;color:var(--fg3)"></small>`)}
     ${group("Mentor",[F.note("Pair each new member with an experienced member for their first year. You'll get a To do if a month goes by without a check-in."),
       F.text("onb.mentor","Mentor","Member's name"),F.date("onb.mentorSince","Paired on"),F.date("onb.mentorCheck","Last check-in"),F.area("onb.mentorNotes","Notes","How it's going")],"")}
     ${group("Expiration dates",[F.note("You'll get a To do 30 days before any of these expire."),`<div class="row"><span class="lbl">Driver's license<small>Entered on the Checks tab</small></span><b id="dlExpEcho">—</b></div>`,
@@ -353,6 +354,9 @@ const DEFAULT_SKILLS = ["Policies & Procedures issued & acknowledged", "Constitu
   "Electronic scheduler (with information entered)", "ID badge", "Equipment/supply restock", "Bloodborne Pathogens course", "Credentials on file (license, medical and specialty certifications, NIMS-100/700)",
   "Certifications to NCEMS, Medical Control, emsCharts (BLS/ILS/ALS)", "Controlled substances: in-service, access, CPH notify (ALS)"];
 const OLD_SKILLS = ["Rig and equipment walkthrough", "Radio and dispatch procedures", "Stretcher and stair chair", "First duty shift", "Second duty shift"];
+// Onboard tab, second section: what the squad issues and sets up for a new member. Edit the list in Settings.
+const DEFAULT_ISSUE = ["Uniform (pants, shirt, boots)", "Pager or radio", "Door / building access", "ID badge", "Pulsara", "Active911", "Electronic scheduler", "E-mail distribution list(s)", "emsCharts account"];
+const issueItems = () => (Array.isArray(S.settings.issueItems) && S.settings.issueItems.length ? S.settings.issueItems : DEFAULT_ISSUE).map(l => [onbKey(l), String(l)]);
 const skillItems = () => (Array.isArray(S.settings.skillItems) && S.settings.skillItems.join("|") !== OLD_SKILLS.join("|") ? S.settings.skillItems : DEFAULT_SKILLS).map(l => [onbKey(l), l]);
 // Expiration dates to watch (To do 30 days ahead and once expired), for anyone in process or approved.
 const EXPIRES = [["dl.expires", "Driver's license", "checks"], ["onb.cprExpires", "CPR / BLS card", "onb"], ["onb.emtExpires", "EMS certification", "onb"]];
@@ -845,6 +849,7 @@ function syncDetail(){
   const ab = $("#aiBrief"); if (ab) { ab.innerHTML = briefHTML(get(a, "ai.brief")); const bb = document.querySelector("[data-aibrief]"); if (bb && !bb.disabled) bb.textContent = get(a, "ai.brief") ? "Redo brief" : "Make brief"; }
   const ist = $("#ivScoreTotal"); if (ist) ist.textContent = ivScoreText(a);
   const oc = $("#onbCount"); if (oc) { const its = onbItems(), n = its.filter(([k]) => get(a, `onb.items.${k}`)).length; oc.textContent = its.length ? `${n} of ${its.length} done` : ""; }
+  const ic = $("#issueCount"); if (ic) { const its = issueItems(), n = its.filter(([k]) => get(a, `onb.issue.${k}`)).length; ic.textContent = its.length ? `${n} of ${its.length} done` : ""; }
   const dx = $("#dlExpEcho"); if (dx) dx.textContent = get(a, "dl.expires") ? fmtDate(get(a, "dl.expires")) : "Not entered";
   const m = $("#miles");
   if (m) m.innerHTML = MILESTONES.map((x,i) => `<div class="mile ${p.done[i]?"done":""} ${i===p.cur?"cur":""}"><span class="dot">${p.done[i]?checkSVG:""}</span>${esc(x[0])}</div>`).join("");
@@ -1612,7 +1617,8 @@ function openSettings(){
     <div class="group"><h3><span>Med Control (AI assistant)</span></h3><div class="ios">
       ${F.seg("_ai","Med Control",[["on","On","good"],["off","Off"]]).replace('data-k="_ai"', 'id="sAi"')}
       <div class="row"><span class="lbl"><small>Chat, applicant briefs and reply drafts for you and admins, powered by Claude. Only turn on after the board has OK'd it and the API key is set (docs/med-control.md). It never sees license numbers, birth dates, addresses, phone numbers, conviction details or uploaded files, and it only drafts: nothing is sent without you.</small></span></div></div></div>
-    <div class="group"><h3><span>New-member checklist</span></h3><div class="ios"><label class="row stack"><span class="lbl">One item per line<small>Shown on the Onboard tab and, once you move them to orientation, on the new member's dashboard. Add a link with a bar: <b>HIPAA training | https://…</b> Renaming an item starts it fresh.</small></span><textarea id="sOnb" rows="8">${esc(onbRaw().join("\n"))}</textarea></label>
+    <div class="group"><h3><span>Onboard lists</span></h3><div class="ios"><label class="row stack"><span class="lbl">Paperwork and documents: one item per line<small>Shown on the Onboard tab and, once you move them to orientation, on the new member's dashboard. Add a link with a bar: <b>HIPAA training | https://…</b> Renaming an item starts it fresh.</small></span><textarea id="sOnb" rows="8">${esc(onbRaw().join("\n"))}</textarea></label>
+      <label class="row stack"><span class="lbl">Equipment and access: one item per line<small>What you issue and set up for a new member (uniform, doors, apps). Only you and admins see this list.</small></span><textarea id="sIssue" rows="6">${esc(issueItems().map(x => x[1]).join("\n"))}</textarea></label>
       <label class="row stack"><span class="lbl">Finish orientation within (days)<small>Counts from the day you move them to orientation. Leave blank for no deadline.</small></span><input type="number" id="sOrientDays" min="1" max="365" class="inlinefield" value="${esc(s.orientDays || "")}"></label>
       <label class="row stack"><span class="lbl">Trainer sign-off list<small>One per line. Used when you first assign a trainer to a new member.</small></span><textarea id="sSkills" rows="5">${esc(skillItems().map(x => x[1]).join("\n"))}</textarea></label>
       <label class="row stack"><span class="lbl">Chief's email<small>For the duty-crew handoff</small></span><input type="email" id="sChief" class="inlinefield" value="${esc(s.chiefEmail || "")}"></label>
@@ -1652,6 +1658,7 @@ function openSettings(){
         ai: $("#sAi .on")?.dataset.v === "on",
         retentionYears: parseInt($("#sRet").value, 10) > 0 ? Math.min(20, parseInt($("#sRet").value, 10)) : null,
         onbItems: [...new Set($("#sOnb").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
+        issueItems: [...new Set($("#sIssue").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
         skillItems: [...new Set($("#sSkills").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
         orientDays: +$("#sOrientDays").value > 0 ? Math.min(365, +$("#sOrientDays").value) : null, chiefEmail: $("#sChief").value.trim(), techEmail: $("#sTech").value.trim(),
         replies: [...document.querySelectorAll("#qrList .qredit")].map(r => ({ title: r.querySelector(".qrTitle").value.trim(), text: r.querySelector(".qrText").value.trim() })).filter(r => r.title && r.text).slice(0, 20) };
@@ -3832,6 +3839,7 @@ function orientRecordSection(a){
   return `<section class="pk"><header><img src="/img/logo.png" alt=""><div><div class="pk-k">Orientation record</div><h1>${esc(a.name || "New member")}</h1>
       <div class="pk-s">${esc([a.type ? a.type + " membership" : "", get(a, "onb.direct") ? "Started at orientation" : "", get(a, "board.date") ? "Board approved " + longDate(get(a, "board.date")) : "", get(a, "bg.sterDone") ? "Sterling complete " + longDate(get(a, "bg.sterDone")) : ""].filter(Boolean).join(" · "))}</div></div></header>
     <h2>Orientation</h2><table>${row("Session", s ? slotLong(s.start) : "")}${row("Mentor", get(a, "onb.mentor"))}${row("EMT card number", get(a, "onb.emtCard"))}${row("EMT card expires", get(a, "onb.emtExpires") ? fmtDate(get(a, "onb.emtExpires")) : "")}</table>
+    <h2>Equipment and access</h2><table>${issueItems().map(([k, l]) => row(l, get(a, `onb.issue.${k}`) ? fmtDate(get(a, `onb.issue.${k}`)) : "")).join("")}</table>
     <h2>Mandatory information, required before issuing any equipment and/or the ability to run calls</h2><table>${onbItems().map(([k, l]) => row(l, get(a, `onb.items.${k}`) ? fmtDate(get(a, `onb.items.${k}`)) : "")).join("")}</table>
     ${so ? `<h2>Trainer sign-offs</h2><table>${(so.items || []).map(i => { const d = (so.done || {})[i.key]; return row(i.label, d ? `${d.name || d.by} · ${new Date(d.at).toLocaleDateString()}` : ""); }).join("")}</table>` : ""}
     ${(() => { const checks = [...S.checkins.values()].filter(c => c.appId === a._id).sort((x, y) => +x.n - +y.n); return checks.length ? `<h2>Check-ins</h2>${checks.map(c => `<div class="pq"><b>${esc(c.n)}-day check-in · ${esc(c.rating)} of 5${c.at ? " · " + esc(new Date(c.at).toLocaleDateString()) : ""}</b><p>How it's going: ${esc(c.going || "—")}</p><p>What would help: ${esc(c.help || "—")}</p></div>`).join("")}` : ""; })()}
