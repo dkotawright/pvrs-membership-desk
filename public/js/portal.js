@@ -121,7 +121,7 @@ export function portalHTML({ back = false, pd, files = [], slots = [], msgs = []
     const up = byKey(d.key);
     const badge = d.received ? `<span class="badge ok">Received</span>` : up.length ? `<span class="badge wait">Uploaded · under review</span>` : "";
     const conf = isConfidential(d.label);
-    return `<div class="doc"><div class="dt">${esc(d.label)}${conf ? `<small class="lockline">🔒 Secure upload: only our orientation paperwork coordinator can open it</small>` : ""}${up.length?`<small>${conf ? `${up.length} file${up.length===1?"":"s"} sent securely` : up.map(f => esc(f.name)).join(", ")}</small>`:""}</div>${badge}
+    return `<div class="doc"><div class="dt">${esc(d.label)}${conf ? `<small class="lockline">🔒 Secure upload: only the membership coordinator, squad administrators and our orientation paperwork coordinator can open it</small>` : ""}${up.length?`<small>${conf ? `${up.length} file${up.length===1?"":"s"} sent securely` : up.map(f => esc(f.name)).join(", ")}</small>`:""}</div>${badge}
       ${d.received ? "" : `<button class="btn small ${up.length?"":"primary"}" type="button" data-upload="${esc(d.key)}" ${dis}>${up.length?"Add file":"Upload"}</button>`}</div>`;
   }).join("");
 
@@ -165,7 +165,7 @@ ${nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checki
       ${other.some(f => f.confidential) ? `<div class="info"><b>Secure documents sent:</b> ${other.filter(f => f.confidential).length} file${other.filter(f => f.confidential).length === 1 ? "" : "s"} 🔒</div>` : ""}
       <div class="docbtns"><button class="btn small" type="button" data-upload="" ${dis}>Send another document</button>
         <button class="btn small" type="button" data-upload="${CONF_KEY}" ${dis}>🔒 Secure document upload</button></div>
-      <p class="info" style="margin:0">Use <b>Secure document upload</b> for medical records, your Social Security card and other sensitive papers. Only our orientation paperwork coordinator can open them; the membership committee can't.</p>
+      <p class="info" style="margin:0">Use <b>Secure document upload</b> for medical records, your Social Security card and other sensitive papers. Only the membership coordinator, squad administrators and our orientation paperwork coordinator can open them; interviewers and other members can't.</p>
       <p class="info" style="margin:0">PDF, photo or Word file, up to 25 MB each. You can send documents any time. Trouble uploading? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></section>
 
     ${nm ? "" : `<section class="card glass"><h2>What to expect</h2><div class="info">
