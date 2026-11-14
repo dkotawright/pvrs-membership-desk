@@ -99,6 +99,11 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## Onboard tab: two sections (Nov 14, Dkota)
+- "New-member checklist" is renamed **Paperwork and documents** (same data, `onb.items.*`, `settings.onbItems`).
+- New **Equipment and access** section under it: what the squad issues / sets up (`issueItems()`, `settings.issueItems`, default `DEFAULT_ISSUE`: uniform, pager or radio, door access, ID badge, Pulsara, Active911, scheduler, e-mail lists, emsCharts). Dates in `onb.issue.<key>` (private). Desk only: not on the new member's dashboard, not counted in orientation progress. Edited in Settings → Onboard lists (`#sIssue`). Printed on the orientation record.
+- "Active" in Dkota's message was read as Active911; he can rename it in Settings.
+
 ## Undo a completed orientation line (Nov 14)
 - Orientation documents: a line marked Done has **Undo** (`data-oundo`, owner). It clears `onb.items.<key>` and sets `onb.undone.<key>` so `tidyOnb` doesn't tick it again by itself (signed forms, Sterling, old split lines). Files stay. Approving or uploading again ticks it as usual (Approve clears the marker).
 - The grant step in deploy.yml was denied (github-deploy lacks setIamPolicy); Dkota was given the manual IAM steps. Check whether he has done them before assuming uploads work.

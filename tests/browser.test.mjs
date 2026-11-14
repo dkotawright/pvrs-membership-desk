@@ -1755,6 +1755,11 @@ try {
     if (!q2.pv.onb?.requested?.copy_of_training_records_emt_cpr_etc || !(q2.pd?.orientation?.items || []).some(i => i.key === "copy_of_training_records_emt_cpr_etc" && i.req)) fail("in-orientation request: " + JSON.stringify(q2.pv.onb?.requested)); else ok("in orientation, a requested line shows as Requested on their checklist");
     await page.keyboard.press("Escape"); await wait(page, 300);
     if (!/Ask again/.test(await page.locator('[data-orreq^="copy_of_training"]').textContent())) fail("no Ask again"); else ok("a requested line offers Ask again");
+    { const heads = await page.locator("#detail .group h3").allTextContents();
+      if (!heads.some(h => /Paperwork and documents/.test(h)) || !heads.some(h => /Equipment and access/.test(h))) fail("onboard sections: " + heads.join("|")); else ok("the Onboard tab has Paperwork and documents plus Equipment and access");
+      const f = page.locator('[data-k="onb.issue.pulsara"]'); await f.fill(localDay(Date.now())); await f.blur(); await wait(page, 400);
+      const pvI = await priv(page, "q2");
+      if (!pvI.onb?.issue?.pulsara || !/1 of 9 done/.test(await page.locator("#issueCount").textContent())) fail("issue item: " + JSON.stringify(pvI.onb?.issue)); else ok("an equipment or access item saves its date and counts"); }
     // undo a line ticked by mistake; the desk must not tick it again by itself (the Sterling line auto-ticks)
     const sk = await page.evaluate(() => Object.keys(window.__mock.docs.get("applicants/q2/private/main").onb.items || {}).find(k => /^acknowledg/.test(k)));
     await page.evaluate(() => document.querySelector('.tabdock [data-tab="onb"]')?.click()); await wait(page, 300);
