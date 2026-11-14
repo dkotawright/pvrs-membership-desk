@@ -99,6 +99,10 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## Why applicant uploads were refused (found Nov 14)
+- The desk's failure note showed "the upload wasn't allowed (permission)" while the same person could write the note to Firestore. Storage rules call `firestore.get()` (`ownsPortal`), which needs the role **Firebase Rules Firestore Service Agent** on `service-<project number>@gcp-sa-firebasestorage.iam.gserviceaccount.com`. firebase-tools skips that grant entirely under `--non-interactive` (rulesDeploy.js `checkStorageRulesIamPermissions`), and every deploy here is non-interactive.
+- deploy.yml now has a step "Let Storage rules read Firestore" (gcloud add-iam-policy-binding, continue-on-error). If the deploy account lacks permission to grant it, the step logs the error and Dkota has to add the role by hand in Cloud console → IAM.
+
 ## Request a missing orientation document from its line (Nov 14)
 - Orientation documents (Onboard tab): each unfinished line that takes an upload has **Request** / **Ask again** (`data-orreq`, `requestOrientDoc`, `askOrientDocs`); paper (insurance) and sign-at-session lines don't (`notUploadItem`). It opens the orientdocs email for that one document.
 - Works from board approval on. In orientation it sets `onb.requested.<key>` (shows Requested on their checklist). Before orientation opens (Sterling still running) it adds a `docs.requested` entry with the line's label, which shows under Documents on their portal page; the dashboard itself stays locked until Sterling is clear. The bulk **Request documents** window follows the same rule (its "Move them to orientation first" block is gone).

@@ -65,6 +65,17 @@ jobs:
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      # Storage rules look up Firestore (is this the person's own portal page?). That needs one Google role on the
+      # Storage service account, which a non-interactive deploy never grants. Without it every applicant upload is
+      # refused with "permission". Safe to run every time; if this account isn't allowed to grant it, the deploy carries on.
+      - name: Let Storage rules read Firestore
+        continue-on-error: true
+        run: |
+          NUM=$(gcloud projects describe pvrs-membership --format='value(projectNumber)')
+          gcloud projects add-iam-policy-binding pvrs-membership \
+            --member="serviceAccount:service-${NUM}@gcp-sa-firebasestorage.iam.gserviceaccount.com" \
+            --role="roles/firebaserules.firestoreServiceAgent" --condition=None --quiet --format='value(etag)'
+          echo "Granted Firebase Rules Firestore Service Agent to the Storage service account."
       # Website and rules first, so they go live even if the function deploy hits a problem.
       - name: Deploy website and rules
         run: npx -y firebase-tools@15 deploy --only hosting,firestore:rules,storage --project pvrs-membership --non-interactive
