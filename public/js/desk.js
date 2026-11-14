@@ -1523,7 +1523,7 @@ const TEMPLATES = {
   docs: (a, list = []) => ({ subject: "PVRS application: documents needed",
     body: `Hi ${first(a.name)},\n\nTo keep your application moving, please upload the following in your applicant portal:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\n${location.origin}\n\nIf the upload gives you trouble, email them to ${S.settings.docsEmail || CONTACT_EMAIL} instead.\n\nThank you,\n${sig()}` }),
   orientdocs: (a, list = []) => ({ subject: "PVRS orientation: documents needed",
-    body: `Hi ${first(a.name)},\n\nTo finish your orientation paperwork, please upload the following from your PVRS dashboard. Each one has its own Upload button on your checklist (a PDF or a clear photo is fine):\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\nSign in at ${location.origin}/signin with ${lower(a.email)}. The sign-in email often lands in spam or junk, so check there if you don't see it.\n\nAll of these are required before you can be issued equipment or run calls. If the upload gives you trouble, reply to this email and we'll sort it out.\n\nThank you,\n${sig()}` }),
+    body: `Hi ${first(a.name)},\n\nTo finish your orientation paperwork, please upload the following from your PVRS dashboard. Each one has its own Upload button, and you can upload any time (a PDF or a clear photo is fine):\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\nSign in at ${location.origin}/signin with ${lower(a.email)}. The sign-in email often lands in spam or junk, so check there if you don't see it.\n\nAll of these are required before you can be issued equipment or run calls. If the upload gives you trouble, reply to this email and we'll sort it out.\n\nThank you,\n${sig()}` }),
   refs: (a, list = []) => ({ subject: "PVRS application: references still needed",
     body: `Hi ${first(a.name)},\n\nWe're still waiting to hear from ${list.length === 1 ? "one of your references" : "some of your references"}:\n\n${list.length ? list.map(l => "• " + l).join("\n") : "• "}\n\nWe need ${REFS_NEEDED} references before your application can go to the board. If you can, please check in with them, or let us know if one of them is hard to reach and you'd like to suggest someone else.\n\nYou can see which references we've heard from in your applicant portal:\n${location.origin}\n\nThank you,\n${sig()}` }),
   noshow: (a, was) => ({ subject: "PVRS interview: let's find a new time",
@@ -2112,6 +2112,7 @@ function bindEvents(){
       edit(id, "onb.signUntil", on ? Date.now() + SIGN_HOURS * 36e5 : 0); syncPortal(id, true); clearTimeout(S._signT); if (on) S._signT = setTimeout(syncDetail, SIGN_HOURS * 36e5 + 1000);
       toast(on ? `Signing is open for ${SIGN_HOURS} hours. They'll see the forms on their dashboard.` : "Signing is closed."); return; }
     const dfm = t.closest("[data-deskform]"); if (dfm && S.sel) return openSignedForm(S.sel, dfm.dataset.deskform);
+    const orq = t.closest("[data-orreq]"); if (orq && S.sel) return requestOrientDoc(S.sel, orq.dataset.orreq, orq.dataset.orlabel);
     const oru = t.closest("[data-orup]"); if (oru && S.sel) return pickOrientDoc(S.sel, oru.dataset.orup, oru.dataset.orlabel);
     const oap = t.closest("[data-oapprove]"); if (oap) { edit(S.sel, `onb.items.${oap.dataset.oapprove}`, today()); toast("Approved"); return; }
     const ord = t.closest("[data-oread]"); if (ord) { edit(S.sel, `onb.checkinRead.${ord.dataset.oread}`, today()); return; }
@@ -3779,9 +3780,8 @@ const orientDocItems = a => onbItems().filter(([k, l]) => !NOT_CERT_RE.test(l) &
 // member's dashboard with an Upload button), adds anything extra as a normal document request, and opens the email.
 function openOrientDocs(id){
   const a = S.apps.get(id); if (!S.canEdit || !a) return ownerOnlyToast();
-  if (!orientOpen(a)) return toast("Move them to orientation first.");
   const items = orientDocItems(a), picked = new Set(items.map(([k]) => k)), custom = [];
-  const M = openModal(`<h3>Request orientation documents</h3><p class="help">${esc(first(a.name) || "They")} will see these marked <b>Requested</b> on the orientation dashboard, each with an Upload button. Tap any you don't need right now.</p>
+  const M = openModal(`<h3>Request orientation documents</h3><p class="help">${esc(first(a.name) || "They")} will see these ${orientOpen(a) ? "marked <b>Requested</b> on the orientation dashboard" : "under <b>Documents</b> on their portal page"}, each with an Upload button they can use any time. Tap any you don't need right now.</p>
     <div class="chips" style="flex-wrap:wrap" id="odChips">${items.map(([k, l]) => `<button class="chip" type="button" data-k="${esc(k)}" aria-pressed="true">${esc(l)}${isConfidential(l) ? " 🔒" : ""}</button>`).join("") || `<span class="help">Every checklist item is already done.</span>`}</div>
     <p class="help">🔒 Medical and Social Security items go through secure document upload to ${esc(PAPERWORK_EMAIL)}. Only you, admins and that account can open them.</p>
     <div class="ios"><div class="row"><input id="odCustom" class="inlinefield" type="text" placeholder="Something else…" aria-label="Another document" style="flex:1"><button class="btn small" type="button" id="odAdd">Add</button></div><div id="odCustomList"></div></div>
@@ -3799,8 +3799,7 @@ function openOrientDocs(id){
     const asked = items.filter(([k]) => picked.has(k));
     if (!asked.length && !custom.length) return toast("Pick or type at least one document.");
     const now = Date.now();
-    asked.forEach(([k]) => edit(id, `onb.requested.${k}`, today()));
-    custom.forEach((label, i) => edit(id, `docs.requested.d${now}${i}`, { label, requestedAt: now + i, received: "" }));
+    askOrientDocs(id, asked, custom);
     closeModal(); flushAll();
     if (a.email && !get(a, "portal.invited")) await inviteToPortal(id, false); else schedulePortal(id, 300);
     openEmail("orientdocs", [...asked.map(([, l]) => l), ...custom], id);
@@ -4003,6 +4002,23 @@ function renderOrientTab(a){
 // Onboard tab → Orientation documents: one line per checklist document, with what the new member sent, what you
 // uploaded for them, and an Upload button. Kept apart from the application's Documents and Squad records.
 const OR_LABEL = "Orientation: ", orLabel = l => OR_LABEL + l, isOrRec = r => String(r.label || "").startsWith(OR_LABEL);
+// Ask for one missing document from its line. In orientation it shows as Requested on their checklist; before
+// orientation opens (board approved, Sterling still running) it goes to the Documents card on their portal page.
+const docAsked = (a, label) => requestedDocs(a).some(d => d.label === label && !d.received);
+function askOrientDocs(id, asked, custom = []){
+  const a = S.apps.get(id), now = Date.now(); let n = 0;
+  if (orientOpen(a)) asked.forEach(([k]) => edit(id, `onb.requested.${k}`, today()));
+  else asked.forEach(([, l]) => { if (!docAsked(S.apps.get(id), l)) edit(id, `docs.requested.d${now}${n++}`, { label: l, requestedAt: now + n, received: "" }); });
+  custom.forEach(label => edit(id, `docs.requested.d${now}${n++}`, { label, requestedAt: now + n, received: "" }));
+}
+async function requestOrientDoc(id, key, label){
+  const a = S.apps.get(id); if (!S.canEdit || !a) return ownerOnlyToast();
+  if (!a.email) return toast("Add their email first, so they can sign in and upload.");
+  askOrientDocs(id, [[key, label]]); flushAll();
+  if (!get(a, "portal.invited")) await inviteToPortal(id, false); else schedulePortal(id, 300);
+  toast(`Requested: ${label}. ${first(a.name) || "They"} can upload it any time.`);
+  openEmail("orientdocs", [label], id);
+}
 function renderOrientDocs(a){
   const g = $("#orDocsGroup"), el = $("#orDocs"); if (!g || !el) return;
   g.hidden = !inOrient(a); if (g.hidden) return;   // from board approval on, so paperwork can be filed before orientation starts
@@ -4014,6 +4030,7 @@ function renderOrientDocs(a){
     const state = done ? `<span class="badge ok">Done ${esc(fmtDate(done))}</span>` : theirs.length ? `<span class="badge wait">Needs your OK</span>` : asked ? `<span class="badge wait">Requested</span>` : "";
     return `<div class="row ordoc"><span class="lbl">${esc(label)}${isConfidential(label) ? " 🔒" : ""}<small>${theirs.length + mine.length ? "" : key ? (asked ? `Asked ${esc(fmtDate(asked))}, nothing in yet` : "Nothing in yet") : "Anything else for their orientation file"}</small>${[...theirs.map(f => fileRow(f, false)), ...mine.map(f => fileRow(f, true))].join("")}</span>
       ${state}${S.canEdit && key && !done && theirs.length ? `<button class="btn small primary" type="button" data-oapprove="${esc(key)}">Approve</button>` : ""}
+      ${S.canEdit && key && !done && !theirs.length && !notUploadItem(label) ? `<button class="btn small" type="button" data-orreq="${esc(key)}" data-orlabel="${esc(label)}">${asked || docAsked(a, label) ? "Ask again" : "Request"}</button>` : ""}
       ${S.canEdit ? `<button class="btn small" type="button" data-orup="${esc(key)}" data-orlabel="${esc(label)}">Upload</button>` : ""}</div>`; };
   el.innerHTML = upErrHTML(a._id) + secureHTML(a._id) + signRowHTML(a) + `<div class="note">${S.canEdit ? "Upload a scan or photo for any line and it's checked off. What the new member sends from their dashboard shows here too." : "What the new member and the orientation chair have sent in."} 🔒 lines go only to ${esc(PAPERWORK_EMAIL)}.</div>`
     + onbItems().filter(([, l]) => !NOT_CERT_RE.test(l)).map(([k, l]) => row(k, l)).join("") + row("", "Other orientation paperwork") + signedFormsHTML(a);

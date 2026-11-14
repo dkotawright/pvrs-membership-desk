@@ -1735,6 +1735,28 @@ try {
       if (!v.filedAt || !/Filed ✓/.test(await page.locator("#secureDocs").textContent())) fail("mark filed didn't save"); else ok("Mark filed saves and shows Filed");
       await ctx.close(); }
   }
+  // ---- Request one missing orientation document from its line, before or during orientation (Nov 14)
+  {
+    const d = n => localDay(Date.now() - n * 864e5);
+    const seed = [["applicants/q1", { name: "Pre Orient", email: "q1@example.com", app: { received: d(40) }, updatedAt: Date.now() }], ["applicants/q1/private/main", { board: { result: "approved", date: d(5) }, portal: { invited: d(3) } }],
+      ["applicants/q2", { name: "Inn Orient", email: "q2@example.com", app: { received: d(40) }, updatedAt: Date.now() }],
+      ["applicants/q2/private/main", { board: { result: "approved", date: d(10) }, bg: { sterReq: d(9), sterDone: d(5), sterResult: "clear" }, portal: { invited: d(8) }, onb: { orientStarted: d(3) } }]];
+    const { ctx, page } = await open(browser, { seed }); await wait(page, 900);
+    await pickApplicant(page, "Pre Orient"); await wait(page, 700);
+    if (await page.locator('[data-orreq^="insurance"]').count() || await page.locator('[data-orreq^="confidentiality"]').count()) fail("Request offered on a paper or signed line"); else ok("paper and sign-at-session lines have no Request button");
+    await page.locator('[data-orreq^="copy_of_driver"]').click(); await wait(page, 2200);
+    const q1 = await page.evaluate(() => ({ pv: window.__mock.docs.get("applicants/q1/private/main"), pd: window.__mock.docs.get("portal/q1"), mail: document.querySelector("#emBody")?.value || "" }));
+    if (!Object.values(q1.pv.docs?.requested || {}).some(x => x.label === "Copy of driver's license") || !(q1.pd?.docs || []).some(x => x.label === "Copy of driver's license")) fail("pre-orientation request: " + JSON.stringify([q1.pv.docs, q1.pd?.docs])); else ok("before orientation opens, a requested line lands under Documents on their portal page");
+    if (!/Copy of driver's license/.test(q1.mail) || !/any time/.test(q1.mail)) fail("request email: " + q1.mail.slice(0, 200)); else ok("the request opens the email with that document listed");
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    await pickApplicant(page, "Inn Orient"); await wait(page, 1500);
+    await page.locator('[data-orreq^="copy_of_training"]').click(); await wait(page, 2200);
+    const q2 = await page.evaluate(() => ({ pv: window.__mock.docs.get("applicants/q2/private/main"), pd: window.__mock.docs.get("portal/q2") }));
+    if (!q2.pv.onb?.requested?.copy_of_training_records_emt_cpr_etc || !(q2.pd?.orientation?.items || []).some(i => i.key === "copy_of_training_records_emt_cpr_etc" && i.req)) fail("in-orientation request: " + JSON.stringify(q2.pv.onb?.requested)); else ok("in orientation, a requested line shows as Requested on their checklist");
+    await page.keyboard.press("Escape"); await wait(page, 300);
+    if (!/Ask again/.test(await page.locator('[data-orreq^="copy_of_training"]').textContent())) fail("no Ask again"); else ok("a requested line offers Ask again");
+    await ctx.close();
+  }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {
     const { ctx, page } = await open(browser, { url: "/apply?src=flyer", user: null }); await wait(page, 600);
