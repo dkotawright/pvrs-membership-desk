@@ -2114,7 +2114,10 @@ function bindEvents(){
     const dfm = t.closest("[data-deskform]"); if (dfm && S.sel) return openSignedForm(S.sel, dfm.dataset.deskform);
     const orq = t.closest("[data-orreq]"); if (orq && S.sel) return requestOrientDoc(S.sel, orq.dataset.orreq, orq.dataset.orlabel);
     const oru = t.closest("[data-orup]"); if (oru && S.sel) return pickOrientDoc(S.sel, oru.dataset.orup, oru.dataset.orlabel);
-    const oap = t.closest("[data-oapprove]"); if (oap) { edit(S.sel, `onb.items.${oap.dataset.oapprove}`, today()); toast("Approved"); return; }
+    const oap = t.closest("[data-oapprove]"); if (oap) { edit(S.sel, `onb.items.${oap.dataset.oapprove}`, today()); if (get(S.apps.get(S.sel), `onb.undone.${oap.dataset.oapprove}`)) edit(S.sel, `onb.undone.${oap.dataset.oapprove}`, ""); toast("Approved"); return; }
+    // Undo a line marked done by mistake. The files stay; `onb.undone` stops the desk ticking it again by itself.
+    const oun = t.closest("[data-oundo]"); if (oun && S.sel) { if (!S.canEdit) return ownerOnlyToast(); const k = oun.dataset.oundo;
+      edit(S.sel, `onb.undone.${k}`, today()); edit(S.sel, `onb.items.${k}`, ""); toast("Undone. That line is open again; nothing was deleted."); return; }
     const ord = t.closest("[data-oread]"); if (ord) { edit(S.sel, `onb.checkinRead.${ord.dataset.oread}`, today()); return; }
     const si = t.closest("[data-startiv]"); if (si) { select(si.dataset.startiv); switchTab("iv"); enterIvMode(); return; }
     const dp = t.closest("[data-dupe]"); if (dp) return openDupe(S.sel, dp.dataset.dupe);
@@ -2739,7 +2742,7 @@ const signedForm = (id, key) => (S.forms || []).find(x => x.appId === id && x.id
 // from the old sheet's combined lines carry over to the split ones. Only fills blanks; never clears anything.
 let tidyT;
 function tidyOnb(){ if (!S.canEdit || !S.ready) return; clearTimeout(tidyT); tidyT = setTimeout(() => {
-  const items = onbItems(), keyOf = re => (items.find(([, l]) => re.test(l)) || [])[0], blank = (a, k) => k && !get(a, `onb.items.${k}`);
+  const items = onbItems(), keyOf = re => (items.find(([, l]) => re.test(l)) || [])[0], blank = (a, k) => k && !get(a, `onb.items.${k}`) && !get(a, `onb.undone.${k}`);
   for (const x of S.forms || []) { const a = S.apps.get(x.appId), f = formByKey(x.id), k = f && f.item && keyOf(f.item);
     if (a && blank(a, k) && x.signedAt) edit(x.appId, `onb.items.${k}`, isoDay(x.signedAt)); }
   const ster = keyOf(/sterling/i);
@@ -4029,7 +4032,7 @@ function renderOrientDocs(a){
     const theirs = key ? (S.files || []).filter(f => f.docKey === "onb:" + key) : [], mine = S.records.filter(r => r.label === orLabel(label));
     const state = done ? `<span class="badge ok">Done ${esc(fmtDate(done))}</span>` : theirs.length ? `<span class="badge wait">Needs your OK</span>` : asked ? `<span class="badge wait">Requested</span>` : "";
     return `<div class="row ordoc"><span class="lbl">${esc(label)}${isConfidential(label) ? " 🔒" : ""}<small>${theirs.length + mine.length ? "" : key ? (asked ? `Asked ${esc(fmtDate(asked))}, nothing in yet` : "Nothing in yet") : "Anything else for their orientation file"}</small>${[...theirs.map(f => fileRow(f, false)), ...mine.map(f => fileRow(f, true))].join("")}</span>
-      ${state}${S.canEdit && key && !done && theirs.length ? `<button class="btn small primary" type="button" data-oapprove="${esc(key)}">Approve</button>` : ""}
+      ${state}${S.canEdit && key && done ? `<button class="copy" type="button" data-oundo="${esc(key)}" aria-label="Undo done for ${esc(label)}">Undo</button>` : ""}${S.canEdit && key && !done && theirs.length ? `<button class="btn small primary" type="button" data-oapprove="${esc(key)}">Approve</button>` : ""}
       ${S.canEdit && key && !done && !theirs.length && !notUploadItem(label) ? `<button class="btn small" type="button" data-orreq="${esc(key)}" data-orlabel="${esc(label)}">${asked || docAsked(a, label) ? "Ask again" : "Request"}</button>` : ""}
       ${S.canEdit ? `<button class="btn small" type="button" data-orup="${esc(key)}" data-orlabel="${esc(label)}">Upload</button>` : ""}</div>`; };
   el.innerHTML = upErrHTML(a._id) + secureHTML(a._id) + signRowHTML(a) + `<div class="note">${S.canEdit ? "Upload a scan or photo for any line and it's checked off. What the new member sends from their dashboard shows here too." : "What the new member and the orientation chair have sent in."} 🔒 lines go only to ${esc(PAPERWORK_EMAIL)}.</div>`

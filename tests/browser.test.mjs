@@ -1755,6 +1755,17 @@ try {
     if (!q2.pv.onb?.requested?.copy_of_training_records_emt_cpr_etc || !(q2.pd?.orientation?.items || []).some(i => i.key === "copy_of_training_records_emt_cpr_etc" && i.req)) fail("in-orientation request: " + JSON.stringify(q2.pv.onb?.requested)); else ok("in orientation, a requested line shows as Requested on their checklist");
     await page.keyboard.press("Escape"); await wait(page, 300);
     if (!/Ask again/.test(await page.locator('[data-orreq^="copy_of_training"]').textContent())) fail("no Ask again"); else ok("a requested line offers Ask again");
+    // undo a line ticked by mistake; the desk must not tick it again by itself (the Sterling line auto-ticks)
+    const sk = await page.evaluate(() => Object.keys(window.__mock.docs.get("applicants/q2/private/main").onb.items || {}).find(k => /^acknowledg/.test(k)));
+    await page.evaluate(() => document.querySelector('.tabdock [data-tab="onb"]')?.click()); await wait(page, 300);
+    const row = page.locator(`[data-k="onb.items.${sk}"]`);
+    await page.locator('[data-orup^="copy_of_driver"]').evaluate(b => { const c = HTMLInputElement.prototype.click; HTMLInputElement.prototype.click = function(){}; b.click(); HTMLInputElement.prototype.click = c; });
+    await page.locator("#orPicker").setInputFiles({ name: "lic.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 1500);
+    await page.locator('[data-oundo^="copy_of_driver"]').click(); await wait(page, 2200);
+    const un = await page.evaluate(() => { const m = window.__mock.docs; return { it: m.get("applicants/q2/private/main").onb.items || {}, recs: [...m.keys()].filter(k => k.startsWith("applicants/q2/records/")).length }; });
+    if (un.it.copy_of_driver_s_license || !un.recs || !/lic\.pdf/.test(await page.locator("#orDocs").textContent())) fail("undo: " + JSON.stringify(un)); else ok("Undo reopens a line marked done and keeps its file");
+    if (await page.locator('[data-oundo^="copy_of_driver"]').count() || !(await page.locator('[data-orup^="copy_of_driver"]').count())) fail("undo button still there"); else ok("an undone line is back to normal");
+    void row;
     await ctx.close();
   }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
