@@ -1566,6 +1566,8 @@ try {
       if (!/Sign your orientation forms/.test(await page.locator("#moveCard").textContent())) fail("no Your move for signing"); else ok("with signing open, Your move says to sign the forms");
       const ins = page.locator(".or-item", { hasText: "Insurance beneficiary" });
       if (!/Paper form/.test(await ins.textContent()) || await ins.locator("[data-upload]").count()) fail("insurance line: " + await ins.textContent()); else ok("the insurance beneficiary line is marked paper, with no upload");
+      const fema = await page.locator('.or-item:has-text("IS-100") a').getAttribute("href").catch(() => "");
+      if (!/training\.fema\.gov.*IS-100/.test(fema || "") || !(await page.locator('.or-item:has-text("IS-700") a[href*="IS-700"]').count()) || !(await page.locator('.or-item:has-text("IS-100") [data-upload]').count())) fail("FEMA links: " + fema); else ok("the IS-100 and IS-700 lines link to the free FEMA courses next to Upload");
       const lic = page.locator('#orientCard [data-upload="onb:copy_of_driver_s_license"]');
       if (!(await lic.count()) || !/Add file/.test(await lic.textContent())) fail("no upload on a finished line"); else ok("a line that's already checked off still takes another file");
       await lic.evaluate(b => { const i = document.querySelector('input[type="file"]'); i.click = () => {}; b.click(); });
