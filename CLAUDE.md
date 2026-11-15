@@ -107,7 +107,7 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - Tests: 442 browser.
 
 ## DAYLIGHT redesign, stage 2 (Nov 14–15, Dkota: "do the rest"; stage 1 went live Nov 14, PR #46)
-- **Applicant file**: the tab bar (`nav.tabdock`) now sits INSIDE `#dbody`, between `.dhead` and `#dpanel`. Desktop (≥861px): the header is a card that scrolls with the file (`position:static`) and the tab bar is sticky at the top. Phones: header stays sticky and the tab bar is `position:fixed` at the bottom (it is fixed relative to `.detail`, which is a container). Each `.detail .group` is one white card with its title inside; inputs in rows have a soft filled field. `#dbody` has the page ground colour.
+- **Applicant file**: the tab bar (`nav.tabdock`) is the LAST child of `#dbody` (a flex column). Desktop (≥861px): CSS `order` puts it under the header, the header is a card that scrolls with the file and the tab bar is sticky at the top. Phones: header stays sticky and the tab bar is `position:sticky` at the bottom. Do NOT use `position:fixed` for it: with that, the CI browser (Chromium 130, Playwright 1.48) could not click anything in the file at phone width (PRs #47/#48 failed; passed locally on a newer Chromium). Each `.detail .group` is one white card with its title inside; inputs in rows have a soft filled field. `#dbody` has the page ground colour.
 - **Orientation dashboard** (portal): big "N of M done" (`.or-top`, `.or-count`, `.or-by`), session box in teal, each form / checklist line is its own rounded row.
 - **Windows** (Settings, Team, Interview times): filled inputs. **Messages**: other people's bubbles in soft indigo, rounder composer. Board meeting needed nothing beyond stage 1's colours.
 - Tests: 442 browser.
