@@ -2431,3 +2431,63 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
 .pbar{flex-wrap:nowrap}
 .phead .plate{flex:0 1 auto;min-width:0}
 .pbar-acts{flex:none}
+
+/* ======================================================================
+   DAYLIGHT, stage 2 (Nov 14): the applicant file. Desktop: the header is a card that scrolls with the file and the
+   tab bar sticks to the top under it (it used to float over the bottom of the page). Each group is one white card
+   with its title inside. Phones keep the sticky header and the tab bar at the bottom.
+   ====================================================================== */
+.dbody{background:var(--bg);border-radius:26px}
+.detail .group{background:var(--pane);border-radius:24px;box-shadow:var(--soft);padding:18px 18px 10px;gap:8px}
+.detail .group>h3{font-size:17px;margin:0 2px 4px;min-height:32px}
+.detail .group .ios{background:transparent;box-shadow:none;border-radius:0;overflow:visible}
+.detail .group .ios+.ios{margin-top:6px}
+.detail .group .row{padding-inline:2px;min-height:46px}
+.detail .row input[type=text],.detail .row input[type=tel],.detail .row input[type=email],.detail .row input[type=url],.detail .row input[type=date],.detail .row select{background:var(--fill);border-radius:10px;padding:8px 12px;min-height:36px}
+.detail .row input:disabled,.detail .row select:disabled{background:transparent;padding-inline:0}
+.hacts{background:transparent;border:0;padding:0;gap:6px}
+.hacts .btn{min-height:36px;padding-inline:14px}
+.ph{border-radius:14px;border-color:transparent}
+.tabdock .save{border-left-color:var(--sep)}
+@media (min-width:861px){
+  .dbody{padding:14px 14px 48px}
+  .dhead{position:static;border-radius:24px;padding:20px 22px 18px;box-shadow:var(--soft);background:color-mix(in srgb,var(--stage-c,var(--fg3)) 9%,var(--pane))}
+  .tabdock{position:sticky;top:0;left:auto;bottom:auto;transform:none;width:fit-content;max-width:100%;margin:12px auto 0;z-index:6}
+  .dinner{padding:16px 2px 0}
+}
+@media (max-width:860px){
+  .tabdock{position:fixed;left:50%;transform:translateX(-50%)}
+  .detail .group{padding:14px 14px 8px;border-radius:20px}
+}
+
+/* ---- Daylight, stage 2: orientation dashboard (new member's page) ---- */
+.or-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px 14px;flex-wrap:wrap}
+.or-count{font-family:var(--font-display);font-size:20px;font-weight:700;letter-spacing:-.01em}
+.or-count b{font-size:40px;line-height:1;margin-right:4px;color:color-mix(in srgb,var(--s-onb) 85%,var(--fg))}
+.or-by{font-size:13.5px;font-weight:600;color:var(--fg2)}
+.or-by.late{color:var(--s-dec)}
+#orientCard .or-bar{height:10px;border-radius:99px;background:var(--fill2)}
+#orientCard .or-bar span{border-radius:99px}
+#orientCard .or-h{margin:14px 0 0;padding-top:16px;border-top:1px solid var(--sep);font-family:var(--font-display);font-size:17px}
+#orientCard .booked{background:color-mix(in srgb,var(--s-onb) 11%,var(--pane));border-radius:18px}
+.booked .cal{border-radius:14px}
+.booked .cal b{background:var(--s-onb)}
+.portal .or-list{gap:8px}
+.portal .or-item{background:var(--fill);border:0;border-radius:16px;padding:12px 14px;min-height:48px;flex-wrap:wrap;gap:8px 12px}
+.portal .or-item .or-tx{flex:1 1 150px;font-weight:600}
+.portal .or-item .or-tx small{font-weight:400}
+.portal .or-item.done{background:color-mix(in srgb,var(--s-onb) 9%,var(--pane))}
+.portal .or-item.done .or-ck{background:var(--s-onb)}
+.portal .or-ck{border:2px solid var(--fill2);background:var(--pane)}
+.portal .or-check{border-radius:18px;padding:16px}
+.portal .slotbtn{min-height:44px;padding-inline:16px;border-radius:14px;background:var(--pane)}
+.portal .ivprep{border-radius:16px}
+
+/* ---- Daylight, stage 2: windows (Settings, Team, Interview times) and Messages ---- */
+.modal .group>h3{font-size:15px;color:var(--fg)}
+.modal .row input[type=text],.modal .row input[type=tel],.modal .row input[type=email],.modal .row input[type=url],.modal .row input[type=number],.modal .row select{background:var(--fill);border-radius:10px;padding:8px 12px;min-height:36px}
+.modal .row.stack input,.modal .row.stack textarea,.modal .stack input,.modal .stack textarea{text-align:left;background:var(--fill);border:0;border-radius:12px;padding:10px 12px}
+.cv-compose{border-radius:22px;border-color:var(--sep);padding:10px 12px 8px}
+.cv-compose textarea,.cv-compose input{border-radius:12px}
+.cv-m:not(.mine) .cv-bub{background:var(--accent-soft)}
+@media (max-width:860px){ .prog .t.move .tw{flex:1 1 100%} }

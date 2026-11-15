@@ -106,6 +106,12 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - Still to do (told Dkota): file page layout from the mockup (tabs at the top, fields stacked in cards, header actions that wrap), orientation dashboard, Messages, Interview times, Board meeting, Settings.
 - Tests: 442 browser.
 
+## DAYLIGHT redesign, stage 2 (Nov 14–15, Dkota: "do the rest"; stage 1 went live Nov 14, PR #46)
+- **Applicant file**: the tab bar (`nav.tabdock`) now sits INSIDE `#dbody`, between `.dhead` and `#dpanel`. Desktop (≥861px): the header is a card that scrolls with the file (`position:static`) and the tab bar is sticky at the top. Phones: header stays sticky and the tab bar is `position:fixed` at the bottom (it is fixed relative to `.detail`, which is a container). Each `.detail .group` is one white card with its title inside; inputs in rows have a soft filled field. `#dbody` has the page ground colour.
+- **Orientation dashboard** (portal): big "N of M done" (`.or-top`, `.or-count`, `.or-by`), session box in teal, each form / checklist line is its own rounded row.
+- **Windows** (Settings, Team, Interview times): filled inputs. **Messages**: other people's bubbles in soft indigo, rounder composer. Board meeting needed nothing beyond stage 1's colours.
+- Tests: 442 browser.
+
 ## FEMA course links (Nov 14)
 - The IS-100 and IS-700 checklist lines carry a built-in link to FEMA's free online course (`FEMA_LINKS` in desk.js, used by `onbLink` when the line has no `| https://…` link of its own in Settings). The new member's dashboard shows "Don't have it yet? Take the free FEMA course online" under the line, next to Upload. The URLs could not be opened from the cloud session (fema.gov is blocked there); Dkota was asked to tap them once.
 
