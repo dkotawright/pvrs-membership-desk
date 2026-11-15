@@ -1245,7 +1245,15 @@ try {
     await page.evaluate(() => { window.__mock.docs.get("applicants/a1").interviewers = ["ivy@pvrs.org"]; window.__mock.emit(); }); await wait(page, 400);
     await pickApplicant(page, "Georgia Thurmond");
     await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
-    await page.locator('[data-act="ivmode"]').click(); await wait(page, 400);
+    try { await page.locator('[data-act="ivmode"]').click({ timeout: 8000 }); }
+    catch (e) {   // say what is in the way, then stop: the rest of this block needs interview mode
+      const why = await page.evaluate(() => { const b = document.querySelector('[data-act="ivmode"]'), r = b.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const box = el => { if (!el) return null; const q = el.getBoundingClientRect(), c = getComputedStyle(el); return `${el.tagName}.${String(el.className).slice(0, 40)} [${Math.round(q.left)},${Math.round(q.top)},${Math.round(q.width)}x${Math.round(q.height)}] pos=${c.position} ov=${c.overflowY} pe=${c.pointerEvents} inert=${!!el.closest("[inert]")}`; };
+        const chain = []; for (let el = b; el && chain.length < 9; el = el.parentElement) chain.push(box(el));
+        return { win: [innerWidth, innerHeight, scrollX, scrollY], point: [Math.round(x), Math.round(y)], at: document.elementsFromPoint(x, y).slice(0, 4).map(box), chain, modal: !document.querySelector("#modal").hidden, appClass: document.querySelector("#app").className }; });
+      throw new Error(`interview mode button not clickable at ${w}px: ` + JSON.stringify(why, null, 1));
+    }
+    await wait(page, 400);
     const vis = await page.locator("#dpanel .group:visible").count(), pos = await page.locator("#ivBar .ivpos").textContent();
     if (vis !== 1 || !/1 of \d+/.test(pos)) fail(`interview mode at ${w}: ${vis} sections visible, ${pos}`); else ok(`interview mode shows one section at a time (${w}px${who === OWNER ? "" : ", assigned interviewer"})`);
     const total = +pos.match(/of (\d+)/)[1];
