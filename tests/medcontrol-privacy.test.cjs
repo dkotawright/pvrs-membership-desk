@@ -30,7 +30,11 @@ if (!scored.includes('"comm":4')) { fail++; console.log("✗ committee scores mi
   const tok = email => ({ token: { email, email_verified: true } });
   const who = await _checkCaller(tok("dkota@pvrs.org")).catch(() => null);
   if (!who || !who.owner) { fail++; console.log("✗ owner refused"); } else console.log("✓ the owner can use Med Control");
-  for (const e of ["admin@pvrs.org", "ivy@pvrs.org", "x@example.com"]) { const r = await _checkCaller(tok(e)).then(() => "allowed", err => err.code);
+  // Roles come from staff/{email}; a stand-in table here so the test needs no database.
+  const ROLES = { "admin@pvrs.org": "admin", "ivy@pvrs.org": "interviewer", "full@pvrs.org": "full" }, roleOf = async e => ROLES[e] || null;
+  const fu = await _checkCaller(tok("full@pvrs.org"), roleOf).catch(() => null);
+  if (!fu || !fu.owner) { fail++; console.log("✗ full access refused"); } else console.log("✓ Full access can use Med Control");
+  for (const e of ["admin@pvrs.org", "ivy@pvrs.org", "x@example.com"]) { const r = await _checkCaller(tok(e), roleOf).then(() => "allowed", err => err.code);
     if (r !== "permission-denied") { fail++; console.log(`✗ ${e}: ${r}`); } else console.log(`✓ ${e} is refused`); }
   const un = await _checkCaller({ token: { email: "dkota@pvrs.org", email_verified: false } }).then(() => "allowed", err => err.code);
   if (un !== "unauthenticated") { fail++; console.log("✗ unverified owner email allowed"); } else console.log("✓ an unverified email is refused");

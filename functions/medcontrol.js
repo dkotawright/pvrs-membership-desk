@@ -23,14 +23,17 @@ const CHAT_MODEL = "claude-haiku-5-5", BRIEF_MODEL = "claude-sonnet-5-5";
 const DAILY_LIMIT = 150;   // calls per person per day; a runaway loop can't run up the bill
 
 /* ---------- who may use it ---------- */
-async function checkCaller(auth){
+// The caller's team role, or null. Any lookup failure counts as "no role", so it refuses rather than lets through.
+async function staffRole(email){
+  try { const st = await db.doc(`staff/${email}`).get(); return st.exists ? st.data().role || null : null; } catch { return null; }
+}
+async function checkCaller(auth, roleOf = staffRole){
   const t = auth && auth.token;
   if (!t || !t.email || t.email_verified !== true) throw new HttpsError("unauthenticated", "Sign in first.");
   const email = String(t.email).toLowerCase();
   if (email === OWNER_EMAIL) return { email, owner: true };
   // Full access (staff role "full") gets everything the owner has, Med Control included.
-  const st = await db.doc(`staff/${email}`).get();
-  if (st.exists && st.data().role === "full") return { email, owner: true };
+  if ((await roleOf(email)) === "full") return { email, owner: true };
   throw new HttpsError("permission-denied", "Med Control is only for the membership coordinator.");
 }
 async function countCall(email){
