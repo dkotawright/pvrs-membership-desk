@@ -2497,3 +2497,10 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
 .cv-compose textarea,.cv-compose input{border-radius:12px}
 .cv-m:not(.mine) .cv-bub{background:var(--accent-soft)}
 @media (max-width:860px){ .prog .t.move .tw{flex:1 1 100%} }
+
+/* ---- Overview lanes (Nov 17): five lanes incl. Active members; every person shows and a long lane scrolls inside itself ---- */
+.lanes{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.lane-list{display:flex;flex-direction:column;gap:10px;max-height:min(540px,62vh);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 4px 4px 2px;margin:0 -4px 0 -2px}
+.lane-act .lc-st{color:var(--fg2);font-weight:500}
+@media (max-width:860px){ .lane-list{max-height:60vh} }
+.lanes .lc-who b{white-space:normal;overflow-wrap:anywhere}

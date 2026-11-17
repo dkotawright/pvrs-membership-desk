@@ -68,6 +68,13 @@ const last = () => sent[sent.length - 1];
 
   await P.accessRequest(ev({ name: "Casey New" }, { email: "casey@pvrs.org" }));
   check(/Casey New asked for access/.test(last().notification.body) && last().tokens.join() === "ownerTok", "access request");
+  // Full access (staff role "full", Nov 17): gets everything the owner gets, and is skipped when they caused it.
+  docs.set("staff/full@pvrs.org", { name: "Fran Full", role: "full" }); docs.set("pushTokens/fullTok", { email: "full@pvrs.org" });
+  await P.accessRequest(ev({ name: "Dana New" }, { email: "dana@pvrs.org" }));
+  check(last().tokens.sort().join() === "fullTok,ownerTok", "full access gets the owner's alerts: " + last().tokens);
+  await P.interviewBooking(upd({ start: 1e12 }, { start: 1e12, bookedBy: "a1" }));
+  check(last().tokens.sort().join() === "adminTok,fullTok,ivTok,ownerTok", "full access gets bookings: " + last().tokens);
+  docs.delete("staff/full@pvrs.org"); docs.delete("pushTokens/fullTok");
 
   // chat: channel posts go to members except the author; applicant messages to the owner + people added
   docs.set("channels/c1", { name: "interview-team", members: ["dkota@pvrs.org", "admin@pvrs.org"] });

@@ -338,6 +338,21 @@ await t("someone not in it can't", uploadBytes(ref(st("member@pvrs.org"), "chat/
 await t("or open its files", getBytes(ref(st("member@pvrs.org"), "chat/ch1/1.pdf")), false);
 await t("a channel member opens it", getBytes(ref(st("admin@pvrs.org"), "chat/ch1/1.pdf")), true);
 
+console.log("Full access (Nov 17): the owner's rights for staff with role \"full\"");
+await env.withSecurityRulesDisabled(c => setDoc(doc(c.firestore(), "staff/full@pvrs.org"), { role: "full", name: "Fran Full" }));
+const full = fsOf("full@pvrs.org");
+await t("full access edits an applicant's private record", updateDoc(doc(full, "applicants/a1/private/main"), { notes: "edited by full access" }), true);
+await t("full access reads online applications", getDocs(collection(full, "submissions")), true);
+await t("full access manages the team", setDoc(doc(full, "staff/new@pvrs.org"), { role: "member", name: "New" }), true);
+await t("but can't touch the owner's own entry", setDoc(doc(full, "staff/dkota@pvrs.org"), { role: "member" }), false);
+await t("full access opens secure documents (Dkota's choice)", getDocs(collection(full, "vault")), true);
+await t("full access changes settings", setDoc(doc(full, "settings/main"), { signature: "Fran" }, { merge: true }), true);
+await t("an admin still can't change settings", setDoc(doc(admin, "settings/main"), { signature: "x" }, { merge: true }), false);
+await t("an admin can't give themselves full access", setDoc(doc(admin, "staff/admin@pvrs.org"), { role: "full" }), false);
+await t("full access uploads a staff record", uploadBytes(ref(st("full@pvrs.org"), "records/a1/f.pdf"), pdf, meta), true);
+await t("an admin can't", uploadBytes(ref(st("admin@pvrs.org"), "records/a1/g.pdf"), pdf, meta), false);
+await t("full access opens channel files", getBytes(ref(st("full@pvrs.org"), "chat/ch1/1.pdf")), true);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();
 process.exit(fail ? 1 : 0);

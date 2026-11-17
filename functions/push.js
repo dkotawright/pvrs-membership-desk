@@ -32,10 +32,16 @@ const when = ms => new Date(ms).toLocaleString("en-US", { timeZone: "America/New
 // References that count as received (same rule as refList/refStatus in shared.js).
 const refsIn = sec => [1, 2, 3, 4].filter(i => { const r = get(sec || {}, `refs.r${i}`) || {}; return r.name && String(r.name).trim() && r.returned && !r.replace; }).length;
 
-// `to` = exact list of emails (chat); otherwise the owner, plus everyone when `everyone`. `skip` = the person who caused it.
+// The owner plus everyone the owner gave Full access (staff role "full"): they get the owner's alerts.
+async function owners(){
+  const snap = await db.collection("staff").where("role", "==", "full").get();
+  return [OWNER_EMAIL, ...snap.docs.map(d => d.id)];
+}
+// `to` = exact list of emails (chat); otherwise the owners, plus everyone when `everyone`. `skip` = the person who caused it.
 async function send({ title, body, id = "", chat = "", everyone = false, to = null, skip = "" }){
   const snap = await db.collection("pushTokens").get();
-  const want = e => e !== skip && (to ? to.includes(e) : (everyone || e === OWNER_EMAIL));
+  const own = to || everyone ? [] : await owners();
+  const want = e => e !== skip && (to ? to.includes(e) : (everyone || own.includes(e)));
   const tokens = snap.docs.filter(d => want(d.data().email)).map(d => d.id);
   if (!tokens.length) return;
   const link = DESK + (chat ? `?chat=${encodeURIComponent(chat)}` : id ? `?open=${encodeURIComponent(id)}` : "");
@@ -80,7 +86,7 @@ async function runMorning(now){
   const slots = (await db.collection("slots").get()).docs.map(d => d.data());
   const portals = (await db.collection("portal").get()).docs.map(d => ({ id: d.id, ...d.data() }));
   const m = buildMorning({ apps, slots, now, portals, coordinators: await coordinators() });
-  if (m.owner) await send({ to: [OWNER_EMAIL], ...m.owner });
+  if (m.owner) await send({ to: await owners(), ...m.owner });
   for (const [email, lines] of m.interviewers) for (const l of lines) await send({ to: [email], ...l });
   for (const x of m.applicants) await sendApplicant(x.id, x);
 }
@@ -113,7 +119,7 @@ exports.newApplication = onDocumentCreated({ document: "submissions/{id}", ...OP
 exports.applicantMessage = onDocumentCreated({ document: "portal/{id}/messages/{mid}", ...OPTS }, async e => {
   const m = e.data?.data() || {}, id = e.params.id;
   const cv = await db.doc(`convos/${id}`).get();
-  const to = [...new Set([OWNER_EMAIL, ...(await coordinators()), ...((cv.exists && cv.data().members) || [])])];
+  const to = [...new Set([...(await owners()), ...(await coordinators()), ...((cv.exists && cv.data().members) || [])])];
   const name = await nameOf(id);
   if (m.from === "applicant") await send({ to, title: "New message", body: `${name} sent a message`, chat: `a:${id}` });
   else if (m.from === "staff") {
@@ -127,14 +133,14 @@ exports.channelPost = onDocumentCreated({ document: "channels/{cid}/posts/{pid}"
   const p = e.data?.data() || {};
   const c = await db.doc(`channels/${e.params.cid}`).get(); if (!c.exists) return;
   const ch = c.data();
-  await send({ to: [OWNER_EMAIL, ...(ch.members || [])], skip: p.by, title: `#${ch.name}`, body: `${p.name || "Someone"} posted in #${ch.name}`, chat: `c:${e.params.cid}` });
+  await send({ to: [...(await owners()), ...(ch.members || [])], skip: p.by, title: `#${ch.name}`, body: `${p.name || "Someone"} posted in #${ch.name}`, chat: `c:${e.params.cid}` });
 });
 
 // Bookings: the owner, admins, and the interviewers assigned to that applicant (members never hear about applicants).
 const bookingCrew = async appId => {
   const admins = (await db.collection("staff").get()).docs.filter(d => ["admin", "coordinator"].includes(d.data().role)).map(d => d.id);
   const a = appId ? await db.doc(`applicants/${appId}`).get() : null;
-  return [OWNER_EMAIL, ...admins, ...((a && a.exists && a.data().interviewers) || [])];
+  return [...(await owners()), ...admins, ...((a && a.exists && a.data().interviewers) || [])];
 };
 // A time an interviewer offered (slots/{id}.host): booking it assigns them to that applicant and adds them to the
 // conversation. Cancelling takes them off again, but only if the booking is what put them there.
