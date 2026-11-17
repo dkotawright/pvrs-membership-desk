@@ -2,16 +2,16 @@ rules_version = '2';
 
 // Applicant uploads: uploads/{applicantId}/{file}
 //   Applicants can add files to their own folder (PDF or image, 15 MB max) but can't read, replace or delete them.
-//   Admins can read everything; only the owner can delete.
+//   Admins can read everything; only the owner (and Full access) can delete.
 service firebase.storage {
   match /b/{bucket}/o {
     function verified() { return request.auth != null && request.auth.token.email_verified == true && request.auth.token.email != null; }
     function myEmail()  { return request.auth.token.email.lower(); }
-    function isAdmin()  {
-      return verified() && (myEmail() == 'dkota@pvrs.org'
-        || (firestore.exists(/databases/(default)/documents/staff/$(myEmail()))
-            && firestore.get(/databases/(default)/documents/staff/$(myEmail())).data.role in ['admin', 'coordinator']));
-    }
+    function staffRole() { return firestore.get(/databases/(default)/documents/staff/$(myEmail())).data.role; }
+    function hasStaff()  { return firestore.exists(/databases/(default)/documents/staff/$(myEmail())); }
+    // The owner, or anyone the owner gave Full access (staff role "full", Nov 17): the same rights everywhere.
+    function isOwner()  { return verified() && (myEmail() == 'dkota@pvrs.org' || (hasStaff() && staffRole() == 'full')); }
+    function isAdmin()  { return isOwner() || (verified() && hasStaff() && staffRole() in ['admin', 'coordinator']); }
     function ownsPortal(id) {
       return verified() && firestore.exists(/databases/(default)/documents/portal/$(id))
         && firestore.get(/databases/(default)/documents/portal/$(id)).data.email == myEmail();
@@ -19,7 +19,7 @@ service firebase.storage {
 
     match /uploads/{appId}/{fileName} {
       allow read: if isAdmin();
-      allow delete: if verified() && myEmail() == 'dkota@pvrs.org';
+      allow delete: if isOwner();
       allow create: if ownsPortal(appId)
         && request.resource.size <= 25 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf'
@@ -30,23 +30,22 @@ service firebase.storage {
     // Records the owner uploads to an applicant's file. Admins can open them; nobody else can see them.
     match /records/{appId}/{fileName} {
       allow read: if isAdmin();
-      allow create: if verified() && myEmail() == 'dkota@pvrs.org'
+      allow create: if isOwner()
         && request.resource.size <= 25 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
-      allow delete: if verified() && myEmail() == 'dkota@pvrs.org';
+      allow delete: if isOwner();
     }
 
     // Confidential paperwork (medical, Social Security). orientationpaperwork@pvrs.org can open or delete it, and
     // the owner and people with the Admin role can open it (Dkota, Nov 14). Not the coordinator, interviewers or members.
     // The applicant can add files to their own folder but can't read them back.
     function isRoleAdmin() {
-      return verified() && firestore.exists(/databases/(default)/documents/staff/$(myEmail()))
-        && firestore.get(/databases/(default)/documents/staff/$(myEmail())).data.role == 'admin';
+      return verified() && hasStaff() && staffRole() == 'admin';
     }
     match /confidential/{appId}/{fileName} {
-      allow read: if (verified() && (myEmail() == 'orientationpaperwork@pvrs.org' || myEmail() == 'dkota@pvrs.org')) || isRoleAdmin();
+      allow read: if (verified() && myEmail() == 'orientationpaperwork@pvrs.org') || isOwner() || isRoleAdmin();
       allow delete: if verified() && myEmail() == 'orientationpaperwork@pvrs.org';
-      allow create: if (ownsPortal(appId) || (verified() && myEmail() == 'dkota@pvrs.org'))
+      allow create: if (ownsPortal(appId) || (isOwner()))
         && request.resource.size <= 25 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf'
             || request.resource.contentType == 'application/msword'
@@ -56,25 +55,23 @@ service firebase.storage {
     // Files posted in a squad channel. Only that channel's members (and the owner) can add or open them.
     match /chat/{cid}/{fileName} {
       function inChannel() {
-        return verified() && (myEmail() == 'dkota@pvrs.org'
-          || (firestore.exists(/databases/(default)/documents/channels/$(cid))
-              && myEmail() in firestore.get(/databases/(default)/documents/channels/$(cid)).data.members));
+        return isOwner() || (verified() && firestore.exists(/databases/(default)/documents/channels/$(cid))
+              && myEmail() in firestore.get(/databases/(default)/documents/channels/$(cid)).data.members);
       }
       allow read: if inChannel();
       allow create: if inChannel() && request.resource.size <= 15 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
-      allow delete: if verified() && myEmail() == 'dkota@pvrs.org';
+      allow delete: if isOwner();
     }
 
     // Squad documents: same audience as the library entry (library/{docId}).
     match /library/{docId}/{fileName} {
       function entry() { return firestore.get(/databases/(default)/documents/library/$(docId)).data; }
-      allow read: if verified() && (myEmail() == 'dkota@pvrs.org'
-        || (firestore.exists(/databases/(default)/documents/staff/$(myEmail())) && firestore.get(/databases/(default)/documents/staff/$(myEmail())).data.role in entry().roles)
-        || (firestore.exists(/databases/(default)/documents/portalEmails/$(myEmail())) && entry().newMembers == true));
-      allow create: if verified() && myEmail() == 'dkota@pvrs.org' && request.resource.size <= 25 * 1024 * 1024
+      allow read: if isOwner() || (verified() && ((hasStaff() && staffRole() in entry().roles)
+        || (firestore.exists(/databases/(default)/documents/portalEmails/$(myEmail())) && entry().newMembers == true)));
+      allow create: if isOwner() && request.resource.size <= 25 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
-      allow delete: if verified() && myEmail() == 'dkota@pvrs.org';
+      allow delete: if isOwner();
     }
 
     // Uploaded certificates and everything else: no access by default.

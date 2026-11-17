@@ -421,19 +421,19 @@ try {
     await page.locator('[data-k="onb.cprExpires"]').fill(soon); await page.locator('[data-k="onb.cprExpires"]').blur(); await wait(page, 400);
     if ((await priv(page, "a2"))?.onb?.cprExpires !== soon) fail("CPR expiry not saved privately"); else ok("expiration dates save to the private record");
     const items = await page.locator('[data-k^="onb.items."]').count();
-    if (items !== 15 || !/0 of 15 done/.test(await page.locator("#onbCount").textContent())) fail("checklist rows: " + items); else ok("Onboard tab shows the new-member checklist");
+    if (items !== 16 || !/0 of 16 done/.test(await page.locator("#onbCount").textContent())) fail("checklist rows: " + items); else ok("Onboard tab shows the new-member checklist");
     await pickApplicant(page, "Georgia Thurmond");
     await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
     await page.locator('[data-k="board.result"] [data-v="approved"]').click(); await wait(page, 300);
     await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
     await page.locator('[data-k="onb.items.completed_application"]').fill(localDay(Date.now())); await page.locator('[data-k="onb.items.completed_application"]').blur(); await wait(page, 400);
-    if (!/1 of 15 done/.test(await page.locator("#onbCount").textContent())) fail("checklist count: " + await page.locator("#onbCount").textContent()); else ok("checking off an item updates the count");
+    if (!/1 of 16 done/.test(await page.locator("#onbCount").textContent())) fail("checklist count: " + await page.locator("#onbCount").textContent()); else ok("checking off an item updates the count");
     await page.keyboard.press("Escape"); await wait(page, 200); await page.keyboard.press("Escape"); await wait(page, 500);
     await page.evaluate(() => document.querySelector("#overviewBtn")?.click()); await wait(page, 500);
     await page.evaluate(() => document.querySelector('[data-cmd="todoall"]')?.click()); await wait(page, 300);
     const td = await page.locator(".todo .todoitem").evaluateAll(r => r.map(x => x.textContent.replace(/\s+/g, " ").trim()));
     if (!td.some(t => /CPR \/ BLS card expires in 10 days.*Marcus Bell/.test(t))) fail("no expiry to do: " + JSON.stringify(td)); else ok("To do warns 30 days before a card expires");
-    if (!td.some(t => /Finish the new-member checklist.*Georgia Thurmond.*1 of 15 done · next: Acknowledgement of Sterling/.test(t))) fail("no checklist to do: " + JSON.stringify(td)); else ok("To do tracks the new-member checklist after approval");
+    if (!td.some(t => /Finish the new-member checklist.*Georgia Thurmond.*1 of 16 done · next: Acknowledgement of Sterling/.test(t))) fail("no checklist to do: " + JSON.stringify(td)); else ok("To do tracks the new-member checklist after approval");
     await ctx.close();
   }
   // ---- Data retention: old declined/withdrawn files are flagged for review, never deleted automatically
@@ -825,7 +825,13 @@ try {
     const sh = (await page.locator(".starthere").textContent()).replace(/\s+/g, " ");
     if (!/Start here/.test(sh) || !/Start with \w+\./.test(sh) || !(await page.locator(".starthere [data-todo]").count())) fail("Start here band: " + sh.slice(0, 300)); else ok("the Overview opens with Start here and the first thing to do");
     const heads = await page.locator(".lanes .lhead").evaluateAll(l => l.map(x => x.dataset.filter + ":" + x.querySelector(".v").textContent));
-    if (heads.map(h => h.split(":")[0]).join() !== "screen,int,appr,orient") fail("board columns: " + heads); else ok("the board has four lanes: Screening, Interview, Approval, Onboard");
+    if (heads.map(h => h.split(":")[0]).join() !== "screen,int,appr,orient,act") fail("board columns: " + heads); else ok("the board has five lanes: Screening, Interview, Approval, Onboard, Active members");
+    { // a crowded lane shows everyone and scrolls inside itself (no "N more" cut-off)
+      await page.evaluate(() => { for (let i = 0; i < 9; i++) window.__mock.docs.set(`applicants/crowd${i}`, { name: `Crowd Person ${i}`, app: { received: "2026-11-01" } }); window.__mock.emit(); }); await wait(page, 700);
+      const ln = await page.locator('.lane:has(.lhead[data-filter="screen"])').evaluate(l => { const list = l.querySelector(".lane-list"); return { cards: l.querySelectorAll(".lcard").length, head: +l.querySelector(".lhead .v").textContent, scrolls: !!list && list.scrollHeight > list.clientHeight, more: /\d+ more/.test(l.textContent) }; });
+      if (ln.cards !== ln.head || ln.cards < 10 || !ln.scrolls || ln.more) fail("crowded lane: " + JSON.stringify(ln)); else ok(`a crowded lane lists all ${ln.cards} people and scrolls`);
+      await page.evaluate(() => { for (let i = 0; i < 9; i++) window.__mock.docs.delete(`applicants/crowd${i}`); window.__mock.emit(); }); await wait(page, 500);
+    }
     const intLane = (await page.locator('.lane:has([data-filter="int"])').textContent()).replace(/\s+/g, " "), onbLane = (await page.locator('.lane:has([data-filter="orient"])').textContent()).replace(/\s+/g, " ");
     if (!/Pat Waiting/.test(intLane) || !/isn't scheduled/.test(intLane) || !/Ona Board/.test(onbLane) || /Ona Board/.test(intLane)) fail("cards in the wrong lane: " + intLane.slice(0, 200) + " // " + onbLane.slice(0, 200)); else ok("each person's card sits in their lane, and a board-approved file is in Onboard");
     if (!(await page.locator('.lcard.need:has-text("Pat Waiting") .ping').count())) fail("no indicator on the card that needs action"); else ok("the card that needs you carries a live indicator");
@@ -1781,6 +1787,48 @@ try {
     if (un.it.copy_of_driver_s_license || !un.recs || !/lic\.pdf/.test(await page.locator("#orDocs").textContent())) fail("undo: " + JSON.stringify(un)); else ok("Undo reopens a line marked done and keeps its file");
     if (await page.locator('[data-oundo^="copy_of_driver"]').count() || !(await page.locator('[data-orup^="copy_of_driver"]').count())) fail("undo button still there"); else ok("an undone line is back to normal");
     void row;
+    await ctx.close();
+  }
+  // ---- Full access (Nov 17): a staff member with role "full" gets the owner's desk; the owner grants it from Team
+  {
+    const FRAN = { email: "fran@pvrs.org", displayName: "Fran Full" };
+    const { ctx, page } = await open(browser, { user: FRAN, seed: [["staff/fran@pvrs.org", { role: "full", name: "Fran Full" }]] }); await wait(page, 900);
+    const st = await page.evaluate(() => ({ conn: document.querySelector("#conn")?.textContent, set: !document.querySelector("#settingsBtn").hidden, team: !document.querySelector("#teamBtn").hidden, add: !document.querySelector("#newBtn").hidden }));
+    if (st.conn !== "Full access" || !st.set || !st.team || !st.add) fail("full access desk: " + JSON.stringify(st)); else ok("a Full access member gets the owner's desk: Settings, Team, New applicant");
+    await pickApplicant(page, "Marcus Bell"); await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    const ed = await page.locator('[data-k="onb.cprExpires"]').isEditable().catch(() => false);
+    if (!ed) fail("full access can't edit"); else ok("a Full access member can edit files");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { seed: [["staff/fran@pvrs.org", { role: "member", name: "Fran Full" }]] }); await wait(page, 700);
+    page.once("dialog", d => d.accept());
+    await page.evaluate(() => document.querySelector("#teamBtn").click()); await wait(page, 400);
+    const opts = await page.locator('[data-rolesel="fran@pvrs.org"] option').allTextContents();
+    if (!opts.includes("Full access") || !/Full access/.test(await page.locator("#modal").textContent())) fail("team options: " + opts.join()); else ok("Team offers Full access and explains it");
+    await page.locator('[data-rolesel="fran@pvrs.org"]').selectOption("full"); await wait(page, 500);
+    if ((await page.evaluate(() => window.__mock.docs.get("staff/fran@pvrs.org").role)) !== "full") fail("full access not saved"); else ok("the owner can give someone Full access (after a confirm)");
+    await page.locator('[data-rolesel="fran@pvrs.org"]').selectOption("admin"); await wait(page, 300);   // taking it away needs no confirm
+    page.once("dialog", d => d.dismiss());
+    await page.locator('[data-rolesel="fran@pvrs.org"]').selectOption("full"); await wait(page, 300);
+    if ((await page.evaluate(() => window.__mock.docs.get("staff/fran@pvrs.org").role)) !== "admin") fail("role change after dismissing"); else ok("cancelling the Full access confirm keeps their old role");
+    await ctx.close();
+  }
+  // ---- Sexual harassment prevention training (Nov 17): on the default sheet, and added once to a list saved in Settings
+  {
+    const OLD = ["Completed application", "Verification of Blood Borne Pathogen training", "Confidentiality statement"];
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await page.evaluate(old => { window.__mock.docs.set("settings/main", { signature: "Dkota Wright", onbItems: old }); window.__mock.emit(); }, OLD); await wait(page, 800);
+    const s1 = await page.evaluate(() => window.__mock.docs.get("settings/main"));
+    if (s1.onbItems.join("|") !== "Completed application|Verification of Blood Borne Pathogen training|Verification of Sexual Harassment Prevention training|Confidentiality statement" || !s1.onbAdded?.harassment) fail("saved list: " + JSON.stringify(s1)); else ok("a checklist saved in Settings gets the harassment training line once, after Blood Borne Pathogens");
+    await page.evaluate(() => { const d = window.__mock.docs.get("settings/main"); d.onbItems = d.onbItems.filter(l => !/harass/i.test(l)); window.__mock.emit(); }); await wait(page, 600);
+    if ((await page.evaluate(() => window.__mock.docs.get("settings/main").onbItems)).some(l => /harass/i.test(l))) fail("removed line came back"); else ok("taking the line out in Settings keeps it out");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser); await wait(page, 700);
+    await pickApplicant(page, "Marcus Bell"); await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    if (!(await page.locator('[data-k="onb.items.verification_of_sexual_harassment_preven"]').count())) fail("no harassment line on the checklist"); else ok("the default checklist has Sexual Harassment Prevention training");
     await ctx.close();
   }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application

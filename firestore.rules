@@ -2,6 +2,8 @@ rules_version = '2';
 
 // PVRS Membership Desk — who can see what
 //   Owner (dkota@pvrs.org): reads and edits everything
+//   Staff with role "full" (Full access, Nov 17, Dkota's choice): exactly what the owner can do, secure documents
+//     included. Only the owner's own staff entry is off limits to them (it doesn't exist; the owner is hardcoded).
 //   Staff with role "admin": read everything; may only fill in the interview questionnaire
 //   Staff with role "interviewer": read application + interview of the applicants the owner assigned them to
 //     (applicants/{id}.interviewers); may only fill in those interview questionnaires
@@ -14,7 +16,9 @@ service cloud.firestore {
     function signedIn()  { return request.auth != null; }
     function verified()  { return signedIn() && request.auth.token.email_verified == true && request.auth.token.email != null; }
     function myEmail()   { return request.auth.token.email.lower(); }
-    function isOwner()   { return verified() && myEmail() == 'dkota@pvrs.org'; }
+    function isMainOwner() { return verified() && myEmail() == 'dkota@pvrs.org'; }
+    // isOwner() = the owner OR anyone the owner gave Full access (staff role "full"). Every owner rule below uses it.
+    function isOwner()   { return isMainOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'full'); }
     function isPaperwork() { return verified() && myEmail() == 'orientationpaperwork@pvrs.org'; }
     function staffPath() { return /databases/$(database)/documents/staff/$(myEmail()); }
     function isStaff()   { return isOwner() || (verified() && exists(staffPath())); }

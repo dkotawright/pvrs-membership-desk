@@ -28,6 +28,9 @@ async function checkCaller(auth){
   if (!t || !t.email || t.email_verified !== true) throw new HttpsError("unauthenticated", "Sign in first.");
   const email = String(t.email).toLowerCase();
   if (email === OWNER_EMAIL) return { email, owner: true };
+  // Full access (staff role "full") gets everything the owner has, Med Control included.
+  const st = await db.doc(`staff/${email}`).get();
+  if (st.exists && st.data().role === "full") return { email, owner: true };
   throw new HttpsError("permission-denied", "Med Control is only for the membership coordinator.");
 }
 async function countCall(email){

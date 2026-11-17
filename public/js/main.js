@@ -257,6 +257,8 @@ async function startFor(user){
     let mine = null;
     if (staff.exists()) { try { const mp = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1))); if (!mp.empty && mp.docs[0].data().orientation) mine = mp.docs[0].id; } catch {} }
     if (staff.exists() && mine && new URLSearchParams(location.search).has("paperwork")) { homeView = "portal"; show("portal"); return startPortal(mine, email, { backToDesk: true }); }
+    // Full access (staff role "full"): the owner's desk, exactly. The rules give them the owner's rights too.
+    if (staff.exists() && staff.data().role === "full") { homeView = "app"; show("app"); return startDesk({ paperwork: !!mine, email, role: "admin", owner: true, full: true, name: staff.data().name || user.displayName || "" }); }
     if (staff.exists()) { homeView = "app"; show("app"); return startDesk({ paperwork: !!mine, email, role: ["admin", "coordinator", "interviewer"].includes(staff.data().role) ? staff.data().role : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
     const p = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1)));
     if (!p.empty) { homeView = "portal"; show("portal"); return startPortal(p.docs[0].id, email); }

@@ -333,7 +333,22 @@ const okEmail = v => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || "").trim());
 // PVRS's mandatory new-member sheet (Dkota's paper form, Nov 4), required before issuing equipment or running calls. Edit in Settings.
 const DEFAULT_ONB = ["Acknowledgement of Sterling Volunteers background check", "Completed application", "Copy of driver's license", "Copy of training records (EMT, CPR, etc.)", "Insurance beneficiary card, completed",
   "Emergency contact form", "Copy of health physical", "Record of PPD", "Record of Hep B or signed refusal", "Verification of completion of IS-100", "Verification of completion of IS-700",
-  "Verification of Blood Borne Pathogen training", "SOP/Constitution acceptance form", "Confidentiality statement", "Orientation form completed, signed by member and orientation committee member"];
+  "Verification of Blood Borne Pathogen training", "Verification of Sexual Harassment Prevention training", "SOP/Constitution acceptance form", "Confidentiality statement", "Orientation form completed, signed by member and orientation committee member"];
+// Lines added to the sheet after it was in use (Dkota, Nov 17). A list saved in Settings gets each one once, after
+// the line it follows; settings.onbAdded.<id> remembers that, so removing it in Settings keeps it removed.
+const ONB_ADDED = [["harassment", "Verification of Sexual Harassment Prevention training", /harass/i, /blood\s*borne|pathogen/i]];
+function addNewOnbLines(){
+  if (!S.canEdit || !onbCustom()) return;
+  const list = [...S.settings.onbItems], done = { ...(S.settings.onbAdded || {}) }; let changed = false;
+  for (const [id, line, has, after] of ONB_ADDED) {
+    if (done[id]) continue;
+    done[id] = Date.now(); changed = true;
+    if (list.some(l => has.test(l))) continue;
+    const i = list.findIndex(l => after.test(l)), at = i >= 0 ? i + 1 : list.findIndex(l => /^orientation form/i.test(l));
+    list.splice(at >= 0 ? at : list.length, 0, line);
+  }
+  if (changed) setDoc(doc(db, "settings", "main"), { onbItems: list.slice(0, 40), onbAdded: done }, { merge: true }).catch(() => {});
+}
 // The Nov 4 sheet (11 lines). Anyone still on it moves to the current sheet; dates on its combined lines carry over (ONB_SPLIT).
 const PREV_ONB = ["Completed application", "Copy of driver's license", "Copy of training records (EMT, CPR, etc.)", "Insurance beneficiary card, completed",
   "Copy of health physical, record of PPD, Hep B record or refusal", "Verification of completion of IS-100, IS-700", "Verification of Blood Borne Pathogen training",
@@ -529,19 +544,23 @@ function startHereHTML(greet, c){
 function boardHTML(rows, c, notSched, inOrientation){
   const need = new Set((S.coord ? coordItems() : todoItems()).filter(x => x.pri <= 2).map(x => x.id));
   const cols = [["screen", "Screening", c.screen || 0, ""], ["int", "Interview", c.int || 0, notSched ? `${notSched} not scheduled yet` : ""],
-    ["appr", "Approval", c.appr || 0, c.board ? `${c.board} on the board queue` : ""], ["orient", "Onboard", c.orient || 0, inOrientation ? `${inOrientation} in orientation` : ""]];
-  const inCol = (r, k) => { const or = inOrient(r.a); return k === "orient" ? or && r.p.stage !== "act" : !or && (r.p.stage === k || (k === "screen" && r.p.stage === "open")); };
-  const card = r => { const a = r.a, st = stat(a, r.p), d = daysSince(get(a, "app.received")), pct = Math.round(r.p.n / MILESTONES.length * 100);
+    ["appr", "Approval", c.appr || 0, c.board ? `${c.board} on the board queue` : ""], ["orient", "Onboard", c.orient || 0, inOrientation ? `${inOrientation} in orientation` : ""],
+    ["act", "Active members", c.act || 0, ""]];
+  // Every person shows in their lane; a long lane scrolls inside itself (Dkota, Nov 17: the old 5-card cut-off hid people).
+  const inCol = (r, k) => { if (k === "act") return r.p.stage === "act"; const or = inOrient(r.a); return k === "orient" ? or && r.p.stage !== "act" : !or && (r.p.stage === k || (k === "screen" && r.p.stage === "open")); };
+  const member = r => { const a = r.a, since = get(a, "onb.memberSince");
+    return `<button class="lcard" type="button" data-open="${esc(a._id)}"><span class="lc-top"><span class="av" aria-hidden="true">${esc(initials(a.name))}</span>
+        <span class="lc-who"><b>${esc(a.name || "Unnamed")}</b><small>${esc(a.type || "Member")}</small></span></span>
+      <span class="lc-st">${since ? `Member since ${esc(longDate(since))}` : "Squad member"}</span></button>`; };
+  const card = r => { if (r.p.stage === "act") return member(r); const a = r.a, st = stat(a, r.p), d = daysSince(get(a, "app.received")), pct = Math.round(r.p.n / MILESTONES.length * 100);
     return `<button class="lcard${need.has(a._id) ? " need" : ""}" type="button" data-open="${esc(a._id)}"><span class="lc-top"><span class="av" aria-hidden="true">${esc(initials(a.name))}</span>
         <span class="lc-who"><b>${esc(a.name || "Unnamed applicant")}</b><small>${d != null ? `Day ${d}` : esc(a.type || "")}</small></span>${need.has(a._id) ? PING : ""}</span>
       <span class="lc-st">${esc(st.head.replace(/^Next: /, ""))}</span><span class="lc-bar" aria-hidden="true"><i style="width:${pct}%"></i></span></button>`; };
   return `<div class="lanes" role="group" aria-label="The board">${cols.map(([k, label, n, sub]) => { const lane = k === "orient" ? "onb" : k, list = rows.filter(r => inCol(r, k));
-    return `<section class="lane" style="--stage-c:${stageVar(lane)}" aria-label="${label}">
+    return `<section class="lane${k === "act" ? " lane-act" : ""}" style="--stage-c:${stageVar(lane)}" aria-label="${label}">
       <button class="stg lhead" type="button" data-filter="${k}"><span class="k">${label}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ""}<span class="v">${n}</span></button>
-      ${list.slice(0, 5).map(card).join("") || `<div class="lempty">${k === "orient" ? "Approve at the board and the file moves here on its own." : "All clear in this lane."}</div>`}
-      ${k === "orient" && S.canEdit ? `<button class="lmore" type="button" data-oadd>Add someone</button>` : ""}
-      ${list.length > 5 ? `<button class="lmore" type="button" data-filter="${k}">${list.length - 5} more</button>` : ""}</section>`; }).join("")}
-    <button class="stg lact" type="button" data-filter="act" style="--stage-c:${stageVar("act")}"><span class="k">Active members</span><span class="v">${c.act || 0}</span></button></div>`;
+      ${list.length ? `<div class="lane-list">${list.map(card).join("")}</div>` : `<div class="lempty">${k === "orient" ? "Approve at the board and the file moves here on its own." : k === "act" ? "Squad members show up here once they finish onboarding." : "All clear in this lane."}</div>`}
+      ${k === "orient" && S.canEdit ? `<button class="lmore" type="button" data-oadd>Add someone</button>` : ""}</section>`; }).join("")}</div>`;
 }
 
 /* ---------- year at a glance (overview) ---------- */
@@ -1593,13 +1612,13 @@ async function decideRequest(email, role){
     toast(role ? `${q.name || email} approved as ${role}. They can sign in now.` : `Request from ${q.name || email} denied.`);
   } catch (e) { console.error(e); toast("Couldn't save that. Try again."); }
 }
-const ROLE_LABEL = { admin: "Admin", coordinator: "Interview coordinator", interviewer: "Interviewer", member: "Member" };
+const ROLE_LABEL = { full: "Full access", admin: "Admin", coordinator: "Interview coordinator", interviewer: "Interviewer", member: "Member" };
 // Who can be put on an interview or host a time.
 const canInterview = s => ["interviewer", "admin", "coordinator"].includes(s.role);
 const roleLabel = r => ROLE_LABEL[r] || "Member";
 function teamHTML(){
   const rows = [...S.staff.entries()].sort((x,y) => x[0].localeCompare(y[0])).map(([email, s]) => `<div class="row"><span class="lbl">${esc(s.name || email)}<small>${esc(email)}</small></span>
-    <span class="teamact"><select class="rolesel" data-rolesel="${esc(email)}" aria-label="Role for ${esc(s.name || email)}">${[["member","Member"],["interviewer","Interviewer"],["coordinator","Interview coordinator"],["admin","Admin"]].map(([v,l]) => `<option value="${v}"${(ROLE_LABEL[s.role] ? s.role : "member")===v?" selected":""}>${l}</option>`).join("")}</select>
+    <span class="teamact"><select class="rolesel" data-rolesel="${esc(email)}" aria-label="Role for ${esc(s.name || email)}">${[["member","Member"],["interviewer","Interviewer"],["coordinator","Interview coordinator"],["admin","Admin"],["full","Full access"]].map(([v,l]) => `<option value="${v}"${(ROLE_LABEL[s.role] ? s.role : "member")===v?" selected":""}>${l}</option>`).join("")}</select>
     <button class="copy" type="button" data-rmstaff="${esc(email)}">Remove</button></span></div>`).join("");
   return `<div class="row"><span class="lbl">${esc(OWNER_EMAIL)}<small>Owner · full access</small></span></div>${rows}
     <div class="row" style="flex-wrap:wrap"><input id="tmEmail" type="email" placeholder="member@pvrs.org" class="inlinefield" style="flex:2 1 180px">
@@ -1672,10 +1691,15 @@ function openSettings(){
 }
 // Team (owner): who can sign in to the desk and what each can do. Its own menu, apart from Settings (Dkota, Nov 11).
 const ROLE_HELP = [["Member", "Messages, squad documents and their own paperwork. No applicant files."], ["Interviewer", "Only the applicants assigned to them: Application and Interview tabs, and the interview itself."],
-  ["Interview coordinator", "Sees every file and runs the interviews: posts times, books and reschedules, opens booking, assigns interviewers, messages applicants."], ["Admin", "Sees every file, view only. Can fill in an interview and run reports."]];
+  ["Interview coordinator", "Sees every file and runs the interviews: posts times, books and reschedules, opens booking, assigns interviewers, messages applicants."], ["Admin", "Sees every file, view only. Can fill in an interview and run reports."],
+  ["Full access", "Everything the owner can do: edit every file, team and settings, Med Control, secure documents. Only the owner's own account can't be changed."]];
 function openTeam(){
   if (!S.owner) return;
   $("#modal").onchange = async e => { const rs = e.target.closest?.("[data-rolesel]"); if (!rs) return;
+    const who = S.staff.get(rs.dataset.rolesel)?.name || rs.dataset.rolesel;
+    // Full access is everything you can do, secure documents included: ask once before giving it.
+    if (rs.value === "full" && !confirm(`Give ${who} full access? They'll be able to do everything you can: edit every file, manage the team and settings, and open secure documents.`)) { rs.value = S.staff.get(rs.dataset.rolesel)?.role || "member"; return; }
+    if (rs.dataset.rolesel === S.me && rs.value !== "full" && !confirm("Take full access away from yourself? You'll lose it as soon as you confirm.")) { rs.value = "full"; return; }
     try { await setDoc(doc(db, "staff", rs.dataset.rolesel), { role: rs.value }, { merge: true }); toast(`${S.staff.get(rs.dataset.rolesel)?.name || rs.dataset.rolesel} is now ${/^[AEIOU]/.test(roleLabel(rs.value)) ? "an" : "a"} ${roleLabel(rs.value)}.`); } catch { toast("Couldn't change the role."); } };
   const M = openModal(`<h3>Team</h3><p class="help">Everyone on the squad who can sign in to the desk, and what each of them can do. Applicants and new members aren't listed here; they're on the board.</p>
     <div class="ios" id="reqList">${requestsHTML()}</div>
@@ -1994,7 +2018,7 @@ function openMore(){
   const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation board"], ["trainBtn", "Sign-offs"], ["paperBtn", "My paperwork"], ["libBtn", "Documents"], ["teamBtn", "Team"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
-  const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div>
+  const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.full ? "Full access" : S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div>
     <div class="ios morelist">${tools.map(([id, label]) => `<button class="row" type="button" data-more="${id}"><span class="mi">${icon(id)}</span><span class="lbl">${esc(label)}</span><span class="chev" aria-hidden="true">›</span></button>`).join("")}
       ${S.me ? `<button class="row" type="button" data-notif><span class="mi"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3l1-1zM6.5 14h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lbl">Notifications</span><span class="chev" aria-hidden="true">›</span></button>` : ""}
       ${S.owner ? "" : `<button class="row" type="button" data-tour><span class="mi"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.4 6.3a1.7 1.7 0 1 1 2.4 1.6c-.5.3-.8.6-.8 1.2M8 11.4v.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><span class="lbl">How this works</span><span class="chev" aria-hidden="true">›</span></button>`}
@@ -3324,7 +3348,7 @@ function openChannelEditor(cid){
     if (e.target.closest("#chSave")) {
       const name = $("#chName").value.trim().replace(/^#+/, "").slice(0, 60); if (!name) { toast("Give the channel a name."); return $("#chName").focus(); }
       const members = [...M.querySelectorAll(".cv-pick input:checked")].map(i => i.value).filter(x => x !== OWNER_EMAIL);
-      const names = Object.fromEntries([[OWNER_EMAIL, S.name || "Owner"], ...members.map(m => [m, S.staff.get(m)?.name || m.split("@")[0]])]);
+      const names = Object.fromEntries([[OWNER_EMAIL, S.me === OWNER_EMAIL ? (S.name || "Owner") : (c.names?.[OWNER_EMAIL] || "Owner")], ...members.map(m => [m, S.staff.get(m)?.name || m.split("@")[0]])]);
       try {
         const id = cid || doc(collection(db, "channels")).id;
         await setDoc(doc(db, "channels", id), { name, color, members: [OWNER_EMAIL, ...members], names, createdAt: c.createdAt || Date.now(), createdBy: c.createdBy || S.me, updatedAt: Date.now(), pin: c.pin || null });
@@ -4250,15 +4274,15 @@ function startIdleLock(){
 }
 
 /* ---------- start ---------- */
-export function startDesk({ email, role, owner, name, paperwork = false }){
-  S.me = email; S.admin = role === "admin" || role === "coordinator"; S.owner = !!owner; S.canEdit = !!owner;
+export function startDesk({ email, role, owner, full = false, name, paperwork = false }){
+  S.full = !!full; S.me = email; S.admin = role === "admin" || role === "coordinator"; S.owner = !!owner; S.canEdit = !!owner;
   // Interview coordinator: sees what an admin sees and runs scheduling. S.sched = may schedule (owner or coordinator).
   S.coord = !owner && role === "coordinator"; S.sched = !!owner || S.coord; S.name = name || "";
   S.role = owner ? "owner" : role; S.member = S.role === "member";
   S.sort = SORTS[prefs.get("sort")] ? prefs.get("sort") : "stage";
   bindEvents(); renderList(); renderDetail();
   const conn = $("#conn");
-  conn.textContent = S.owner ? "Owner" : roleLabel(role);
+  conn.textContent = S.full ? "Full access" : S.owner ? "Owner" : roleLabel(role);
   conn.classList.add("on");
   $("#meName").textContent = S.name || email;
   $("#meName").title = email;
@@ -4327,7 +4351,7 @@ export function startDesk({ email, role, owner, name, paperwork = false }){
         if (!S.sel) renderOverview();
       }, e => console.error(e));
     }
-    onSnapshot(doc(db, "settings", "main"), s => { S.settings = s.exists() ? s.data() : {}; paintAi(); }, () => {});
+    onSnapshot(doc(db, "settings", "main"), s => { S.settings = s.exists() ? s.data() : {}; paintAi(); addNewOnbLines(); }, () => {});
     onSnapshot(collection(db, "staff"), snap => { S.staff = new Map(snap.docs.map(d => [d.id, d.data()])); if (S._teamPaint && !$("#modal").hidden) S._teamPaint(); if (S.sel) syncDetail(); }, () => {});
   }
 }
