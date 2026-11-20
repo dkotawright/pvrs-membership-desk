@@ -90,22 +90,22 @@
 }
 .dock button {
   display: flex;
-  min-width: 64px;
+  min-width: 0;
   flex: 1;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
   height: 52px;
-  padding: 4px 8px;
+  padding: 4px 6px;
   border-radius: 999px;
   background: transparent;
   color: var(--color-muted);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 650;
   transition: background 160ms ease, color 160ms ease, transform 160ms ease;
 }
-.dock button[aria-pressed="true"] {
+.dock button.on {
   color: var(--color-blue);
   background: color-mix(in srgb, var(--color-blue) 16%, transparent);
 }

@@ -942,7 +942,7 @@ export function searchDesk(q: string, apps: Applicant[], actor: Actor, messages:
   const adminOnly = new Set(["board", "reports", "orient", "library"]);
   const actions: SearchHit[] = [
     ["New applicant", "Add someone to Dispatch", "new"],
-    ["Field training", "People the board accepted", "field"],
+    ["Orientation", "People the board accepted", "field"],
     ["Board meeting", "Walk the board queue", "board"],
     ["Interview times", "Post or manage times", "slots"],
     ["Messages", "Squad channels", "messages"],

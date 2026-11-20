@@ -48,8 +48,8 @@ test("owner pipeline shows every lane and opens a file", async ({ page }) => {
   await expect(page.getByText("Onboarding").first()).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/pipeline-board.png", fullPage: false });
   await page.screenshot({ path: "/opt/cursor/artifacts/nav-desktop.png", fullPage: false });
-  await page.getByRole("button", { name: /Field training/ }).click();
-  await expect(page.getByRole("heading", { name: "Field training" })).toBeVisible();
+  await page.getByRole("button", { name: /Orientation/ }).click();
+  await expect(page.getByRole("heading", { name: "Orientation" })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/onboard-desktop.png", fullPage: false });
   await page.getByRole("button", { name: /Dispatch/ }).first().click();
   await page.getByRole("button", { name: "List", exact: true }).click();
@@ -140,8 +140,14 @@ test("mobile pipeline and home", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Dispatch" })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/pipeline-mobile.png", fullPage: false });
   await page.screenshot({ path: "/opt/cursor/artifacts/nav-mobile.png", fullPage: false });
-  await page.getByRole("button", { name: "Training" }).click();
-  await expect(page.getByRole("heading", { name: "Field training" })).toBeVisible();
+  for (const name of ["Dispatch", "Orientation", "Messages", "More"]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    await expect(page.locator("nav.dock button.on")).toHaveCount(1);
+    await expect(page.locator("nav.dock button.on")).toHaveText(name);
+    if (name === "More") await page.locator(".fixed.inset-0").click({ position: { x: 8, y: 8 } });
+  }
+  await page.getByRole("button", { name: "Orientation", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Orientation" })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/onboard-mobile.png", fullPage: false });
   await page.getByRole("button", { name: "Dispatch", exact: true }).click();
   await page.getByRole("button", { name: /Jordan Hale/ }).first().click();
@@ -181,8 +187,10 @@ test("appearance is per person and reaches the portal", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("data-accent", "purple");
   await page.screenshot({ path: "/opt/cursor/artifacts/pipeline-dark.png", fullPage: false });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Training" }).click();
-  await expect(page.getByRole("heading", { name: "Field training" })).toBeVisible();
+  await page.getByRole("button", { name: "Orientation", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Orientation" })).toBeVisible();
+  await expect(page.locator("nav.dock button.on")).toHaveCount(1);
+  await expect(page.locator("nav.dock button.on")).toHaveText("Orientation");
   await expect(page.getByRole("dialog", { name: "How this works" })).toHaveCount(0);
   await page.screenshot({ path: "/opt/cursor/artifacts/onboard-dark-mobile.png", fullPage: false });
   await page.setViewportSize({ width: 1440, height: 900 });

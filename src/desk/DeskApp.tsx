@@ -276,10 +276,23 @@ export function DeskApp() {
         </main>
       </div>
       <nav className="dock md:hidden" aria-label="Desk">
-        <button type="button" aria-pressed={view === "pipeline"} onClick={() => { setView("pipeline"); setFilter("all"); setSel(null); }}><LayoutGrid className="h-5 w-5" />Dispatch</button>
-        <button type="button" title="Field training" aria-pressed={view === "field"} onClick={() => { setView("field"); setSel(null); }}><ClipboardList className="h-5 w-5" />Training</button>
-        <button type="button" aria-pressed={view === "messages"} onClick={() => setView("messages")}><MessageSquare className="h-5 w-5" />Messages</button>
-        <button type="button" aria-pressed={mobileMore} onClick={() => setMobileMore(true)}><Plus className="h-5 w-5" />More</button>
+        {([
+          ["pipeline", "Dispatch", <LayoutGrid key="d" className="h-5 w-5" />],
+          ["field", "Orientation", <ClipboardList key="o" className="h-5 w-5" />],
+          ["messages", "Messages", <MessageSquare key="m" className="h-5 w-5" />],
+          ["more", "More", <Plus key="p" className="h-5 w-5" />],
+        ] as const).map(([id, label, icon]) => {
+          const on = id === "more" ? mobileMore : !mobileMore && view === id;
+          return (
+            <button key={id} type="button" className={on ? "on" : ""} aria-current={on ? "page" : undefined} onClick={() => {
+              if (id === "more") { setMobileMore(true); return; }
+              setMobileMore(false);
+              setSel(null);
+              if (id === "pipeline") { setView("pipeline"); setFilter("all"); }
+              else setView(id);
+            }}>{icon}{label}</button>
+          );
+        })}
       </nav>
       {palette ? (
         <div className="fixed inset-0 z-40 grid place-items-start bg-black/30 p-4 pt-[12vh]" onClick={() => setPalette(false)}>
@@ -314,7 +327,7 @@ export function DeskApp() {
       {mobileMore ? (
         <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setMobileMore(false)}>
           <div className="card absolute inset-x-3 p-3" style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }} onClick={(e) => e.stopPropagation()}>
-            {[["field", "Field training"], ["slots", "Interview times"], ["board", "Board meeting"], ["reports", "Reports"], ...(actor.canEdit ? [["team", "Team"], ["settings", "Rig check"]] : [])].map(([id, label]) => (
+            {[["field", "Orientation"], ["slots", "Interview times"], ["board", "Board meeting"], ["reports", "Reports"], ...(actor.canEdit ? [["team", "Team"], ["settings", "Rig check"]] : [])].map(([id, label]) => (
               <button key={id} type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setView(id as View); setMobileMore(false); }}>{label}</button>
             ))}
             <button type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setMobileMore(false); setThemeOn(true); }}>Appearance</button>
@@ -346,7 +359,7 @@ function Nav({ view, setView, actorCan, admin, requests }: { view: View; setView
     <nav className="mt-5 space-y-5 overflow-auto text-sm" aria-label="Desk">
       <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">On the desk</div>
         {item("pipeline", "Dispatch", "Applicants in process", LayoutGrid)}
-        {item("field", "Field training", "After the board says yes", ClipboardList)}
+        {item("field", "Orientation", "After the board says yes", ClipboardList)}
         {admin ? item("board", "Board meeting", "The vote", Users) : null}
         {admin ? item("orient", "Paperwork grid", "Every checklist line", ClipboardList) : null}
         {item("signoffs", "Trainer sign-offs", "Skills on the rig", Shield, true)}
@@ -774,9 +787,9 @@ function FieldTraining({ apps, settings, edit, openFile, canEdit }: {
   const gear = issueItems(settings);
   return (
     <section data-screen="field" className="mx-auto max-w-3xl">
-      <h1 className="text-3xl font-semibold tracking-tight">Field training</h1>
+      <h1 className="text-3xl font-semibold tracking-tight">Orientation</h1>
       <p className="mt-1 text-sm text-muted">People the board accepted. Paperwork, gear, and the first shifts.</p>
-      {!people.length ? <div className="card mt-6 p-8 text-center text-sm text-muted">Nobody is in field training right now.</div> : null}
+      {!people.length ? <div className="card mt-6 p-8 text-center text-sm text-muted">Nobody is in orientation right now.</div> : null}
       <div className="mt-6 space-y-5">
         {people.map((a) => {
           const paperDone = paper.filter(([k]) => get(a, `onb.items.${k}`)).length;
