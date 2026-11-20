@@ -1857,6 +1857,18 @@ try {
     if (calls.join() !== "questions:a2:,draft_email:a2:welcome" || !/1\. Why EMS\?/.test(t2) || !(await page.locator("[data-mcmail]").count())) fail("file jobs: " + calls + " " + t2.slice(0, 160)); else ok("with a file open: interview questions and a welcome email draft");
     await ctx.close();
   }
+  // ---- Stuck page (Nov 20): a blank page or endless Loading… offers Reset and reload; a working page doesn't
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    if (await page.evaluate(() => window.__bootCheck())) fail("stuck prompt on a working page"); else ok("a page that loaded shows no reset prompt");
+    await page.evaluate(() => { document.querySelectorAll("body > *").forEach(e => { if (e.tagName !== "SCRIPT") e.hidden = true; }); document.getElementById("loading").hidden = false; });
+    const shown = await page.evaluate(() => window.__bootCheck());
+    if (!shown || !(await page.locator("#bootReset").isVisible())) fail("no reset prompt when stuck"); else ok("a page stuck on Loading… offers Reset and reload");
+    await page.evaluate(() => { localStorage.setItem("pvrsDesk.sort", "name"); });
+    await page.locator("#bootReset").click(); await wait(page, 2500);
+    if (await page.evaluate(() => localStorage.getItem("pvrsDesk.sort"))) fail("reset left saved data"); else ok("Reset clears this site's saved data and reloads");
+    await ctx.close();
+  }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {
     const { ctx, page } = await open(browser, { url: "/apply?src=flyer", user: null }); await wait(page, 600);
