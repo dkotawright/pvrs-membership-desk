@@ -2,6 +2,8 @@
 
 The website is a React app (`src/`, built by Vite into `dist/`). **Vercel** serves that frontend. **Firebase** stays the backend: Auth, Firestore, Storage, Cloud Messaging, and Cloud Functions. Existing applicant records, staff accounts, rules, and functions are unchanged.
 
+A Vercel build of `main` fails until [PR #53](https://github.com/dkotawright/pvrs-membership-desk/pull/53) merges, because that branch has no `package.json`. Preview deploys of the PR branch build the Vite app.
+
 ## Connect this repo to Vercel
 
 1. Sign in at [vercel.com](https://vercel.com) with the GitHub account that can see this private repo.
