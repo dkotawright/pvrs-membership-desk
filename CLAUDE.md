@@ -99,6 +99,9 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## No Vercel (Nov 20, Dkota: "I won't use that… Firebase only")
+- Firebase Hosting is the only host (https://pvrs-membership.web.app). Cursor had connected a Vercel project "pvrs-membership-desk" (Vercel GitHub app) that tries to build every push and fails. `vercel.json` with `git.deploymentEnabled: false` switches those builds off from the repo side; Dkota was asked to delete the Vercel project and uninstall the Vercel GitHub app. Don't add Vercel back.
+
 ## Cursor's React rebuild reverted (Nov 20, Dkota: "cursor messed up my site… reverse it all back… keep the med control how it is integrated now")
 - PRs #53–#55 (Cursor, Nov 20) replaced the site with a React/Vite app (src/, static/, root package.json, e2e/, Vercel preview workflow). All of that is gone again: the site is the Nov 17 version (PR #51), same rules, same tests, deploy.yml without the build step.
 - KEPT from Cursor: `functions/medcontrol.js` (Claude first, Groq only when Claude fails or has no key; extra jobs `briefing`, `questions`, `draft_email`, `usage`; owner + Full access; 150/day; `settings.aiTone` writing voice), `docs/med-control.md`, `tests/medcontrol-privacy.test.cjs`, and deploy.yml's "Choose Med Control secrets" step (binds only the GROQ_API_KEY / ANTHROPIC_API_KEY secrets that exist, via `MEDCONTROL_SECRETS`).
