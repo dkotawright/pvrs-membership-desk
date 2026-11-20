@@ -9,7 +9,9 @@ rules_version = '2';
 //     (applicants/{id}.interviewers); may only fill in those interview questionnaires
 //   Staff with role "member": no applicant files; Messages only (channels and conversations they're added to)
 //   Applicants: their own portal page, their own uploads, open interview times
-//   Paperwork account (orientationpaperwork@pvrs.org): the only one who can open confidential (medical / Social Security) files
+//   Paperwork account (orientationpaperwork@pvrs.org): opens and deletes confidential (medical / Social Security) files.
+//     The owner, Full access, and role "admin" can also open them (Dkota, Nov 14 and Nov 17). The coordinator,
+//     interviewers, members and applicants cannot. Only the paperwork account deletes them.
 service cloud.firestore {
   match /databases/{database}/documents {
 

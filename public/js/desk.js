@@ -278,9 +278,18 @@ function renderList(){
 function paintList(){
   const rows = sorted(); renderChips(rows);
   const q = S.q.trim().toLowerCase(), qd = q.replace(/\D/g, "");
-  const match = a => !q || (a.name||"").toLowerCase().includes(q) || lower(a.email).includes(q) || (qd.length >= 3 && String(a.phone||"").replace(/\D/g,"").includes(qd));
+  // Name and email match from the first character. Stage, status, type and place match from two characters,
+  // so typing "interview" or "potsdam" finds people without opening a filter first. Phone still needs 3 digits.
+  const match = (a, p) => {
+    if (!q) return true;
+    if ((a.name || "").toLowerCase().includes(q) || lower(a.email).includes(q)) return true;
+    if (qd.length >= 3 && String(a.phone || "").replace(/\D/g, "").includes(qd)) return true;
+    if (q.length < 2) return false;
+    const st = stat(a, p), stage = (STAGES[p.stage] || {}).label || "";
+    return [a.type, loc(a), stage, st.pill, st.head, get(a, "app.source") === "online" ? "online" : ""].filter(Boolean).join(" ").toLowerCase().includes(q);
+  };
   const inFilter = r => S.filter==="orient" ? r.or : r.or ? ((S.filter==="all" && !!q) || (S.filter==="act" && r.p.stage==="act")) : S.filter==="all" || (S.filter==="board" ? inBoardQueue(r.a) : PSEUDO[S.filter] ? PSEUDO[S.filter].test(r.a, r.p) : r.p.stage===S.filter);
-  const vis = rows.filter(r => inFilter(r) && match(r.a));
+  const vis = rows.filter(r => inFilter(r) && match(r.a, r.p));
   if (SORTS[S.sort]) vis.sort((x,y) => SORTS[S.sort](x,y) || (x.a.name||"").localeCompare(y.a.name||""));
   S.vis = vis.map(r => r.a._id);
   { const pool = S.filter === "orient" ? S.counts.orient : S.counts.all; $("#rosterCount").textContent = S.ready ? (vis.length === pool ? String(pool) : `${vis.length} of ${pool}`) : ""; }

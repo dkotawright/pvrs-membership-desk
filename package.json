@@ -1,0 +1,10 @@
+{
+  "name": "pvrs-membership-desk",
+  "private": true,
+  "description": "PVRS Membership Desk. The site in public/ is what Firebase Hosting serves. npm run build copies it to dist/ for a local preview or another static host.",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "preview": "npm run build && npx --yes serve dist -p 4173",
+    "test": "node tests/browser.test.mjs"
+  }
+}

@@ -1,4 +1,7 @@
 // Firebase web app config for project pvrs-membership.
+// apiKey is a public web key: it identifies the project, it does not grant access. Data access is the security
+// rules. Because this repo is public, restrict the key in Google Cloud → APIs & Services → Credentials to the
+// Hosting domains (HTTP referrers). See docs/security-review.md.
 export const firebaseConfig = {
   apiKey: "AIzaSyAmPIMyTAPdJLdhEFwoSNi9Bfdx5YqCcDY",
   authDomain: "pvrs-membership.firebaseapp.com",

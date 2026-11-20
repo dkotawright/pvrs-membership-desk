@@ -15,10 +15,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/station.css">
 </head>
 <body>
+<a class="skip" href="#q">Skip to search</a>
 
 <!-- Animated EMS backdrop behind every screen: emergency-light glows, a heart-monitor trace and a faint Star of Life -->
 <div class="ems-bg" aria-hidden="true">
@@ -237,7 +239,7 @@
             <option value="stage">Stage</option><option value="name">Name</option><option value="newest">Newest</option><option value="waiting">Longest waiting</option><option value="updated">Recently updated</option>
           </select></label>
         </div>
-        <label class="search"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="q" type="search" placeholder="Search name, email, phone" autocomplete="off" aria-label="Search applicants"><kbd>⌘K</kbd></label>
+        <label class="search"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="q" type="search" placeholder="Search name, email, phone, or stage" autocomplete="off" aria-label="Search applicants by name, email, phone, stage, or status"><kbd>/</kbd></label>
         <div class="chips" id="chipsMini"></div>
       </div>
       <div class="list" id="list"></div>
