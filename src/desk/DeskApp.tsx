@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Bell, Calendar, FileText, LayoutGrid, List, MessageSquare, Plus, Search, Settings as SettingsIcon, Shield, Sparkles, Users, BarChart3, ClipboardList } from "lucide-react";
 import { useBackend, useGate, useToast } from "../appContext";
+import { InterviewPanel } from "./interview";
 import { MedControl, type McContext } from "./MedControl";
 import { docId, type Snap } from "../lib/backend";
 import {
@@ -9,7 +11,7 @@ import {
   welcomeMessage, portalPayload, onbItems, issueItems, skillItems, today, HEARD, signatureText,
 } from "../lib/domain";
 
-type View = "pipeline" | "messages" | "slots" | "board" | "team" | "settings" | "reports";
+type View = "pipeline" | "messages" | "slots" | "board" | "team" | "settings" | "reports" | "orient" | "signoffs" | "library";
 
 export function DeskApp() {
   const backend = useBackend();
@@ -155,23 +157,27 @@ export function DeskApp() {
 
   return (
     <div data-screen="desk" className="flex min-h-full bg-canvas text-ink">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-black/5 bg-white/70 px-3 py-4 backdrop-blur-xl md:flex">
+      <aside className="frost sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-black/5 px-3 py-4 md:flex">
         <div className="flex items-center gap-2 px-2">
-          <img src="/img/logo.png" alt="" className="h-9 w-9 rounded-xl object-cover" />
+          <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="h-12 w-12 crest" />
           <div>
-            <div className="text-sm font-semibold tracking-tight">PVRS Desk</div>
+            <div className="text-sm font-semibold">PVRS Membership</div>
             <div className="text-[11px] text-muted">{actor.role === "owner" ? "Owner" : actor.role === "full" ? "Full access" : ROLE_LABEL[actor.role] || actor.role}</div>
           </div>
         </div>
         <Nav view={view} setView={(v) => { setView(v); setSel(null); }} actorCan={actor.canEdit} admin={actor.adminView} requests={requests.filter((r) => r.data.status === "pending").length} />
-        {actor.canEdit ? <button type="button" className="mx-2 mt-3 rounded-full bg-crimson py-2 text-sm font-semibold text-white" onClick={() => addApplicant(backend, actor.email, toast, openFile)}>New applicant</button> : null}
-        <button type="button" className="mx-2 mt-auto text-left text-xs text-muted" onClick={() => backend.signOut().then(() => location.replace("/signin"))}>Sign out</button>
+        {actor.canEdit ? <button type="button" className="mx-2 mt-3 inline-flex items-center justify-center gap-1 rounded-full bg-crimson py-2.5 text-sm font-semibold text-white shadow-md" onClick={() => addApplicant(backend, actor.email, toast, openFile)}><Plus className="h-4 w-4" /> New applicant</button> : null}
+        <button type="button" className="mx-2 mt-auto flex items-center gap-2 px-2 py-2 text-left text-xs text-muted" onClick={() => backend.signOut().then(() => location.replace("/signin"))}><span className="grid h-8 w-8 place-items-center rounded-full bg-blue/10 text-xs font-semibold text-blue">{initials(actor.name || actor.email)}</span><span><b className="block text-ink">{actor.name || "Signed in"}</b>Sign out</span></button>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="frost sticky top-0 z-20 flex items-center gap-2 border-b border-black/5 px-3 py-2">
-          <input value={q} onChange={(e) => { setQ(e.target.value); setPalette(true); }} onFocus={() => setPalette(true)} placeholder="Search applicants, stages, actions" aria-label="Search" className="w-full rounded-full bg-[#f5f5f7] px-4 py-2 text-sm outline-none hairline" />
-          <button type="button" className="hidden rounded-full px-2 py-1 text-xs text-muted hairline sm:inline" onClick={() => setPalette(true)}>⌘K</button>
-          {actor.canEdit ? <button type="button" data-screen="ai-button" className="rounded-full bg-blue/10 px-3 py-1.5 text-sm font-semibold text-blue" onClick={() => setAiOpen(true)}>Med Control</button> : null}
+        <header className="frost sticky top-0 z-20 flex items-center gap-2 border-b border-black/5 px-3 py-2.5">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <input value={q} onChange={(e) => { setQ(e.target.value); setPalette(true); }} onFocus={() => setPalette(true)} placeholder="Search people, stages, actions" aria-label="Search" className="w-full rounded-full bg-white/80 py-2 pl-9 pr-14 text-sm outline-none hairline" />
+            <button type="button" className="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded-full bg-[#e8e8ed] px-2 py-0.5 text-[11px] font-medium sm:inline" onClick={() => setPalette(true)}>⌘K</button>
+          </div>
+          {actor.canEdit ? <button type="button" data-screen="ai-button" className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/80 px-3 py-1.5 text-sm font-semibold text-blue shadow-sm hairline" onClick={() => setAiOpen(true)}><Sparkles className="h-4 w-4" /> Med Control <span className="text-[11px] font-medium text-muted">⌘J</span></button> : null}
+          <button type="button" className="grid h-9 w-9 place-items-center rounded-full bg-white hairline" aria-label="Notifications" onClick={() => setView("settings")}><Bell className="h-4 w-4" /></button>
         </header>
         <main className="flex-1 px-3 py-4 pb-24 md:px-6">
           {view === "pipeline" && (
@@ -181,15 +187,16 @@ export function DeskApp() {
                   <h1 className="text-3xl font-semibold tracking-tight">Pipeline</h1>
                   <p className="text-sm text-muted">{apps.length} people · {save}</p>
                 </div>
-                <div className="flex rounded-full bg-white p-1 hairline" role="tablist" aria-label="Pipeline layout">
-                  <button type="button" className={`rounded-full px-4 py-1.5 text-sm ${mode === "board" ? "bg-ink text-white" : ""}`} onClick={() => setMode("board")}>Board</button>
-                  <button type="button" className={`rounded-full px-4 py-1.5 text-sm ${mode === "list" ? "bg-ink text-white" : ""}`} onClick={() => setMode("list")}>List</button>
+                <div className="seg" role="tablist" aria-label="Pipeline layout">
+                  <button type="button" aria-pressed={mode === "board"} className="inline-flex items-center gap-1 text-sm" onClick={() => setMode("board")}><LayoutGrid className="h-3.5 w-3.5" /> Board</button>
+                  <button type="button" aria-pressed={mode === "list"} className="inline-flex items-center gap-1 text-sm" onClick={() => setMode("list")}><List className="h-3.5 w-3.5" /> List</button>
                 </div>
               </div>
-              <div className="mt-4 flex gap-2 overflow-x-auto">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {kpis.map(([id, label, n]) => (
-                  <button key={id} type="button" onClick={() => setFilter(filter === id ? "all" : id)} className={`shrink-0 rounded-full px-3 py-1.5 text-sm press ${filter === id ? "bg-ink text-white" : "bg-white hairline"}`}>
-                    <b>{n}</b> {label}
+                  <button key={id} type="button" onClick={() => setFilter(filter === id ? "all" : id)} className={`card p-4 text-left press ${filter === id ? "ring-2 ring-blue" : ""}`}>
+                    <div className="text-xs font-semibold uppercase tracking-widest text-muted">{label}</div>
+                    <div className="tabular mt-1 text-3xl font-semibold">{n}</div>
                   </button>
                 ))}
               </div>
@@ -202,7 +209,7 @@ export function DeskApp() {
               {mode === "board" ? (
                 <div data-screen="board" className="mt-4 grid gap-3 md:grid-cols-5">
                   {LANES.map((lane) => (
-                    <div key={lane.id} className={`lane-${lane.id} rounded-3xl bg-white/60 p-2`}>
+                    <div key={lane.id} className={`lane-${lane.id} rounded-3xl bg-[#efeff4] p-2`}>
                       <button type="button" className="flex w-full items-baseline justify-between px-2 py-1" onClick={() => setFilter(lane.id)}>
                         <span className="text-sm font-semibold">{lane.label}</span>
                         <span className="text-2xl font-semibold text-[var(--lane)]">{apps.filter((a) => laneOf(a) === lane.id).length}</span>
@@ -238,13 +245,16 @@ export function DeskApp() {
           {view === "team" && actor.canEdit && <Team staff={staff} requests={requests} backend={backend} toast={toast} />}
           {view === "settings" && actor.canEdit && <SettingsPanel settings={settings} backend={backend} toast={toast} />}
           {view === "reports" && <Reports apps={apps} />}
+          {view === "orient" && <OrientBoard apps={apps} settings={settings} edit={edit} />}
+          {view === "signoffs" && <Signoffs backend={backend} actorEmail={actor.email} />}
+          {view === "library" && <Library backend={backend} canEdit={actor.canEdit} />}
         </main>
       </div>
-      <nav className="frost fixed inset-x-0 bottom-0 z-30 flex border-t border-black/5 md:hidden" aria-label="Desk">
-        <button type="button" className="flex-1 py-3 text-xs" onClick={() => setView("pipeline")}>Pipeline</button>
-        <button type="button" className="flex-1 py-3 text-xs" onClick={() => setView("messages")}>Messages</button>
-        <button type="button" className="flex-1 py-3 text-xs" onClick={() => setPalette(true)}>Search</button>
-        <button type="button" className="flex-1 py-3 text-xs" onClick={() => setMobileMore(true)}>More</button>
+      <nav className="frost fixed inset-x-0 bottom-0 z-30 flex border-t border-black/5 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Desk">
+        <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => { setView("pipeline"); setFilter("all"); }}><LayoutGrid className="h-5 w-5" />Pipeline</button>
+        <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => { setView("pipeline"); setFilter("onb"); }}><ClipboardList className="h-5 w-5" />Onboard</button>
+        <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => setView("messages")}><MessageSquare className="h-5 w-5" />Messages</button>
+        <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => setMobileMore(true)}><Plus className="h-5 w-5" />More</button>
       </nav>
       {palette ? (
         <div className="fixed inset-0 z-40 grid place-items-start bg-black/30 p-4 pt-[12vh]" onClick={() => setPalette(false)}>
@@ -293,16 +303,16 @@ function initials(name?: string) {
 function threadFor(a: Applicant) { return a._id; }
 
 function Nav({ view, setView, actorCan, admin, requests }: { view: View; setView: (v: View) => void; actorCan: boolean; admin: boolean; requests: number }) {
-  const item = (id: View, label: string, show = true) => show ? (
-    <button key={id} type="button" onClick={() => setView(id)} className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm ${view === id ? "bg-ink text-white" : "hover:bg-black/5"}`}>
-      {label}{id === "team" && requests ? <span className="rounded-full bg-crimson px-1.5 text-[10px] text-white">{requests}</span> : null}
+  const item = (id: View, label: string, Icon: typeof LayoutGrid, show = true) => show ? (
+    <button key={id} type="button" onClick={() => setView(id)} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm ${view === id ? "bg-blue/10 font-semibold text-blue" : "hover:bg-black/5"}`}>
+      <Icon className="h-4 w-4 shrink-0" /> <span className="flex-1">{label}</span>{id === "team" && requests ? <span className="rounded-full bg-crimson px-1.5 text-[10px] text-white">{requests}</span> : null}
     </button>
   ) : null;
   return (
-    <nav className="mt-4 space-y-4 text-sm" aria-label="Desk">
-      <div><div className="px-3 text-[11px] font-semibold uppercase tracking-widest text-muted">Pipeline</div>{item("pipeline", "Overview")}</div>
-      <div><div className="px-3 text-[11px] font-semibold uppercase tracking-widest text-muted">Work</div>{item("messages", "Messages")}{item("slots", "Interview times")}{admin ? item("board", "Board meeting") : null}{admin ? item("reports", "Reports") : null}</div>
-      {actorCan ? <div><div className="px-3 text-[11px] font-semibold uppercase tracking-widest text-muted">Admin</div>{item("team", "Team")}{item("settings", "Settings")}</div> : null}
+    <nav className="mt-4 space-y-4 overflow-auto text-sm" aria-label="Desk">
+      <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">Pipeline</div>{item("pipeline", "Overview", LayoutGrid)}{admin ? item("board", "Board meeting", Users) : null}{admin ? item("orient", "Orientation board", ClipboardList) : null}{item("signoffs", "Trainer sign-offs", Shield, true)}</div>
+      <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">Work</div>{item("slots", "Interview times", Calendar)}{item("messages", "Messages", MessageSquare)}{item("library", "Documents", FileText)}{admin ? item("reports", "Reports", BarChart3) : null}</div>
+      {actorCan ? <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">Admin</div>{item("team", "Team", Users)}{item("settings", "Settings", SettingsIcon)}</div> : null}
     </nav>
   );
 }
@@ -311,10 +321,10 @@ function Card({ a, onOpen }: { a: Applicant; onOpen: () => void }) {
   const p = progress(a);
   const lane = laneOf(a);
   return (
-    <button type="button" onClick={onOpen} className={`lane-${lane} card w-full p-3 text-left press`}>
-      <div className="font-semibold tracking-tight">{a.name || "Unnamed"}</div>
-      <div className="text-xs text-muted">{a.type || "Applicant"} · {daysWaiting(a)}d</div>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-black/5"><div className="h-full bg-[var(--lane)]" style={{ width: `${Math.round((p.n / 14) * 100)}%` }} /></div>
+    <button type="button" onClick={onOpen} className={`lane-${lane} card w-full p-3 text-left press hover:-translate-y-0.5`}>
+      <div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--lane)]/15 text-[11px] font-semibold text-[var(--lane)]">{initials(a.name)}</span><span className="font-semibold">{a.name || "Unnamed"}</span></div>
+      <div className="mt-2 flex items-center justify-between text-xs text-muted"><span>{a.type || "Applicant"}</span><span className={`tabular rounded-full px-2 py-0.5 ${daysWaiting(a) >= 14 ? "bg-amber-100 text-amber-900" : "bg-black/5"}`}>{daysWaiting(a)}d</span></div>
+      <div className="mt-2 flex gap-0.5">{[0, 1, 2, 3, 4].map((i) => <i key={i} className={`h-1 flex-1 rounded-full ${i < Math.round((p.n / 14) * 5) ? "bg-[var(--lane)]" : "bg-black/10"}`} />)}</div>
       <div className="mt-2 text-xs font-medium text-[var(--lane)]">{nextActionLabel(a)}</div>
     </button>
   );
@@ -332,39 +342,40 @@ function File({ a, actor, tab, setTab, settings, save, fieldValue, edit, welcome
   const todo = todoItems([a], settings)[0];
   return (
     <article data-screen="file" className="card overflow-hidden">
-      <header className="sticky top-14 z-10 border-b border-black/5 bg-white/90 px-4 py-4 backdrop-blur">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight">{a.name}</h2>
-            <p className="text-sm text-muted">{st.head}{st.sub ? ` · ${st.sub}` : ""}</p>
+      <header className="border-b border-black/5 bg-white px-4 py-4">
+        <div className="flex flex-wrap items-start gap-3">
+          <span className={`lane-${laneOf(a)} grid h-14 w-14 place-items-center rounded-2xl bg-[var(--lane)]/15 text-lg font-semibold text-[var(--lane)]`}>{initials(a.name)}</span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-2xl font-semibold">{a.name}</h2>
+            <p className="text-sm text-muted">{a.type} · {a.location === "other" ? a.locationOther : a.location || "Potsdam"} · {st.head}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {todo ? <button type="button" className="rounded-full bg-blue px-3 py-1.5 text-sm font-semibold text-white" onClick={() => { if (todo.act === "invite") void welcome(a); else setTab((todo.tab as TabId) || "app"); }}>{todo.btn || "Your move"}</button> : null}
-            {actor.canEdit && !get(a, "portal.invited") ? <button type="button" className="rounded-full px-3 py-1.5 text-sm hairline" onClick={() => welcome(a)}>Welcome</button> : null}
+            {actor.canEdit && !get(a, "portal.invited") ? <button type="button" className="rounded-full px-3 py-1.5 text-sm hairline" onClick={() => welcome(a)}>Invite to portal</button> : null}
             <button type="button" className="rounded-full px-3 py-1.5 text-sm hairline" onClick={onMessage}>Message</button>
+            <button type="button" className="rounded-full px-3 py-1.5 text-sm hairline" onClick={() => printPacket(a)}>Print</button>
             {inBoardQueue(a) && actor.canEdit ? <button type="button" className="rounded-full px-3 py-1.5 text-sm hairline" onClick={() => setTab("board")}>Record vote</button> : null}
           </div>
         </div>
-        <ol className="mt-3 flex gap-2 overflow-x-auto text-xs">
+        <ol className="mt-4 flex gap-2 overflow-x-auto">
           {phaseBits(p).map((ph) => (
-            <li key={ph.id} className={`rounded-full px-2 py-1 ${ph.state === "now" ? "bg-ink text-white" : "bg-[#f5f5f7]"}`}>{ph.label} {ph.state === "done" ? "· done" : `${ph.done}/${ph.total}`}</li>
+            <li key={ph.id} className="flex min-w-24 flex-1 flex-col gap-1 text-[11px]"><span className={`h-1.5 rounded-full ${ph.state === "todo" ? "bg-black/10" : "bg-blue"}`} /><span className="font-medium">{ph.label}</span></li>
           ))}
         </ol>
-        <div className="mt-3 flex gap-1 overflow-x-auto" role="tablist">
-          {tabs.map((t) => {
-            const mark = tabDone(a, t.id, settings);
-            return <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={`rounded-full px-3 py-1.5 text-sm ${tab === t.id ? "bg-[#f5f5f7] font-semibold" : ""}`}>{t.label}{mark === "done" ? " ·" : ""}</button>;
-          })}
+        <div className="seg mt-3 w-full overflow-x-auto" role="tablist">
+          {tabs.map((t) => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className="whitespace-nowrap text-sm">{t.label}{tabDone(a, t.id, settings) === "done" ? " ·" : ""}</button>
+          ))}
         </div>
-        <p className="mt-1 text-xs text-muted">{save}</p>
+        <p className="mt-2 text-xs text-muted">{save === "Saved" ? "Saved" : save}</p>
       </header>
       <div className="space-y-4 p-4">
         {tab === "app" && <AppTab a={a} actor={actor} fieldValue={fieldValue} edit={edit} />}
         {tab === "checks" && actor.adminView && <Checks a={a} fieldValue={fieldValue} edit={edit} can={actor.canEdit} />}
-        {tab === "iv" && <Interview a={a} fieldValue={fieldValue} edit={edit} questions={questions} onQuestions={async () => {
+        {tab === "iv" && <InterviewPanel a={a} fieldValue={fieldValue} edit={edit} questions={questions} onQuestions={async () => {
           const res = await backend.call("medControl", { job: "questions", id: a._id, context: { view: "iv", applicantId: a._id, applicantName: a.name } }) as { questions?: string[] };
           setQuestions(res.questions || []);
-        }} canAi={!!actor.canEdit} />}
+        }} canAi={!!actor.canEdit} canSchedule={!!(actor.canEdit || actor.sched)} />}
         {tab === "board" && actor.adminView && <BoardTab a={a} fieldValue={fieldValue} edit={edit} score={ivScore(a)} />}
         {tab === "onb" && actor.adminView && <Onboard a={a} settings={settings} fieldValue={fieldValue} edit={edit} />}
         {tab === "notes" && actor.adminView && (
@@ -668,6 +679,72 @@ function Reports({ apps }: { apps: Applicant[] }) {
       <h1 className="text-3xl font-semibold tracking-tight">Year at a glance</h1>
       <p className="text-sm text-muted">{year} · {apps.length} files on the desk</p>
       <div className="mt-4 flex h-32 items-end gap-1">{months.map((n, i) => <div key={i} className="flex-1 rounded-t-lg bg-blue/80" style={{ height: `${(n / max) * 100}%` }} title={String(n)} />)}</div>
+    </section>
+  );
+}
+
+function printPacket(a: Applicant) {
+  const s = ivScore(a);
+  const root = document.getElementById("print-root") || Object.assign(document.createElement("div"), { id: "print-root" });
+  if (!root.parentElement) document.body.appendChild(root);
+  root.innerHTML = `<article style="font-family:system-ui;padding:32px"><h1>${a.name}</h1><p>${a.type || ""} · ${a.email || ""}</p><p>Interview score ${s.n ? s.avg.toFixed(1) : "n/a"}${s.n && s.avg < 3 ? " · flagged under 3" : ""}</p><p>References ${refStatus(a).got} of ${refStatus(a).need}. License numbers are not printed.</p><p>Committee: ${String(get(a, "appr.committee") || "—")} · Board: ${String(get(a, "board.result") || "—")}</p></article>`;
+  window.print();
+}
+
+function OrientBoard({ apps, settings, edit }: { apps: Applicant[]; settings: Settings; edit: (a: Applicant, p: string, v: unknown) => void }) {
+  const people = apps.filter((a) => inOrient(a));
+  const items = onbItems(settings);
+  return (
+    <section data-screen="orient">
+      <h1 className="text-3xl font-semibold">Orientation board</h1>
+      <p className="text-sm text-muted">Everyone the board approved, against the paperwork list. Click a cell to mark today, or clear it.</p>
+      <div className="mt-4 overflow-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead><tr><th className="p-2">Person</th>{items.map(([, label]) => <th key={label} className="p-2 font-medium">{label}</th>)}</tr></thead>
+          <tbody>{people.map((a) => (
+            <tr key={a._id} className="border-t border-black/5">{/* name */}
+              <th className="p-2 font-semibold">{a.name}</th>
+              {items.map(([k]) => {
+                const done = !!get(a, `onb.items.${k}`);
+                return <td key={k}><button type="button" className={`rounded-full px-2 py-1 text-xs ${done ? "bg-emerald-100 text-emerald-900" : "bg-[#f5f5f7]"}`} onClick={() => { edit(a, `onb.items.${k}`, done ? "" : today()); if (done) edit(a, `onb.undone.${k}`, today()); }}>{done ? "Done" : "Open"}</button></td>;
+              })}
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function Signoffs({ backend, actorEmail }: { backend: ReturnType<typeof useBackend>; actorEmail: string }) {
+  const [rows, setRows] = useState<Snap[]>([]);
+  useEffect(() => backend.watch("signoffs", setRows), [backend]);
+  const mine = rows.filter((r) => actorEmail === "dkota@pvrs.org" || (Array.isArray(r.data.trainers) && (r.data.trainers as string[]).includes(actorEmail)));
+  return (
+    <section>
+      <h1 className="text-3xl font-semibold">Trainer sign-offs</h1>
+      {!mine.length ? <p className="mt-3 text-sm text-muted">No lists assigned to you.</p> : mine.map((r) => (
+        <article key={r.id} className="card mt-3 p-4">
+          <h2 className="font-semibold">{String(r.data.name || r.id)}</h2>
+          <ul className="mt-2 space-y-1 text-sm">{((r.data.items as { key: string; label: string }[]) || []).map((item) => {
+            const done = (r.data.done as Record<string, unknown> || {})[item.key];
+            return <li key={item.key} className="flex items-center justify-between"><span>{item.label}</span><button type="button" className="rounded-full px-3 py-1 hairline" onClick={() => backend.set(`signoffs/${r.id}`, { done: { ...(r.data.done as object || {}), [item.key]: done ? null : { by: actorEmail, at: Date.now() } }, updatedAt: Date.now() }, true)}>{done ? "Signed" : "Sign off"}</button></li>;
+          })}</ul>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function Library({ backend, canEdit }: { backend: ReturnType<typeof useBackend>; canEdit: boolean }) {
+  const [docs, setDocs] = useState<Snap[]>([]);
+  const [name, setName] = useState("");
+  useEffect(() => backend.watch("library", setDocs), [backend]);
+  return (
+    <section>
+      <h1 className="text-3xl font-semibold">Documents</h1>
+      <ul className="mt-3 space-y-2">{docs.map((d) => <li key={d.id} className="card px-4 py-3 text-sm"><b>{String(d.data.name)}</b><div className="text-xs text-muted">{((d.data.roles as string[]) || []).join(", ")}{d.data.newMembers ? " · new members" : ""}</div></li>)}</ul>
+      {canEdit ? <form className="mt-4 flex gap-2" onSubmit={async (e) => { e.preventDefault(); if (!name.trim()) return; await backend.add("library", { name: name.trim(), roles: ["member", "admin"], newMembers: false, at: Date.now() }); setName(""); }}><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Document name" aria-label="Document name" className={box} /><button className="rounded-full bg-blue px-4 text-sm font-semibold text-white">Add</button></form> : null}
     </section>
   );
 }

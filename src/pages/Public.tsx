@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { ClipboardCheck, HeartPulse, Car, GraduationCap, HandHeart, MessageSquare, Shield, Sparkles } from "lucide-react";
 import { useBackend, useGate, useGo, useToast } from "../appContext";
 import { CONTACT_EMAIL } from "../lib/config";
 import { lower, okEmail } from "../lib/domain";
@@ -6,7 +7,7 @@ import { lower, okEmail } from "../lib/domain";
 function Brand({ light = false }: { light?: boolean }) {
   return (
     <a href="/" data-nav="/" className="inline-flex items-center gap-2 font-semibold tracking-tight">
-      <img src="/img/logo.png" alt="" className="h-9 w-9 rounded-xl object-cover" />
+      <img src="/img/logo.png" alt="" className="h-9 w-9 rounded-xl logo-mark" />
       <span className={light ? "text-white" : ""}>PVRS <span className="font-medium text-muted">Membership</span></span>
     </a>
   );
@@ -17,7 +18,7 @@ export function PublicBar() {
   return (
     <header className="frost sticky top-0 z-30 flex items-center justify-between border-b border-black/5 px-5 py-3">
       <button type="button" onClick={() => go("/")} className="inline-flex items-center gap-2 font-semibold tracking-tight">
-        <img src="/img/logo.png" alt="" className="h-8 w-8 rounded-lg object-cover" />
+        <img src="/img/logo.png" alt="" className="h-8 w-8 rounded-lg logo-mark" />
         PVRS
       </button>
       <nav className="flex items-center gap-2 text-sm">
@@ -30,31 +31,46 @@ export function PublicBar() {
 
 export function HomePage() {
   const go = useGo();
+  const steps = [
+    [ClipboardCheck, "Apply", "About 15 minutes"],
+    [Shield, "We review", "References and checks"],
+    [MessageSquare, "Interview", "Meet the committee"],
+    [HeartPulse, "Welcome", "Orientation"],
+  ] as const;
+  const tracks = [
+    [HeartPulse, "EMT", "Run calls after orientation and a clear Sterling check."],
+    [Car, "Driver", "Same commitment, focused on the rig."],
+    [GraduationCap, "Associate", "Students. Half-time resident. Fifteen spots."],
+    [HandHeart, "Auxiliary", "Already in EMS. Lighter meeting load."],
+  ] as const;
   return (
-    <div data-screen="home" className="min-h-full">
-      <PublicBar />
-      <main className="mx-auto max-w-5xl px-5 py-16 sm:py-24">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Potsdam Volunteer Rescue Squad · Est. 1955</p>
-        <h1 className="mt-3 max-w-xl text-4xl font-semibold tracking-tight sm:text-6xl">Be part of Potsdam’s volunteer EMS.</h1>
-        <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted">Volunteer EMTs, drivers and members serving Potsdam around the clock. Apply online in about 15 minutes, then follow your application from your own portal.</p>
-        <ol className="mt-8 grid max-w-xl grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-          {[["1", "Apply", "About 15 minutes"], ["2", "We review", "References and checks"], ["3", "Interview", "Meet the committee"], ["4", "Welcome", "Orientation"]].map(([n, t, s]) => (
-            <li key={n} className="card p-3"><b className="text-blue">{n}</b><div className="mt-1 font-medium">{t}</div><div className="text-muted">{s}</div></li>
+    <div data-screen="home" className="mesh min-h-full">
+      <header className="frost sticky top-0 z-30 mx-auto flex max-w-6xl items-center justify-between rounded-b-3xl border border-white/70 px-4 py-3 shadow-sm">
+        <button type="button" onClick={() => go("/")} className="inline-flex items-center gap-2 font-semibold"><img src="/img/logo.png" alt="" className="h-11 w-11 crest" /> PVRS</button>
+        <nav className="flex items-center gap-2">
+          <button type="button" onClick={() => go("/signin")} className="rounded-full px-3 py-2 text-sm font-medium">Sign in</button>
+          <button type="button" onClick={() => go("/apply")} className="rounded-full bg-crimson px-4 py-2 text-sm font-semibold text-white shadow-md press">Apply Now</button>
+        </nav>
+      </header>
+      <main className="mx-auto max-w-5xl px-5 py-16 text-center sm:py-24">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted">Potsdam Volunteer Rescue Squad · Est. 1955</p>
+        <h1 className="mx-auto mt-4 max-w-3xl text-5xl font-semibold sm:text-7xl">Serve Potsdam.<br />Save lives.</h1>
+        <p className="mx-auto mt-5 max-w-xl text-lg text-muted">Volunteer EMTs, drivers, and members. Apply in about 15 minutes. Your progress saves on this device, then follows you in your own portal.</p>
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <button type="button" onClick={() => go("/apply")} className="rounded-full bg-crimson px-6 py-3 text-base font-semibold text-white shadow-lg press">Apply to join PVRS</button>
+          <button type="button" onClick={() => go("/signin")} className="rounded-full bg-white/80 px-6 py-3 text-base font-semibold shadow-sm backdrop-blur hairline press">Member and applicant sign in</button>
+        </div>
+        <ol className="mx-auto mt-12 grid max-w-3xl grid-cols-2 gap-3 text-left sm:grid-cols-4">
+          {steps.map(([Icon, title, sub], i) => (
+            <li key={title} className="card p-4"><Icon className="h-5 w-5 text-blue" aria-hidden /><div className="mt-3 text-xs text-muted">0{i + 1}</div><div className="font-semibold">{title}</div><div className="text-sm text-muted">{sub}</div></li>
           ))}
         </ol>
-        <div className="mt-10 grid gap-4 sm:grid-cols-2">
-          <button type="button" onClick={() => go("/apply")} className="card press p-6 text-left">
-            <span className="rounded-full bg-crimson/10 px-2 py-0.5 text-xs font-semibold text-crimson">New members welcome</span>
-            <div className="mt-3 text-2xl font-semibold tracking-tight">Apply to join PVRS</div>
-            <p className="mt-2 text-sm leading-relaxed text-muted">Contact details, education, work history, your driver’s license and 3–4 references. Your progress saves on this device as you go.</p>
-            <div className="mt-4 text-sm font-semibold text-crimson">Start application →</div>
-          </button>
-          <button type="button" onClick={() => go("/signin")} className="card press p-6 text-left">
-            <div className="text-2xl font-semibold tracking-tight">Sign in</div>
-            <p className="mt-2 text-sm leading-relaxed text-muted">Applicants: check your status, upload documents and book your interview. PVRS members: open the desk.</p>
-            <div className="mt-4 text-sm font-semibold text-blue">Sign in →</div>
-          </button>
+        <div className="mt-8 grid gap-3 text-left sm:grid-cols-3">
+          {tracks.slice(0, 3).map(([Icon, title, sub]) => (
+            <article key={title} className="card p-5"><Icon className="h-5 w-5 text-crimson" aria-hidden /><h2 className="mt-3 text-xl font-semibold">{title}</h2><p className="mt-1 text-sm text-muted">{sub}</p></article>
+          ))}
         </div>
+        <p className="mt-6 text-sm text-muted"><Sparkles className="mr-1 inline h-4 w-4" /> The fourth track, {tracks[3][1]}, is on the application. Questions: {CONTACT_EMAIL}</p>
       </main>
     </div>
   );
@@ -91,6 +107,7 @@ export function SignInPage() {
   const toast = useToast();
   const go = useGo();
   const [sent, setSent] = useState("");
+  const [pane, setPane] = useState<"link" | "password">("link");
   const [mode, setMode] = useState<"in" | "new">("in");
   const [mfa, setMfa] = useState("");
   const link = backend.isEmailLink();
@@ -154,29 +171,19 @@ export function SignInPage() {
   }
 
   return (
-    <div data-screen="signin" className="min-h-full">
-      <PublicBar />
-      <div className="mx-auto grid max-w-5xl gap-8 px-5 py-10 lg:grid-cols-2 lg:items-center">
-        <section>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">Potsdam Volunteer Rescue Squad · Est. 1955</p>
-          <h1 className="mt-2 text-4xl font-semibold tracking-tight sm:text-5xl">{greet()}</h1>
-          <p className="mt-2 text-muted">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · Potsdam, New York</p>
-          <ol className="mt-6 space-y-2 text-sm">
-            {[["Screening", "Application and checks"], ["Interview", "Meet the committee"], ["Approval", "Board vote"], ["Onboard", "Welcome to the squad"]].map(([t, s], i) => (
-              <li key={t} className="flex items-baseline gap-3"><span className="text-xs font-semibold text-blue">{i + 1}</span><span><b>{t}</b> <span className="text-muted">{s}</span></span></li>
-            ))}
-          </ol>
-          <button type="button" onClick={() => go("/apply")} className="card press mt-6 flex w-full items-center justify-between p-4 text-left">
-            <span><span className="text-xs font-semibold text-crimson">New members welcome</span><div className="font-semibold">Apply to join PVRS</div><div className="text-sm text-muted">About 15 minutes, and it saves as you go.</div></span>
-            <span className="text-sm font-semibold text-crimson">Start</span>
-          </button>
-          <Weather />
-          <p className="mt-6 text-sm text-muted">Questions? <a className="text-blue" href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></p>
-        </section>
-        <section className="card rise p-6 sm:p-8">
-          <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="h-14 w-14 rounded-2xl object-cover" />
+    <div data-screen="signin" className="mesh grid min-h-full place-items-center px-4 py-10">
+      <section className="card rise w-full max-w-md p-6 sm:p-8">
+          <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="mx-auto crest" />
+          <p className="mt-4 text-center text-xs font-semibold uppercase tracking-[0.18em] text-muted">{greet()} · Potsdam</p>
+          <div className="mt-2 flex justify-center"><Weather /></div>
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Membership portal</p>
-          <h2 className="text-2xl font-semibold tracking-tight">{confirm ? "Confirm your email" : "Sign in"}</h2>
+          <h2 className="text-center text-3xl font-semibold">{confirm ? "Confirm your email" : "Sign in"}</h2>
+          {!confirm ? (
+            <div className="seg mt-4 w-full" role="tablist" aria-label="Sign-in method">
+              <button type="button" className="flex-1" aria-pressed={pane === "link"} onClick={() => setPane("link")}>Sign-in link</button>
+              <button type="button" className="flex-1" aria-pressed={pane === "password"} onClick={() => setPane("password")}>Password</button>
+            </div>
+          ) : null}
           {confirm ? (
             <form onSubmit={onConfirm} className="mt-4 space-y-3">
               <p className="text-sm text-muted">You opened the sign-in link on a different device. Enter the same email address to finish signing in.</p>
@@ -185,7 +192,8 @@ export function SignInPage() {
             </form>
           ) : (
             <>
-              <p className="mt-2 text-sm leading-relaxed text-muted">Applicants, new members and squad members all sign in here. We’ll email you a secure link. No password needed.</p>
+              {pane === "link" ? <>
+              <p className="mt-3 text-center text-sm text-muted">One sign-in for applicants and the squad. No password.</p>
               <form onSubmit={onLink} className="mt-4 space-y-3">
                 <label className="block text-sm font-medium">Email address
                   <input name="email" type="email" autoComplete="email" placeholder="you@example.com" required className="mt-1 w-full rounded-xl bg-[#f5f5f7] px-3 py-3 outline-none hairline" />
@@ -194,11 +202,9 @@ export function SignInPage() {
               </form>
               <p className="mt-2 text-xs text-muted"><b>The email often lands in spam or junk.</b> If you don’t see it in a minute, look there.</p>
               {sent ? <p className="mt-3 rounded-2xl bg-[#f5f5f7] p-3 text-sm" role="status">Check <b>{sent}</b> for a sign-in link. Open it on this device.</p> : null}
-              <p className="mt-3 text-sm text-muted">Haven’t applied yet? <button type="button" className="font-semibold text-blue" onClick={() => go("/apply")}>Start an application</button></p>
-              <div className="my-4 text-center text-xs uppercase tracking-widest text-muted">or</div>
-              <button type="button" onClick={() => backend.signInGoogle().catch((e) => { if ((e as { code?: string }).code === "auth/multi-factor-auth-required") setMfa(backend.mfaPending() || "Authenticator"); else if ((e as { code?: string }).code !== "auth/popup-closed-by-user") toast("Google sign-in didn't finish. Try again."); })} className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-3 font-medium hairline press">Continue with Google</button>
-              <details className="mt-4">
-                <summary className="cursor-pointer text-sm font-medium">Use email and password instead</summary>
+              </> : null}
+              {pane === "password" ? <>
+              <p className="mt-3 text-sm font-medium">Use email and password instead</p>
                 <div className="mt-3 flex rounded-full bg-[#f5f5f7] p-1 text-sm">
                   <button type="button" className={`flex-1 rounded-full py-2 ${mode === "in" ? "bg-white shadow-sm" : ""}`} onClick={() => setMode("in")}>Sign in</button>
                   <button type="button" className={`flex-1 rounded-full py-2 ${mode === "new" ? "bg-white shadow-sm" : ""}`} onClick={() => setMode("new")}>Create account</button>
@@ -225,13 +231,14 @@ export function SignInPage() {
                     <p className="text-xs text-muted">At least 10 characters. We’ll email you a link to confirm your address, then you can request access.</p>
                   </form>
                 )}
-              </details>
+              </> : null}
+              <button type="button" onClick={() => backend.signInGoogle().catch((e) => { if ((e as { code?: string }).code === "auth/multi-factor-auth-required") setMfa(backend.mfaPending() || "Authenticator"); else if ((e as { code?: string }).code !== "auth/popup-closed-by-user") toast("Google sign-in didn't finish. Try again."); })} className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-white py-3 font-medium hairline press">Continue with Google</button>
               <div className="my-4 text-center text-xs uppercase tracking-widest text-muted">Don’t have access yet?</div>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" className="rounded-full py-2 text-sm hairline" onClick={() => backend.signInGoogle().catch(() => toast("Google sign-in didn't finish."))}>With Google</button>
-                <button type="button" className="rounded-full py-2 text-sm hairline" onClick={() => setMode("new")}>With email</button>
+                <button type="button" className="rounded-full py-2 text-sm hairline" onClick={() => { setPane("password"); setMode("new"); }}>Request team access</button>
               </div>
-              <p className="mt-3 text-xs text-muted">Every new account is reviewed by the membership coordinator before it can see anything.</p>
+              <p className="mt-3 text-center text-xs text-muted">Every new account is reviewed before it can see anything. <button type="button" className="font-semibold text-blue" onClick={() => go("/apply")}>Apply to join PVRS</button></p>
             </>
           )}
           {mfa ? (
@@ -246,7 +253,6 @@ export function SignInPage() {
             </form>
           ) : null}
         </section>
-      </div>
     </div>
   );
 }
@@ -266,7 +272,7 @@ export function VerifyPage() {
   return (
     <div className="grid min-h-full place-items-center px-5" data-screen="verify">
       <div className="card w-full max-w-md p-8">
-        <img src="/img/logo.png" alt="" className="h-12 w-12 rounded-xl object-cover" />
+        <img src="/img/logo.png" alt="" className="h-12 w-12 rounded-xl logo-mark" />
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">Confirm your email</h1>
         <p className="mt-2 text-sm text-muted">We sent a link to {gate.user?.email}. Open it, then come back. It can take a minute and may land in spam.</p>
         <button type="button" className="mt-5 w-full rounded-full bg-blue py-3 font-semibold text-white" onClick={async () => { const u = await backend.reload(); if (!u?.emailVerified) toast("Not confirmed yet. Open the link in the email we sent."); else location.reload(); }}>I’ve confirmed it</button>
@@ -304,7 +310,7 @@ export function NoAccessPage() {
   return (
     <div className="grid min-h-full place-items-center px-5" data-screen="noaccess">
       <div className="card w-full max-w-md p-8">
-        <img src="/img/logo.png" alt="" className="h-12 w-12 rounded-xl object-cover" />
+        <img src="/img/logo.png" alt="" className="h-12 w-12 rounded-xl logo-mark" />
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">{pending ? "Access requested" : denied ? "Access not approved" : "No application or team access found"}</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           {pending ? `The membership coordinator will review your request for ${email}. This page opens the desk once you’re approved.`

@@ -146,21 +146,21 @@ export function PortalPage({ id, backToDesk = false }: { id: string; backToDesk?
 
   return (
     <div data-screen="portal" className={`min-h-full bg-canvas pb-24 lane-${lane}`}>
-      <header className="px-5 pb-8 pt-6 text-white" style={{ background: "linear-gradient(180deg, var(--lane), color-mix(in srgb, var(--lane) 70%, white))" }}>
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
-          <img src="/img/logo.png" alt="" className="h-10 w-10 rounded-xl bg-white object-cover" />
+      <header className="frost sticky top-0 z-20 border-b border-black/5">
+        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+          <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="h-12 w-12 crest" />
           <div className="flex gap-2 text-sm">
-            {backToDesk ? <button type="button" className="rounded-full bg-white/20 px-3 py-1" onClick={() => go("/")}>Back to the desk</button> : null}
-            <button type="button" className="rounded-full bg-white/20 px-3 py-1" onClick={() => backend.signOut().then(() => location.replace("/signin"))}>Sign out</button>
+            {backToDesk ? <button type="button" className="rounded-full px-3 py-1 hairline" onClick={() => go("/")}>Back to the desk</button> : null}
+            <button type="button" className="rounded-full px-3 py-1 hairline" onClick={() => backend.signOut().then(() => location.replace("/signin"))}>Sign out</button>
           </div>
         </div>
-        <div className="mx-auto mt-6 max-w-3xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/80">{nm ? "New member" : "Applicant portal"}</p>
-          <h1 className="text-4xl font-semibold tracking-tight">Hi {String(pd.firstName || first(String(pd.name || "")) || "there")}</h1>
-          <p className="mt-1 text-white/85">{nm ? "Welcome to the squad. Here’s your orientation." : String(pd.type || "Membership") + " application"}</p>
-        </div>
       </header>
-      <main className="mx-auto -mt-4 max-w-3xl space-y-4 px-4">
+      <div className="mx-auto max-w-3xl px-4 pt-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">{nm ? "New member" : "Applicant portal"}</p>
+        <h1 className="text-4xl font-semibold">Hi {String(pd.firstName || first(String(pd.name || "")) || "there")}</h1>
+        <p className="mt-1 text-muted">{nm ? "Welcome to the squad." : String(pd.type || "Membership") + " · follow every step here"}</p>
+      </div>
+      <main className="mx-auto mt-4 max-w-3xl space-y-4 px-4">
         <section className="card p-5" aria-label="Your next step" data-screen="next-step">
           <p className="text-xs font-semibold uppercase tracking-widest text-[var(--lane)]">Your next step</p>
           {move ? (

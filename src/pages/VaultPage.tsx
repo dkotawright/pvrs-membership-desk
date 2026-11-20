@@ -30,7 +30,7 @@ export function VaultPage() {
     <div data-screen="vault" className="min-h-full bg-canvas">
       <header className="frost sticky top-0 z-20 flex items-center justify-between border-b border-black/5 px-5 py-3">
         <div className="flex items-center gap-3">
-          <img src="/img/logo.png" alt="" className="h-9 w-9 rounded-xl object-cover" />
+          <img src="/img/logo.png" alt="" className="h-9 w-9 rounded-xl logo-mark" />
           <div>
             <div className="text-xs font-semibold uppercase tracking-widest text-muted">Confidential paperwork</div>
             <div className="font-semibold">Orientation paperwork</div>
