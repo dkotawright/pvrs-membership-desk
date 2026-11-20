@@ -338,7 +338,7 @@ const DEFAULT_ONB = ["Acknowledgement of Sterling Volunteers background check", 
 // the line it follows; settings.onbAdded.<id> remembers that, so removing it in Settings keeps it removed.
 const ONB_ADDED = [["harassment", "Verification of Sexual Harassment Prevention training", /harass/i, /blood\s*borne|pathogen/i]];
 function addNewOnbLines(){
-  if (!S.canEdit || !onbCustom()) return;
+  if (!S.canEdit || S.assistant || !onbCustom()) return;
   const list = [...S.settings.onbItems], done = { ...(S.settings.onbAdded || {}) }; let changed = false;
   for (const [id, line, has, after] of ONB_ADDED) {
     if (done[id]) continue;
@@ -387,6 +387,7 @@ const pastRetention = () => { const y = retentionYears(); if (!y) return [];
   return [...S.apps.values()].filter(a => (isDeclined(a) || a.status === "withdrawn") && lastTouched(a) && Date.now() - lastTouched(a) > y * 365.25 * 864e5)
     .sort((x, y2) => lastTouched(x) - lastTouched(y2)); };
 function openRetention(){
+  if (S.assistant) return toast("Only Dkota can delete things.");
   if (!S.canEdit) return ownerOnlyToast();
   const list = pastRetention(), y = retentionYears();
   const when = a => new Date(lastTouched(a)).toLocaleDateString(undefined, { month: "short", year: "numeric" });
@@ -414,7 +415,7 @@ function todoItems(){
   { const seenErr = new Set(); for (const e of S.upErrs || []) { const a = S.apps.get(e.appId); if (!a || seenErr.has(e.appId) || Date.now() - (e.at || 0) > 14 * 864e5) continue; seenErr.add(e.appId);
       out.push({ id: a._id, a, pri: 0, text: `${first(a.name) || a.name}'s upload was turned away`, sub: `${e.name || "A file"}: ${failWhy(e)}`, tab: inOrient(a) ? "onb" : "app", age: 0 }); } }
   const old = pastRetention();
-  if (old.length) out.push({ id: old[0]._id, a: old[0], pri: 3, text: `Review ${old.length === 1 ? "an old file" : old.length + " old files"} past the ${retentionYears()}-year retention`, sub: old.map(a => a.name).slice(0, 3).join(", ") + (old.length > 3 ? "…" : ""), tab: "notes", act: "retention", btn: "Review", age: 0 });
+  if (old.length && !S.assistant) out.push({ id: old[0]._id, a: old[0], pri: 3, text: `Review ${old.length === 1 ? "an old file" : old.length + " old files"} past the ${retentionYears()}-year retention`, sub: old.map(a => a.name).slice(0, 3).join(", ") + (old.length > 3 ? "…" : ""), tab: "notes", act: "retention", btn: "Review", age: 0 });
   for (const a of S.apps.values()) {
     if (isDeclined(a) || ["withdrawn"].includes(a.status)) continue;
     const id = a._id, add = (pri, text, sub, tab) => out.push({ id, a, pri, text, sub, tab, age: 0 });
@@ -708,7 +709,7 @@ function renderOverview(){
     ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
       ${unreadChatTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open messages</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => S.apps.has(m.appId) && unreadIn("a:" + m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
         return `<button class="oitem" type="button" data-openmsg="${esc(id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name)}</b><small>${esc(last.text.slice(0, 80))}</small></span><span class="when"><span class="newdot"></span>${esc(ago(last.at))}</span></button>`; }).join("")}</div></section>` : ""}
-      ${S.owner && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="team">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}</div>
+      ${S.owner && !S.assistant && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="team">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}</div>
       <div class="ovcol ovside">${comingUp}${activityCard()}${statsCard()}</div></div>`
     : `<div class="ovmain single"><div class="ovcol">${comingUp}</div></div>`}
     <p class="kbdhint">Tip: press <kbd>⌘K</kbd> to find anyone or run a command, <kbd>J</kbd> <kbd>K</kbd> to move through applicants, <kbd>?</kbd> for all shortcuts.</p>
@@ -1246,7 +1247,7 @@ function openSlots(){
       const hostEmail = S.sched ? ($("#slHost")?.value || "") : S.me;
       const host = hostEmail ? { host: hostEmail, hostName: first(hostEmail === S.me ? S.name : S.staff.get(hostEmail)?.name) || hostEmail.split("@")[0] } : {};
       for (let i = 0; i < n; i++) { const start = new Date(y, mo-1, d, h, mi + i*dur).getTime(); await addDoc(collection(db, "slots"), { start, duration: dur, location: where, bookedBy: null, createdAt: Date.now(), ...host }); }
-      if (where && where !== S.settings.defaultLocation && S.sched) { S.settings.defaultLocation = where; setDoc(doc(db, "settings", "main"), { defaultLocation: where }, { merge: true }).catch(() => {}); }
+      if (where && where !== S.settings.defaultLocation && S.sched && !S.assistant) { S.settings.defaultLocation = where; setDoc(doc(db, "settings", "main"), { defaultLocation: where }, { merge: true }).catch(() => {}); }
       toast(`Added ${n} time${n>1?"s":""}`);
     } catch (err) { console.error(err); toast("Couldn't add those times."); }
   };
@@ -1488,6 +1489,7 @@ function openUploadRecords(id, preset){
   M.onclick = e => { if (e.target.closest("[data-x]")) closeModal(); };
 }
 async function removeRecord(rid){
+  if (S.assistant) return toast("Only Dkota can delete things.");
   const r = S.records.find(x => x.id === rid); if (!r || !S.canEdit) return;
   try {
     if (r.path) await deleteObject(ref(storage, r.path)).catch(() => {});
@@ -1593,7 +1595,7 @@ function openPreview(id){
 }
 
 /* ---------- settings (owner only; the button is hidden for everyone else and the rules block their writes) ---------- */
-function gateSettings(){ if (S.owner) openSettings(); }
+function gateSettings(){ if (S.owner && !S.assistant) openSettings(); }
 function requestsHTML(){
   if (!S.requests.length) return "";
   return `<div class="note warn"><b>${S.requests.length} access request${S.requests.length===1?"":"s"}</b> waiting for you</div>` + S.requests.map(q => `<div class="row reqrow" style="flex-wrap:wrap">
@@ -1612,13 +1614,13 @@ async function decideRequest(email, role){
     toast(role ? `${q.name || email} approved as ${role}. They can sign in now.` : `Request from ${q.name || email} denied.`);
   } catch (e) { console.error(e); toast("Couldn't save that. Try again."); }
 }
-const ROLE_LABEL = { full: "Full access", admin: "Admin", coordinator: "Interview coordinator", interviewer: "Interviewer", member: "Member" };
+const ROLE_LABEL = { full: "Full access", assistant: "Assistant", admin: "Admin", coordinator: "Interview coordinator", interviewer: "Interviewer", member: "Member" };
 // Who can be put on an interview or host a time.
 const canInterview = s => ["interviewer", "admin", "coordinator"].includes(s.role);
 const roleLabel = r => ROLE_LABEL[r] || "Member";
 function teamHTML(){
   const rows = [...S.staff.entries()].sort((x,y) => x[0].localeCompare(y[0])).map(([email, s]) => `<div class="row"><span class="lbl">${esc(s.name || email)}<small>${esc(email)}</small></span>
-    <span class="teamact"><select class="rolesel" data-rolesel="${esc(email)}" aria-label="Role for ${esc(s.name || email)}">${[["member","Member"],["interviewer","Interviewer"],["coordinator","Interview coordinator"],["admin","Admin"],["full","Full access"]].map(([v,l]) => `<option value="${v}"${(ROLE_LABEL[s.role] ? s.role : "member")===v?" selected":""}>${l}</option>`).join("")}</select>
+    <span class="teamact"><select class="rolesel" data-rolesel="${esc(email)}" aria-label="Role for ${esc(s.name || email)}">${[["member","Member"],["interviewer","Interviewer"],["coordinator","Interview coordinator"],["admin","Admin"],["assistant","Assistant"],["full","Full access"]].map(([v,l]) => `<option value="${v}"${(ROLE_LABEL[s.role] ? s.role : "member")===v?" selected":""}>${l}</option>`).join("")}</select>
     <button class="copy" type="button" data-rmstaff="${esc(email)}">Remove</button></span></div>`).join("");
   return `<div class="row"><span class="lbl">${esc(OWNER_EMAIL)}<small>Owner · full access</small></span></div>${rows}
     <div class="row" style="flex-wrap:wrap"><input id="tmEmail" type="email" placeholder="member@pvrs.org" class="inlinefield" style="flex:2 1 180px">
@@ -1693,9 +1695,10 @@ function openSettings(){
 // Team (owner): who can sign in to the desk and what each can do. Its own menu, apart from Settings (Dkota, Nov 11).
 const ROLE_HELP = [["Member", "Messages, squad documents and their own paperwork. No applicant files."], ["Interviewer", "Only the applicants assigned to them: Application and Interview tabs, and the interview itself."],
   ["Interview coordinator", "Sees every file and runs the interviews: posts times, books and reschedules, opens booking, assigns interviewers, messages applicants."], ["Admin", "Sees every file, view only. Can fill in an interview and run reports."],
+  ["Assistant", "Everything the owner does day to day: edit every file, uploads, orientation signing, scheduling, messages, secure documents, Med Control. Can't delete anything, change Settings or manage the Team."],
   ["Full access", "Everything the owner can do: edit every file, team and settings, Med Control, secure documents. Only the owner's own account can't be changed."]];
 function openTeam(){
-  if (!S.owner) return;
+  if (!S.owner || S.assistant) return;
   $("#modal").onchange = async e => { const rs = e.target.closest?.("[data-rolesel]"); if (!rs) return;
     const who = S.staff.get(rs.dataset.rolesel)?.name || rs.dataset.rolesel;
     // Full access is everything you can do, secure documents included: ask once before giving it.
@@ -1799,6 +1802,7 @@ function confirmDelete(id){
   };
 }
 async function deleteApplicant(id, quiet = false, { keepRecordFiles = false } = {}){
+  if (S.assistant) return toast("Only Dkota can delete things.");
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id);
   try {
@@ -1884,8 +1888,8 @@ function openPalette(){
     { label: "Sign-offs", show: !$("#trainBtn").hidden, words: "sign offs trainer skills", run: go(openSignoffs) },
     { label: "Documents", show: true, words: "documents library handbook policies forms", run: go(openLibrary) },
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(() => openChat()) },
-    { label: "Team", show: S.owner, words: "team squad members roles access requests staff people", run: go(openTeam) },
-    { label: "Settings", show: S.owner, words: "settings signature emails checklist backups", run: go(gateSettings) },
+    { label: "Team", show: S.owner && !S.assistant, words: "team squad members roles access requests staff people", run: go(openTeam) },
+    { label: "Settings", show: S.owner && !S.assistant, words: "settings signature emails checklist backups", run: go(gateSettings) },
     { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
     { label: "Reports", show: S.admin, words: "reports how long days stage stalled waiting average", run: go(openReports) },
     { label: "Notifications", show: true, words: "notifications alerts push bell phone", run: go(openNotifications) },
@@ -2019,7 +2023,7 @@ function openMore(){
   const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation board"], ["trainBtn", "Sign-offs"], ["paperBtn", "My paperwork"], ["libBtn", "Documents"], ["teamBtn", "Team"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
-  const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.full ? "Full access" : S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div>
+  const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.assistant ? "Assistant" : S.full ? "Full access" : S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div>
     <div class="ios morelist">${tools.map(([id, label]) => `<button class="row" type="button" data-more="${id}"><span class="mi">${icon(id)}</span><span class="lbl">${esc(label)}</span><span class="chev" aria-hidden="true">›</span></button>`).join("")}
       ${S.me ? `<button class="row" type="button" data-notif><span class="mi"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3l1-1zM6.5 14h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="lbl">Notifications</span><span class="chev" aria-hidden="true">›</span></button>` : ""}
       ${S.owner ? "" : `<button class="row" type="button" data-tour><span class="mi"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.4 6.3a1.7 1.7 0 1 1 2.4 1.6c-.5.3-.8.6-.8 1.2M8 11.4v.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><span class="lbl">How this works</span><span class="chev" aria-hidden="true">›</span></button>`}
@@ -2807,7 +2811,7 @@ function openSignedForm(id, key){
     if (t.closest("[data-x]")) return closeModal();
     if (t.closest("#sfPrint")) { closeModal(); return printDoc(formDocHTML(f, signedForm(id, key) || d)); }
     if (t.closest("#sfWit")) { try { await updateDoc(doc(db, "portal", id, "forms", key), { witness: { name: S.name || S.me, by: S.me, at: Date.now() } }); closeModal(); toast("Countersigned"); } catch (err) { console.error(err); toast("Couldn't save. Try again."); } return; }
-    const c = t.closest("#sfClear"); if (c) { if (c.dataset.confirm !== "1") { c.dataset.confirm = "1"; c.textContent = "Clear this signed form?"; return; }
+    const c = S.assistant ? null : t.closest("#sfClear"); if (c) { if (c.dataset.confirm !== "1") { c.dataset.confirm = "1"; c.textContent = "Clear this signed form?"; return; }
       try { await deleteDoc(doc(db, "portal", id, "forms", key)); closeModal(); toast("Cleared. They can sign it again while signing is open."); } catch (err) { console.error(err); toast("Couldn't clear it."); } } };
 }
 // Secure documents (medical, Social Security). People with the Admin role can open them on the file, in both the
@@ -3369,7 +3373,7 @@ function openChannelEditor(cid){
   M.onclick = async e => {
     if (e.target.closest("[data-x]")) return closeModal();
     const cb = e.target.closest("[data-chcolor]"); if (cb) { color = cb.dataset.chcolor; M.querySelectorAll("[data-chcolor]").forEach(b => { b.classList.toggle("pick", b === cb); b.setAttribute("aria-pressed", b === cb); }); return; }
-    const del = e.target.closest("#chDel");
+    const del = S.assistant ? null : e.target.closest("#chDel");
     if (del) { if (del.dataset.confirm !== "1") { del.dataset.confirm = "1"; del.textContent = "Delete channel and its messages?"; return; }
       try { const ps = await getDocs(collection(db, "channels", cid, "posts")); const b = writeBatch(db); ps.docs.forEach(d => { if (d.data().file?.path) deleteObject(ref(storage, d.data().file.path)).catch(() => {}); b.delete(d.ref); }); b.delete(doc(db, "channels", cid)); await b.commit();
         closeModal(); if (C.key === "c:" + cid) C.key = null; toast("Channel deleted"); paintChat(); } catch (err) { console.error(err); toast("Couldn't delete the channel."); }
@@ -3500,6 +3504,7 @@ function openDupe(id, otherId){
 }
 // Keep one file, fill its blanks from the other, then delete the other. Everything is written to the kept file BEFORE anything is deleted.
 async function mergeFiles(keepId, dropId){
+  if (S.assistant) return toast("Only Dkota can delete things.");
   const fill = (base, extra) => { for (const k of Object.keys(extra || {})) { const v = extra[k], cur = base[k];
     if (isObj(v) && isObj(cur)) fill(cur, v); else if (cur === undefined || cur === null || cur === "") base[k] = clone(v); } return base; };
   const ks = clone(S.shared.get(keepId) || {}), ds = clone(S.shared.get(dropId) || {}), kp = clone(S.secure.get(keepId) || {}), dp = clone(S.secure.get(dropId) || {});
@@ -3790,7 +3795,7 @@ function openOrientTimes(){
     if (t.closest("[data-x]")) return closeModal();
     if (t.id === "oIcs") { const ev = [...S.oslots.values()].filter(s => s.bookedBy && s.start > Date.now() - 864e5 && S.apps.has(s.bookedBy)).map(s => ({ ...icsEvent(S.apps.get(s.bookedBy), s), uid: "or-" + s.id, title: `PVRS orientation: ${S.apps.get(s.bookedBy).name || "New member"}` }));
       if (!ev.length) return toast("No booked orientations to add."); download(`PVRS-orientation-${today()}.ics`, icsFile(ev), "text/calendar"); return toast("Calendar file downloaded. Open it to add them."); }
-    const del = t.closest("[data-odel]"); if (del) { try { await deleteDoc(doc(db, "orientSlots", del.dataset.odel)); } catch { toast("Couldn't delete that time."); } return; }
+    const del = S.assistant ? null : t.closest("[data-odel]"); if (del) { try { await deleteDoc(doc(db, "orientSlots", del.dataset.odel)); } catch { toast("Couldn't delete that time."); } return; }
     const rel = t.closest("[data-orel]"); if (rel) { try { await releaseOrient(S.oslots.get(rel.dataset.orel).bookedBy); toast("Time released"); } catch (err) { console.error(err); toast("Couldn't release that time."); } }
   };
 }
@@ -3991,6 +3996,7 @@ async function buildOrientPacket(a){
   return { html: packetCover(a, parts.map(p => p.title)) + parts.map(p => p.html).join(""), drop, left, medical };
 }
 async function removePacketFiles(id, drop){
+  if (S.assistant) { toast("Only Dkota can delete things."); return 0; }
   let n = 0;
   for (const f of drop) {
     if (!f.path || f.confidential || String(f.path).startsWith("confidential/")) continue;
@@ -4188,7 +4194,7 @@ function openLibrary(){
   M.onclick = async e => { const t = e.target; if (t.closest("[data-x]")) return closeModal();
     const o = t.closest("[data-libopen]"); if (o) { const d = (S.library || []).find(x => x.id === o.dataset.libopen); if (!d) return; const w = window.open("", "_blank");
       try { const url = await getDownloadURL(ref(storage, d.path)); if (w) w.location = url; else location.href = url; } catch { if (w) w.close(); toast("Couldn't open that file."); } return; }
-    const r = t.closest("[data-libdel]"); if (r) { if (r.dataset.confirm !== "1") { r.dataset.confirm = "1"; r.textContent = "Confirm remove"; return; } const d = (S.library || []).find(x => x.id === r.dataset.libdel);
+    const r = S.assistant ? null : t.closest("[data-libdel]"); if (r) { if (r.dataset.confirm !== "1") { r.dataset.confirm = "1"; r.textContent = "Confirm remove"; return; } const d = (S.library || []).find(x => x.id === r.dataset.libdel);
       try { await deleteObject(ref(storage, d.path)).catch(() => {}); await deleteDoc(doc(db, "library", d.id)); } catch { toast("Couldn't remove that."); } } };
 }
 
@@ -4303,20 +4309,21 @@ function startIdleLock(){
 }
 
 /* ---------- start ---------- */
-export function startDesk({ email, role, owner, full = false, name, paperwork = false }){
-  S.full = !!full; S.me = email; S.admin = role === "admin" || role === "coordinator"; S.owner = !!owner; S.canEdit = !!owner;
+export function startDesk({ email, role, owner, full = false, assistant = false, name, paperwork = false }){
+  S.full = !!full; S.assistant = !!assistant; S.me = email;
+  document.body.classList.toggle("assistant-user", !!assistant); S.admin = role === "admin" || role === "coordinator"; S.owner = !!owner; S.canEdit = !!owner;
   // Interview coordinator: sees what an admin sees and runs scheduling. S.sched = may schedule (owner or coordinator).
   S.coord = !owner && role === "coordinator"; S.sched = !!owner || S.coord; S.name = name || "";
   S.role = owner ? "owner" : role; S.member = S.role === "member";
   S.sort = SORTS[prefs.get("sort")] ? prefs.get("sort") : "stage";
   bindEvents(); renderList(); renderDetail();
   const conn = $("#conn");
-  conn.textContent = S.full ? "Full access" : S.owner ? "Owner" : roleLabel(role);
+  conn.textContent = S.assistant ? "Assistant" : S.full ? "Full access" : S.owner ? "Owner" : roleLabel(role);
   conn.classList.add("on");
   $("#meName").textContent = S.name || email;
   $("#meName").title = email;
   $("#meAv").textContent = initials(S.name || email);
-  if (S.owner) { $("#settingsBtn").hidden = false; $("#teamBtn").hidden = false; }
+  if (S.owner && !S.assistant) { $("#settingsBtn").hidden = false; $("#teamBtn").hidden = false; }
   if (canHostSlots()) $("#slotsBtn").hidden = false;
   $("#newBtn").hidden = !S.canEdit; paintMnav();
   if (!S.canEdit) document.body.classList.add("viewonly-user");
@@ -4365,7 +4372,7 @@ export function startDesk({ email, role, owner, full = false, name, paperwork = 
     watchActivity(); watchUploadErrors(); watchForms(); watchVault();
     if (S.sched) watchMessages();
     if (S.owner) { watchSubmissions(); watchRefUpdates(); watchRefResponses(); }
-    if (S.owner) {
+    if (S.owner && !S.assistant) {
       let primed = false;
       onSnapshot(collection(db, "accessRequests"), snap => {
         const before = new Set(S.requests.map(q => q.email));

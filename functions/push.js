@@ -32,9 +32,9 @@ const when = ms => new Date(ms).toLocaleString("en-US", { timeZone: "America/New
 // References that count as received (same rule as refList/refStatus in shared.js).
 const refsIn = sec => [1, 2, 3, 4].filter(i => { const r = get(sec || {}, `refs.r${i}`) || {}; return r.name && String(r.name).trim() && r.returned && !r.replace; }).length;
 
-// The owner plus everyone the owner gave Full access (staff role "full"): they get the owner's alerts.
+// The owner plus everyone with Full access or the Assistant role: they get the owner's alerts.
 async function owners(){
-  const snap = await db.collection("staff").where("role", "==", "full").get();
+  const snap = await db.collection("staff").where("role", "in", ["full", "assistant"]).get();
   return [OWNER_EMAIL, ...snap.docs.map(d => d.id)];
 }
 // `to` = exact list of emails (chat); otherwise the owners, plus everyone when `everyone`. `skip` = the person who caused it.

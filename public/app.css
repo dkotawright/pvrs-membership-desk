@@ -2518,3 +2518,8 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
 /* Windows: boxes never get squeezed to fit (Nov 20: the access-request box in Team shrank to 0 px on phones,
    hiding the name and Approve). The window scrolls instead. */
 .modal .sheet>.ios,.modal .sheet>.note,.modal .sheet>.help,.modal .sheet>.group{flex-shrink:0}
+
+/* Assistant (Nov 20): the owner's desk without delete buttons (the rules refuse deletes for her too) */
+body.assistant-user [data-act="delete"],body.assistant-user [data-recrm],body.assistant-user #sfClear,body.assistant-user #chDel,
+body.assistant-user [data-odel],body.assistant-user #pkClear,body.assistant-user [data-libdel],body.assistant-user #dupYes,
+body.assistant-user #settingsBtn,body.assistant-user #teamBtn{display:none!important}

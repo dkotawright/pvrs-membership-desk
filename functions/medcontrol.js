@@ -52,7 +52,7 @@ async function checkCaller(auth, roleOf = staffRole){
   const email = String(t.email).toLowerCase();
   if (email === OWNER_EMAIL) return { email, owner: true };
   // Full access (staff role "full") gets everything the owner has, Med Control included.
-  if ((await roleOf(email)) === "full") return { email, owner: true };
+  if (["full", "assistant"].includes(await roleOf(email))) return { email, owner: true };   // Assistant too (Nov 20)
   throw new HttpsError("permission-denied", "Med Control is only for the membership coordinator.");
 }
 async function countCall(email){

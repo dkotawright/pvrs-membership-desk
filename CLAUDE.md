@@ -99,6 +99,13 @@ A flat grey/white/navy restyle (PR #10) went live and was reverted the same even
 - File header **Application** button (`data-act="printapp"`, also in the phone Actions sheet) and ⌘K "Print application" → `printOriginal(id)`: prints the online form, else opens the newest paper copy in a new tab (opened during the click so Safari allows it; ⌘P there). Nothing is ever deleted; this only reads the stored `private/main.form` and records.
 - Tests: 181 browser checks.
 
+## Assistant role (Nov 20, Dkota: "same access as me but can't delete things and change settings… orientation signing and uploads")
+- `staff/{email}.role = "assistant"` (Team dropdown "Assistant"; `ROLE_LABEL`, `ROLE_HELP`). Rules: `isEditor()` = `isOwner()` (owner / Full access) OR role "assistant". Every owner *read / create / update* rule uses `isEditor()`; every *delete*, `settings/*` writes, `staff/*` writes and access-request approvals stay `isOwner()`. Team management is excluded so she can't promote herself (my call, told Dkota). Secure documents: she can open them and mark them filed (Dkota said yes when asked). Housekeeping deletes allowed to her: retired reference links (`refLinks`), the `portalEmails` index, failed-upload notes. Interview times and conversation members: she inherits the coordinator's powers (`isCoord()` includes `isEditor()`), which include deleting unbooked interview times.
+- Storage: `isEditor()` opens and uploads records / confidential / library / chat files; deletes stay `isOwner()`.
+- Desk: main.js routes role "assistant" to `startDesk({ owner: true, assistant: true })` (`S.assistant`, `body.assistant-user`). Settings/Team buttons, ⌘K entries, access-request card and watcher are hidden; delete buttons are hidden by CSS and each delete action returns early (`deleteApplicant`, `removeRecord`, `openRetention`, `mergeFiles`, `removePacketFiles`, channel / orientation-time / library delete, Clear signed form). No settings writes from her desk (`addNewOnbLines`, default location).
+- Alerts: `owners()` in push.js = owner + Full access + Assistant. Med Control: `checkCaller` allows her (owner-equivalent).
+- Tests: 466 browser, 38 push, rules +14 (database pass here; her storage upload check needs CI).
+
 ## No Vercel (Nov 20, Dkota: "I won't use that… Firebase only")
 - Firebase Hosting is the only host (https://pvrs-membership.web.app). Cursor had connected a Vercel project "pvrs-membership-desk" (Vercel GitHub app) that tries to build every push and fails. `vercel.json` with `git.deploymentEnabled: false` switches those builds off from the repo side; Dkota was asked to delete the Vercel project and uninstall the Vercel GitHub app. Don't add Vercel back.
 

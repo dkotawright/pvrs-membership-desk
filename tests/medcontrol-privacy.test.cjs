@@ -31,7 +31,9 @@ if (!scored.includes('"comm":4')) { fail++; console.log("✗ committee scores mi
   const who = await _checkCaller(tok("dkota@pvrs.org")).catch(() => null);
   if (!who || !who.owner) { fail++; console.log("✗ owner refused"); } else console.log("✓ the owner can use Med Control");
   // Roles come from staff/{email}; a stand-in table here so the test needs no database.
-  const ROLES = { "admin@pvrs.org": "admin", "ivy@pvrs.org": "interviewer", "full@pvrs.org": "full" }, roleOf = async e => ROLES[e] || null;
+  const ROLES = { "admin@pvrs.org": "admin", "ivy@pvrs.org": "interviewer", "full@pvrs.org": "full", "asst@pvrs.org": "assistant" }, roleOf = async e => ROLES[e] || null;
+  const as = await _checkCaller(tok("asst@pvrs.org"), roleOf).catch(() => null);
+  if (!as || !as.owner) { fail++; console.log("✗ assistant refused"); } else console.log("✓ the Assistant can use Med Control");
   const fu = await _checkCaller(tok("full@pvrs.org"), roleOf).catch(() => null);
   if (!fu || !fu.owner) { fail++; console.log("✗ full access refused"); } else console.log("✓ Full access can use Med Control");
   for (const e of ["admin@pvrs.org", "ivy@pvrs.org", "x@example.com"]) { const r = await _checkCaller(tok(e), roleOf).then(() => "allowed", err => err.code);

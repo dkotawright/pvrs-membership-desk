@@ -4,6 +4,8 @@ rules_version = '2';
 //   Owner (dkota@pvrs.org): reads and edits everything
 //   Staff with role "full" (Full access, Nov 17, Dkota's choice): exactly what the owner can do, secure documents
 //     included. Only the owner's own staff entry is off limits to them (it doesn't exist; the owner is hardcoded).
+//   Staff with role "assistant" (Nov 20): the owner's view, edit and upload rights, secure documents included
+//     (Dkota said yes when asked), but no deletes, no settings and no team management.
 //   Staff with role "admin": read everything; may only fill in the interview questionnaire
 //   Staff with role "interviewer": read application + interview of the applicants the owner assigned them to
 //     (applicants/{id}.interviewers); may only fill in those interview questionnaires
@@ -19,16 +21,20 @@ service cloud.firestore {
     function isMainOwner() { return verified() && myEmail() == 'dkota@pvrs.org'; }
     // isOwner() = the owner OR anyone the owner gave Full access (staff role "full"). Every owner rule below uses it.
     function isOwner()   { return isMainOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'full'); }
+    // Assistant (staff role "assistant", Nov 20, Dkota): everything the owner can see, edit and upload, but never
+    // deletes anything, never changes settings and never manages the team (so she can't promote herself).
+    // isEditor() = owner, Full access or Assistant. Deletes, settings/main, staff and access requests stay isOwner().
+    function isEditor()  { return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'assistant'); }
     function isPaperwork() { return verified() && myEmail() == 'orientationpaperwork@pvrs.org'; }
     function staffPath() { return /databases/$(database)/documents/staff/$(myEmail()); }
-    function isStaff()   { return isOwner() || (verified() && exists(staffPath())); }
-    function isAdmin()   { return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role in ['admin', 'coordinator']); }
+    function isStaff()   { return isEditor() || (verified() && exists(staffPath())); }
+    function isAdmin()   { return isEditor() || (verified() && exists(staffPath()) && get(staffPath()).data.role in ['admin', 'coordinator']); }
     // Interview coordinator: sees what an admin sees, and runs interview scheduling (times, booking, who interviews,
     // opening booking, applicant messages). Everything else stays owner-only.
     // The Admin role itself (not the coordinator). Since Nov 14 (Dkota's choice) admins and the owner may open
     // confidential paperwork alongside the paperwork account; the owner may also mark it filed.
     function isRoleAdmin() { return verified() && exists(staffPath()) && get(staffPath()).data.role == 'admin'; }
-    function isCoord()   { return isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'coordinator'); }
+    function isCoord()   { return isEditor() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'coordinator'); }
     // Interviewers the owner assigned to this applicant (applicants/{id}.interviewers, a list of emails).
     function assignedTo(data)  { return verified() && exists(staffPath()) && myEmail() in data.get('interviewers', []); }
     function canHost()         { return isAdmin() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'interviewer'); }
@@ -102,7 +108,8 @@ service cloud.firestore {
     }
     match /submissions/{submissionId} {
       allow create: if validSubmission();
-      allow read, update, delete: if isOwner();
+      allow read, update: if isEditor();
+      allow delete: if isOwner();
     }
 
     // Confidential paperwork (medical, Social Security). The file goes to Storage confidential/{appId}/…, its details
@@ -115,9 +122,9 @@ service cloud.firestore {
         && d.confidential == true && d.path == '' && d.name == 'Private document';
     }
     match /vault/{fileId} {
-      allow read: if isPaperwork() || isRoleAdmin() || isOwner();
+      allow read: if isPaperwork() || isRoleAdmin() || isEditor();
       allow delete: if isPaperwork();
-      allow update: if (isPaperwork() || isOwner()) && onlyChanged(['filedAt']);
+      allow update: if (isPaperwork() || isEditor()) && onlyChanged(['filedAt']);
       allow create: if verified()
         && request.resource.data.keys().hasOnly(['appId','appName','label','name','path','size','contentType','uploadedAt','uploadedBy','from','form'])
         && request.resource.data.appId is string
@@ -133,7 +140,7 @@ service cloud.firestore {
         && request.resource.data.name is string && request.resource.data.name.size() <= 300
         && request.resource.data.appName is string && request.resource.data.appName.size() <= 200
         && ((request.resource.data.from == 'applicant' && ownsPortal(request.resource.data.appId))
-            || (request.resource.data.from == 'staff' && isOwner()));
+            || (request.resource.data.from == 'staff' && isEditor()));
     }
 
     // Reference forms. The owner makes a private link for each reference (refLinks/{token}, an unguessable code);
@@ -141,8 +148,9 @@ service cloud.firestore {
     // expires. Only the owner reads responses; the desk files them in the applicant's private record.
     match /refLinks/{token} {
       allow get: if true;
-      allow list, create, delete: if isOwner();
-      allow update: if isOwner() || (
+      allow list, create: if isEditor();
+      allow delete: if isEditor();   // retiring a replaced reference's link is housekeeping, so the Assistant may
+      allow update: if isEditor() || (
         onlyChanged(['submittedAt']) && resource.data.get('submittedAt', null) == null
         && request.resource.data.submittedAt is int
         && existsAfter(/databases/$(database)/documents/refResponses/$(token)));
@@ -167,13 +175,15 @@ service cloud.firestore {
     }
     match /refResponses/{token} {
       allow create: if exists(/databases/$(database)/documents/refLinks/$(token)) && validRefResponse(token);
-      allow read, update, delete: if isOwner();
+      allow read, update: if isEditor();
+      allow delete: if isOwner();
     }
 
     // Which email addresses have an applicant portal (lets the rules recognise invited applicants).
     match /portalEmails/{email} {
-      allow read: if isOwner() || (verified() && email == myEmail());
-      allow write: if isOwner();
+      allow read: if isEditor() || (verified() && email == myEmail());
+      allow create, update: if isEditor();
+      allow delete: if isEditor();   // index housekeeping (reconcilePortalEmails)
     }
 
     // Team roster. Everyone can read their own entry (so the app knows their role).
@@ -186,15 +196,17 @@ service cloud.firestore {
     // "where interviewers array-contains me" queries); members none.
     match /applicants/{id} {
       allow read: if isAdmin() || assignedTo(resource.data);
-      allow create, delete: if isOwner();
-      allow update: if isOwner() || ((isAdmin() || assignedTo(resource.data)) && interviewOnly()) || (isCoord() && coordOnly())
+      allow create: if isEditor();
+      allow delete: if isOwner();
+      allow update: if isEditor() || ((isAdmin() || assignedTo(resource.data)) && interviewOnly()) || (isCoord() && coordOnly())
         // the coordinator's desk keeps the stage label current (the owner's desk does the same)
         || (isCoord() && onlyChanged(['stage']) && request.resource.data.stage in ['screen', 'int', 'appr', 'onb', 'act', 'hold', 'dec', 'wd', 'open']);
 
       // Screening, board, onboarding, notes (admins only)
       match /private/{doc} {
         allow read: if isAdmin();
-        allow write: if isOwner();
+        allow create, update: if isEditor();
+        allow delete: if isOwner();
         // The coordinator's one switch in the private record: "Let them book an interview".
         allow create: if isCoord() && doc == 'main'
           && request.resource.data.keys().hasOnly(['portal', 'secUpdatedAt', 'secUpdatedBy'])
@@ -212,13 +224,14 @@ service cloud.firestore {
       // admins can open and print them; members and applicants never see them.
       match /records/{recordId} {
         allow read: if isAdmin();
-        allow create: if isOwner()
+        allow create: if isEditor()
           && request.resource.data.uploadedBy == myEmail()
           && request.resource.data.size is int && request.resource.data.size <= 25 * 1024 * 1024
           && ((request.resource.data.keys().hasOnly(['name','label','path','size','contentType','uploadedAt','uploadedBy'])
                && request.resource.data.path.matches('records/.*'))   // a combined file keeps the other file's folder
               || confidentialStub());
-        allow update, delete: if isOwner();
+        allow update: if isEditor();
+        allow delete: if isOwner();
       }
 
       // An interviewer's private impressions of an applicant: one note each. Only its author, the owner and admins
@@ -260,7 +273,7 @@ service cloud.firestore {
     }
     // Lets the owner's desk pick up new references from every applicant in one query
     match /{path=**}/refUpdates/{updateId} {
-      allow read: if isOwner();
+      allow read: if isEditor();
     }
     match /{path=**}/forms/{key} { allow read: if isAdmin(); }
     match /{path=**}/uploadErrors/{errId} {
@@ -276,8 +289,8 @@ service cloud.firestore {
       allow read: if isAdmin() || (verified() && resource.data.email == myEmail());
       allow delete: if isOwner();
       // A time the coordinator books for someone with no portal yet: a page holding only that interview.
-      allow create: if isOwner() || (isCoord() && request.resource.data.keys().hasOnly(['interview']));
-      allow update: if isOwner() || (
+      allow create: if isEditor() || (isCoord() && request.resource.data.keys().hasOnly(['interview']));
+      allow update: if isEditor() || (
         // the coordinator books or releases a time for an applicant, and opens or closes their booking
         isCoord() && onlyChanged(['interview', 'bookingOpen', 'steps', 'updatedAt'])
         && request.resource.data.get('bookingOpen', false) is bool
@@ -322,7 +335,7 @@ service cloud.firestore {
           && request.resource.data.at is int && request.resource.data.at > nowMs() - 300000 && request.resource.data.at < nowMs() + 300000
           && ((request.resource.data.from == 'applicant' && ownsPortal(id))
               || (request.resource.data.from == 'staff' && (isCoord() || inConvo(id))));
-        allow update: if isOwner()
+        allow update: if isEditor()
           || (ownsPortal(id) && resource.data.from == 'staff' && onlyChanged(['seenAt']) && request.resource.data.seenAt is int);
         allow delete: if isOwner();
       }
@@ -344,7 +357,7 @@ service cloud.firestore {
           && request.resource.data.values is map && request.resource.data.values.size() <= 40
           && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 200
           && request.resource.data.sig is string && request.resource.data.sig.size() > 0 && request.resource.data.sig.size() <= 400000;
-        allow update: if isOwner() && onlyChanged(['witness']);
+        allow update: if isEditor() && onlyChanged(['witness']);
         allow delete: if isOwner();
       }
       match /checkins/{n} {
@@ -358,7 +371,7 @@ service cloud.firestore {
         allow delete: if isOwner();
       }
       match /refUpdates/{updateId} {
-        allow read: if isOwner() || ownsPortal(id);
+        allow read: if isEditor() || ownsPortal(id);
         allow create: if ownsPortal(id)
           && request.resource.data.keys().hasOnly(['slot', 'name', 'relationship', 'email', 'phone', 'address', 'at', 'by'])
           && request.resource.data.slot is int && request.resource.data.slot in portalOf(id).data.get('refReplace', [])
@@ -369,7 +382,7 @@ service cloud.firestore {
           && request.resource.data.email is string && request.resource.data.email.size() <= 200 && request.resource.data.email.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$')
           && request.resource.data.phone is string && request.resource.data.phone.size() <= 40
           && request.resource.data.address is string && request.resource.data.address.size() <= 300;
-        allow update: if isOwner() && onlyChanged(['appliedAt']);
+        allow update: if isEditor() && onlyChanged(['appliedAt']);
         allow delete: if isOwner();
       }
 
@@ -383,7 +396,7 @@ service cloud.firestore {
           && request.resource.data.at is int
           && request.resource.data.get('message', '') is string && request.resource.data.get('message', '').size() <= 500
           && request.resource.data.get('name', '') is string && request.resource.data.get('name', '').size() <= 300;
-        allow delete: if isOwner();
+        allow delete: if isEditor();   // clearing a failed-upload note
       }
       // Files the applicant uploaded
       match /files/{fileId} {
@@ -394,7 +407,8 @@ service cloud.firestore {
           && ((request.resource.data.keys().hasOnly(['docKey','label','name','path','size','contentType','uploadedAt','uploadedBy'])
                && request.resource.data.path.matches('uploads/' + id + '/.*'))
               || confidentialStub());
-        allow update, delete: if isOwner();
+        allow update: if isEditor();
+        allow delete: if isOwner();
       }
     }
 
@@ -440,15 +454,15 @@ service cloud.firestore {
 
     // Squad channels: the owner creates them and picks the members; only members (and the owner) see them or post.
     match /channels/{cid} {
-      allow read: if isOwner() || (verified() && myEmail() in resource.data.members);   // works for 'my channels' queries
-      allow write: if isOwner()
+      allow read: if isEditor() || (verified() && myEmail() in resource.data.members);   // works for 'my channels' queries
+      allow create, update: if isEditor()
         && request.resource.data.keys().hasOnly(['name', 'color', 'members', 'names', 'createdAt', 'createdBy', 'updatedAt', 'pin'])
         && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 60
         && request.resource.data.members is list && request.resource.data.members.size() <= 100;
       allow delete: if isOwner();
       match /posts/{pid} {
-        allow read: if isOwner() || inChannel(cid);
-        allow create: if (isOwner() || inChannel(cid))
+        allow read: if isEditor() || inChannel(cid);
+        allow create: if (isEditor() || inChannel(cid))
           && request.resource.data.keys().hasOnly(['text', 'by', 'name', 'at', 'file'])
           && request.resource.data.by == myEmail()
           && request.resource.data.text is string && request.resource.data.text.size() <= 4000
@@ -456,7 +470,7 @@ service cloud.firestore {
           && (!('file' in request.resource.data) || request.resource.data.file.path.matches('chat/' + cid + '/.*'))
           && request.resource.data.name is string && request.resource.data.name.size() <= 100
           && request.resource.data.at is int && request.resource.data.at > nowMs() - 300000 && request.resource.data.at < nowMs() + 300000;
-        allow update: if (isOwner() || inChannel(cid)) && onlyChanged(['reactions']) && request.resource.data.reactions is map;
+        allow update: if (isEditor() || inChannel(cid)) && onlyChanged(['reactions']) && request.resource.data.reactions is map;
         allow delete: if isOwner() || (inChannel(cid) && resource.data.by == myEmail());
       }
     }
@@ -471,8 +485,9 @@ service cloud.firestore {
     // One-on-one orientation times the owner posts. New members claim or release one for themselves, 24h+ ahead.
     match /orientSlots/{slotId} {
       allow read: if isAdmin() || isInvitedApplicant();
-      allow create, delete: if isOwner();
-      allow update: if isOwner() || (
+      allow create: if isEditor();
+      allow delete: if isOwner();
+      allow update: if isEditor() || (
         verified() && onlyChanged(['bookedBy']) && resource.data.start > nowMs() + DAY()
         && (
           (resource.data.bookedBy == null && request.resource.data.bookedBy is string
@@ -490,15 +505,17 @@ service cloud.firestore {
     // Trainer sign-offs: the owner picks trainers and the list; a trainer sees only that person's list, nothing else on the file.
     match /signoffs/{appId} {
       allow read: if isAdmin() || (verified() && myEmail() in resource.data.trainers);
-      allow create, delete: if isOwner();
-      allow update: if isOwner() || (verified() && exists(staffPath()) && myEmail() in resource.data.trainers && onlyChanged(['done', 'updatedAt']));
+      allow create: if isEditor();
+      allow delete: if isOwner();
+      allow update: if isEditor() || (verified() && exists(staffPath()) && myEmail() in resource.data.trainers && onlyChanged(['done', 'updatedAt']));
     }
     // Squad documents: each file lists the roles that can see it; newMembers also shows it in the orientation portal.
     match /library/{docId} {
-      allow read: if isOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role in resource.data.roles)
+      allow read: if isEditor() || (verified() && exists(staffPath()) && get(staffPath()).data.role in resource.data.roles)
         || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'coordinator' && 'admin' in resource.data.roles)
         || (isInvitedApplicant() && resource.data.newMembers == true);
-      allow write: if isOwner();
+      allow create, update: if isEditor();
+      allow delete: if isOwner();
     }
     // Who's online and typing (squad only). Everyone writes only their own.
     match /presence/{email} {

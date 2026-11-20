@@ -7,7 +7,7 @@ const docs = new Map(), sent = [];
 const snap = (p) => ({ exists: docs.has(p), data: () => docs.get(p), id: p.split("/").pop() });
 const fakeDb = { doc: p => ({ get: async () => snap(p), delete: async () => docs.delete(p), set: async (d, o) => docs.set(p, o && o.merge ? { ...(docs.get(p) || {}), ...d } : d) }),
   collection: c => { const all = () => [...docs.keys()].filter(k => k.startsWith(c + "/") && k.split("/").length === 2).map(snap);
-    return { get: async () => ({ docs: all() }), where: (f, _op, v) => ({ get: async () => ({ docs: all().filter(x => x.data()[f] === v) }) }) }; } };
+    return { get: async () => ({ docs: all() }), where: (f, op, v) => ({ get: async () => ({ docs: all().filter(x => op === "in" ? v.includes(x.data()[f]) : x.data()[f] === v) }) }) }; } };
 const stubs = {
   "firebase-admin/app": { initializeApp(){}, getApps: () => [1] },
   "firebase-admin/firestore": { getFirestore: () => fakeDb },
@@ -74,6 +74,10 @@ const last = () => sent[sent.length - 1];
   check(last().tokens.sort().join() === "fullTok,ownerTok", "full access gets the owner's alerts: " + last().tokens);
   await P.interviewBooking(upd({ start: 1e12 }, { start: 1e12, bookedBy: "a1" }));
   check(last().tokens.sort().join() === "adminTok,fullTok,ivTok,ownerTok", "full access gets bookings: " + last().tokens);
+  docs.set("staff/asst@pvrs.org", { name: "Ava Assist", role: "assistant" }); docs.set("pushTokens/asstTok", { email: "asst@pvrs.org" });
+  await P.accessRequest(ev({ name: "Eli New" }, { email: "eli@pvrs.org" }));
+  check(last().tokens.sort().join() === "asstTok,fullTok,ownerTok", "the Assistant gets the owner's alerts: " + last().tokens);
+  docs.delete("staff/asst@pvrs.org"); docs.delete("pushTokens/asstTok");
   docs.delete("staff/full@pvrs.org"); docs.delete("pushTokens/fullTok");
 
   // chat: channel posts go to members except the author; applicant messages to the owner + people added

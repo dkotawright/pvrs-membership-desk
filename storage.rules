@@ -11,7 +11,9 @@ service firebase.storage {
     function hasStaff()  { return firestore.exists(/databases/(default)/documents/staff/$(myEmail())); }
     // The owner, or anyone the owner gave Full access (staff role "full", Nov 17): the same rights everywhere.
     function isOwner()  { return verified() && (myEmail() == 'dkota@pvrs.org' || (hasStaff() && staffRole() == 'full')); }
-    function isAdmin()  { return isOwner() || (verified() && hasStaff() && staffRole() in ['admin', 'coordinator']); }
+    // Assistant (staff role "assistant", Nov 20): opens and uploads like the owner, never deletes.
+    function isEditor() { return isOwner() || (verified() && hasStaff() && staffRole() == 'assistant'); }
+    function isAdmin()  { return isEditor() || (verified() && hasStaff() && staffRole() in ['admin', 'coordinator']); }
     function ownsPortal(id) {
       return verified() && firestore.exists(/databases/(default)/documents/portal/$(id))
         && firestore.get(/databases/(default)/documents/portal/$(id)).data.email == myEmail();
@@ -30,7 +32,7 @@ service firebase.storage {
     // Records the owner uploads to an applicant's file. Admins can open them; nobody else can see them.
     match /records/{appId}/{fileName} {
       allow read: if isAdmin();
-      allow create: if isOwner()
+      allow create: if isEditor()
         && request.resource.size <= 25 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
       allow delete: if isOwner();
@@ -43,9 +45,9 @@ service firebase.storage {
       return verified() && hasStaff() && staffRole() == 'admin';
     }
     match /confidential/{appId}/{fileName} {
-      allow read: if (verified() && myEmail() == 'orientationpaperwork@pvrs.org') || isOwner() || isRoleAdmin();
+      allow read: if (verified() && myEmail() == 'orientationpaperwork@pvrs.org') || isEditor() || isRoleAdmin();
       allow delete: if verified() && myEmail() == 'orientationpaperwork@pvrs.org';
-      allow create: if (ownsPortal(appId) || (isOwner()))
+      allow create: if (ownsPortal(appId) || isEditor())
         && request.resource.size <= 25 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf'
             || request.resource.contentType == 'application/msword'
@@ -55,7 +57,7 @@ service firebase.storage {
     // Files posted in a squad channel. Only that channel's members (and the owner) can add or open them.
     match /chat/{cid}/{fileName} {
       function inChannel() {
-        return isOwner() || (verified() && firestore.exists(/databases/(default)/documents/channels/$(cid))
+        return isEditor() || (verified() && firestore.exists(/databases/(default)/documents/channels/$(cid))
               && myEmail() in firestore.get(/databases/(default)/documents/channels/$(cid)).data.members);
       }
       allow read: if inChannel();
@@ -67,9 +69,9 @@ service firebase.storage {
     // Squad documents: same audience as the library entry (library/{docId}).
     match /library/{docId}/{fileName} {
       function entry() { return firestore.get(/databases/(default)/documents/library/$(docId)).data; }
-      allow read: if isOwner() || (verified() && ((hasStaff() && staffRole() in entry().roles)
+      allow read: if isEditor() || (verified() && ((hasStaff() && staffRole() in entry().roles)
         || (firestore.exists(/databases/(default)/documents/portalEmails/$(myEmail())) && entry().newMembers == true)));
-      allow create: if isOwner() && request.resource.size <= 25 * 1024 * 1024
+      allow create: if isEditor() && request.resource.size <= 25 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType == 'application/pdf');
       allow delete: if isOwner();
     }
