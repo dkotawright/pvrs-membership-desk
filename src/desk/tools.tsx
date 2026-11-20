@@ -65,53 +65,6 @@ export function Flyer() {
   );
 }
 
-const TOUR: Record<string, [string, string][]> = {
-  owner: [
-    ["This is your desk", "The pipeline is everyone in process. Board and List are the same people, two ways."],
-    ["Your move", "The strip at the top is the next thing that needs you. The button does it."],
-    ["Med Control", "⌘J drafts. It never sends, and it never sees license numbers or medical files."],
-  ],
-  coordinator: [
-    ["You run the interviews", "Times, booking, who interviews, and messages. Everything else is view only."],
-  ],
-  interviewer: [
-    ["Your interviews", "You only see people assigned to you. Interview mode is one section at a time."],
-  ],
-  member: [
-    ["Messages", "Channels you belong to. Keep medical and Social Security paperwork out of them."],
-  ],
-  applicant: [
-    ["Your page", "The steps show what's done. Nothing is needed unless a card says so."],
-  ],
-};
-
-export function Tour({ role, email, force, onClose }: { role: string; email: string; force?: boolean; onClose: () => void }) {
-  const key = `pvrsTour:${email}:${role}`;
-  const steps = TOUR[role] || TOUR.owner;
-  const [i, setI] = useState(0);
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    let seen = false;
-    try { seen = !!localStorage.getItem(key) || !!localStorage.getItem("pvrsTourOff"); } catch { seen = true; }
-    if (force || !seen) setOpen(true);
-  }, [key, force]);
-  if (!open) return null;
-  const done = () => { try { localStorage.setItem(key, String(Date.now())); } catch { /* ignore */ } setOpen(false); onClose(); };
-  return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/30 p-4" role="dialog" aria-label="How this works">
-      <div className="card w-full max-w-md p-6">
-        <p className="text-xs font-semibold uppercase tracking-widest text-muted">{i + 1} of {steps.length}</p>
-        <h2 className="mt-1 text-2xl font-semibold">{steps[i][0]}</h2>
-        <p className="mt-2 text-sm text-muted">{steps[i][1]}</p>
-        <div className="mt-4 flex justify-between">
-          <button type="button" className="text-sm text-muted" onClick={done}>Skip</button>
-          <button type="button" className="rounded-full bg-blue px-4 py-2 text-sm font-semibold text-white" onClick={() => i === steps.length - 1 ? done() : setI(i + 1)}>{i === steps.length - 1 ? "Got it" : "Next"}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 async function enableAlerts(backend: Backend) {
   if (typeof Notification === "undefined") return "This browser doesn't offer alerts.";
   const perm = await Notification.requestPermission();

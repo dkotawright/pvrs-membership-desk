@@ -941,17 +941,17 @@ export function searchDesk(q: string, apps: Applicant[], actor: Actor, messages:
   const ownerOnly = new Set(["new", "team", "settings", "flyer"]);
   const adminOnly = new Set(["board", "reports", "orient", "library"]);
   const actions: SearchHit[] = [
-    ["New applicant", "Add someone to the pipeline", "new"],
+    ["New applicant", "Add someone to Dispatch", "new"],
+    ["Orientation", "People the board accepted", "field"],
     ["Board meeting", "Walk the board queue", "board"],
     ["Interview times", "Post or manage times", "slots"],
-    ["Messages", "Channels and applicant threads", "messages"],
-    ["Team", "Roles and access requests", "team"],
-    ["Settings", "Emails, checklists, Med Control", "settings"],
+    ["Messages", "Squad channels", "messages"],
+    ["Team", "Who can sign in", "team"],
+    ["Rig check", "Emails, checklists, Med Control", "settings"],
     ["Reports", "How long each stretch takes", "reports"],
-    ["Orientation board", "Checklist grid", "orient"],
-    ["Documents", "Squad library", "library"],
+    ["Paperwork grid", "Every checklist line", "orient"],
+    ["Documents", "Shared files", "library"],
     ["Notifications", "Alerts on this device", "notif"],
-    ["Show the tour", "How this desk works", "tour"],
     ["Recruiting flyer", "Print a flyer with a QR code", "flyer"],
   ]
     .filter(([, , id]) => (ownerOnly.has(id) ? actor.canEdit : adminOnly.has(id) ? actor.adminView : true))

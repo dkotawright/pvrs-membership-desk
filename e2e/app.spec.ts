@@ -1,6 +1,17 @@
 import { test, expect } from "@playwright/test";
 import { declinedSeed, interviewerSeed, memberSeed, ownerSeed, portalSeed } from "../src/lib/demo";
 
+async function expectOneSidebar(page: import("@playwright/test").Page, label: string) {
+  const buttons = page.locator("aside nav button");
+  const rows = await buttons.evaluateAll((els) => els.map((el) => ({
+    name: (el as HTMLElement).innerText.split("\n")[0]?.trim() || "",
+    current: el.getAttribute("aria-current"),
+    bg: getComputedStyle(el).backgroundColor,
+  })));
+  const lit = rows.filter((row) => row.current === "page" || (row.bg !== "rgba(0, 0, 0, 0)" && row.bg !== "transparent"));
+  expect(lit.map((row) => row.name)).toEqual([label]);
+}
+
 async function boot(page: import("@playwright/test").Page, seed: object | null, path = "/", theme: { mode: string; accent: string } | null = null) {
   await page.addInitScript(({ s, theme }) => {
     try { localStorage.setItem("pvrsTourOff", "1"); } catch { /* ignore */ }
@@ -42,12 +53,22 @@ test("application wizard blocks an empty first step", async ({ page }) => {
 
 test("owner pipeline shows every lane and opens a file", async ({ page }) => {
   await boot(page, ownerSeed());
-  await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dispatch" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Jordan Hale/ }).first()).toBeVisible();
   await expect(page.getByText("Screening").first()).toBeVisible();
   await expect(page.getByText("Onboarding").first()).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/pipeline-board.png", fullPage: false });
-  await page.getByRole("button", { name: "List" }).click();
+  await page.screenshot({ path: "/opt/cursor/artifacts/nav-desktop.png", fullPage: false });
+  await page.getByRole("button", { name: /Orientation/ }).click();
+  await expect(page.getByRole("heading", { name: "Orientation" })).toBeVisible();
+  await expectOneSidebar(page, "Orientation");
+  await page.screenshot({ path: "/opt/cursor/artifacts/onboard-desktop.png", fullPage: false });
+  for (const name of ["Messages", "Board meeting", "Rig check", "Dispatch"]) {
+    await page.locator("aside nav").getByRole("button", { name: new RegExp("^" + name) }).click();
+    await expectOneSidebar(page, name);
+  }
+  await page.getByRole("button", { name: /Dispatch/ }).first().click();
+  await page.getByRole("button", { name: "List", exact: true }).click();
   await expect(page.getByRole("button", { name: /Riley Brooks/ })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/pipeline-list.png", fullPage: false });
   await page.getByRole("button", { name: /Jordan Hale/ }).first().click();
@@ -71,7 +92,7 @@ test("search finds an applicant and Med Control opens", async ({ page }) => {
 
 test("messages are a channel, not a buried menu", async ({ page }) => {
   await boot(page, ownerSeed());
-  await page.getByRole("button", { name: "Messages" }).click();
+  await page.getByRole("button", { name: /Messages/ }).click();
   await expect(page.getByText("Board packet is ready for Tuesday.")).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/messages-desktop.png", fullPage: false });
 });
@@ -102,7 +123,7 @@ test("an interviewer only sees people assigned to them", async ({ page }) => {
 test("a member does not get applicant files", async ({ page }) => {
   await boot(page, memberSeed());
   await expect(page.getByText("Avery Chen")).toHaveCount(0);
-  await page.getByRole("button", { name: "Messages" }).click();
+  await page.getByRole("button", { name: /Messages/ }).click();
   await expect(page.getByRole("heading", { name: "#General" })).toBeVisible();
 });
 
@@ -132,8 +153,19 @@ test("mobile pipeline and home", async ({ page }) => {
     (window as unknown as { __PVRS_SEED: object }).__PVRS_SEED = s;
   }, ownerSeed());
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dispatch" })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/pipeline-mobile.png", fullPage: false });
+  await page.screenshot({ path: "/opt/cursor/artifacts/nav-mobile.png", fullPage: false });
+  for (const name of ["Dispatch", "Orientation", "Messages", "More"]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    await expect(page.locator("nav.dock button.on")).toHaveCount(1);
+    await expect(page.locator("nav.dock button.on")).toHaveText(name);
+    if (name === "More") await page.locator(".fixed.inset-0").click({ position: { x: 8, y: 8 } });
+  }
+  await page.getByRole("button", { name: "Orientation", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Orientation" })).toBeVisible();
+  await page.screenshot({ path: "/opt/cursor/artifacts/onboard-mobile.png", fullPage: false });
+  await page.getByRole("button", { name: "Dispatch", exact: true }).click();
   await page.getByRole("button", { name: /Jordan Hale/ }).first().click();
   await expect(page.getByRole("heading", { name: "Jordan Hale" })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/file-mobile.png", fullPage: false });
@@ -166,14 +198,23 @@ test("mobile portal", async ({ page }) => {
 
 test("appearance is per person and reaches the portal", async ({ page }) => {
   await boot(page, ownerSeed(), "/", { mode: "dark", accent: "purple" });
-  await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dispatch" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
   await expect(page.locator("html")).toHaveAttribute("data-accent", "purple");
   await page.screenshot({ path: "/opt/cursor/artifacts/pipeline-dark.png", fullPage: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Orientation", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Orientation" })).toBeVisible();
+  await expect(page.locator("nav.dock button.on")).toHaveCount(1);
+  await expect(page.locator("nav.dock button.on")).toHaveText("Orientation");
+  await expect(page.getByRole("dialog", { name: "How this works" })).toHaveCount(0);
+  await page.screenshot({ path: "/opt/cursor/artifacts/onboard-dark-mobile.png", fullPage: false });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: /Dispatch/ }).first().click();
   await page.getByRole("button", { name: /Jordan Hale/ }).first().click();
   await expect(page.getByRole("heading", { name: "Jordan Hale" })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/applicant-file-dark.png", fullPage: false });
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: /Rig check/ }).click();
   await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
   await expect(page.getByRole("radio", { name: "Purple" })).toHaveAttribute("aria-checked", "true");
   await page.screenshot({ path: "/opt/cursor/artifacts/theme-picker.png", fullPage: false });
