@@ -47,10 +47,6 @@ The deploy account can't run functions as the project's built-in account yet. Th
 4. Do the same for **<project number>-compute@developer.gserviceaccount.com** ("Default compute service account"; for PVRS: 1066878367633-compute@developer.gserviceaccount.com). The newer functions run as this account, and the deploy fails with the same ActAs error naming it until it's granted too.
 5. Rerun: GitHub → Actions → the failed run → **Re-run all jobs**.
 
-## Pull request previews
-
-A pull request from this repository also runs **Hosting preview** (`.github/workflows/preview.yml`). That job builds the site and deploys it to a Firebase Hosting channel named `pr-<number>` for 7 days, then comments the URL. It does not deploy rules, functions, or the live site. Sign-in on that URL needs the preview hostname added by hand. See `HOSTING.md`.
-
 ## What it doesn't deploy
 The paperwork email function (`notifyPaperwork`) waits until an email password exists (see CLAUDE.md, Server-side email).
 

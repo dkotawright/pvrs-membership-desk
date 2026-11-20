@@ -21,7 +21,7 @@ const Anthropic = require("@anthropic-ai/sdk");
 
 if (!getApps().length) initializeApp();
 const db = getFirestore();
-// Must match src/lib/config.ts and the rules.
+// Must match public/js/config.js and the rules.
 const OWNER_EMAIL = "dkota@pvrs.org";
 const CHAT_MODEL = process.env.ANTHROPIC_CHAT_MODEL || "claude-haiku-5-5";
 const BRIEF_MODEL = process.env.ANTHROPIC_BRIEF_MODEL || "claude-sonnet-5-5";
