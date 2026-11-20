@@ -1,6 +1,17 @@
 import { test, expect } from "@playwright/test";
 import { declinedSeed, interviewerSeed, memberSeed, ownerSeed, portalSeed } from "../src/lib/demo";
 
+async function expectOneSidebar(page: import("@playwright/test").Page, label: string) {
+  const buttons = page.locator("aside nav button");
+  const rows = await buttons.evaluateAll((els) => els.map((el) => ({
+    name: (el as HTMLElement).innerText.split("\n")[0]?.trim() || "",
+    current: el.getAttribute("aria-current"),
+    bg: getComputedStyle(el).backgroundColor,
+  })));
+  const lit = rows.filter((row) => row.current === "page" || (row.bg !== "rgba(0, 0, 0, 0)" && row.bg !== "transparent"));
+  expect(lit.map((row) => row.name)).toEqual([label]);
+}
+
 async function boot(page: import("@playwright/test").Page, seed: object | null, path = "/", theme: { mode: string; accent: string } | null = null) {
   await page.addInitScript(({ s, theme }) => {
     try { localStorage.setItem("pvrsTourOff", "1"); } catch { /* ignore */ }
@@ -50,7 +61,12 @@ test("owner pipeline shows every lane and opens a file", async ({ page }) => {
   await page.screenshot({ path: "/opt/cursor/artifacts/nav-desktop.png", fullPage: false });
   await page.getByRole("button", { name: /Orientation/ }).click();
   await expect(page.getByRole("heading", { name: "Orientation" })).toBeVisible();
+  await expectOneSidebar(page, "Orientation");
   await page.screenshot({ path: "/opt/cursor/artifacts/onboard-desktop.png", fullPage: false });
+  for (const name of ["Messages", "Board meeting", "Rig check", "Dispatch"]) {
+    await page.locator("aside nav").getByRole("button", { name: new RegExp("^" + name) }).click();
+    await expectOneSidebar(page, name);
+  }
   await page.getByRole("button", { name: /Dispatch/ }).first().click();
   await page.getByRole("button", { name: "List", exact: true }).click();
   await expect(page.getByRole("button", { name: /Riley Brooks/ })).toBeVisible();

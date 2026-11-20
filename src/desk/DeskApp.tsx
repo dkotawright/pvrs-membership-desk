@@ -349,7 +349,7 @@ function threadFor(a: Applicant) { return a._id; }
 
 function Nav({ view, setView, actorCan, admin, requests }: { view: View; setView: (v: View) => void; actorCan: boolean; admin: boolean; requests: number }) {
   const item = (id: View, label: string, hint: string, Icon: typeof LayoutGrid, show = true) => show ? (
-    <button key={id} type="button" title={hint} onClick={() => setView(id)} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition ${view === id ? "bg-blue/10 font-semibold text-blue" : "hover:bg-black/5"}`}>
+    <button key={id} type="button" title={hint} aria-current={view === id ? "page" : undefined} onClick={() => setView(id)} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm ${view === id ? "bg-blue/10 font-semibold text-blue" : "hover:bg-black/5"}`}>
       <Icon className="h-4 w-4 shrink-0" />
       <span className="min-w-0 flex-1"><span className="block">{label}</span><span className="block text-[11px] font-normal text-muted">{hint}</span></span>
       {id === "team" && requests ? <span className="rounded-full bg-crimson px-1.5 text-[10px] text-white">{requests}</span> : null}
