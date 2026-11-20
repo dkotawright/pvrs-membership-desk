@@ -1869,6 +1869,16 @@ try {
     if (await page.evaluate(() => localStorage.getItem("pvrsDesk.sort"))) fail("reset left saved data"); else ok("Reset clears this site's saved data and reloads");
     await ctx.close();
   }
+  // ---- Team on a phone: a waiting access request shows its name and Approve (Nov 20: the box was squeezed to 0 px)
+  {
+    const { ctx, page } = await open(browser, { w: 390, h: 844 }); await wait(page, 600);
+    await page.evaluate(() => { window.__mock.docs.set("accessRequests/casey@pvrs.org", { email: "casey@pvrs.org", name: "Casey New", requestedAt: Date.now(), status: "pending" }); window.__mock.emit(); }); await wait(page, 400);
+    await page.evaluate(() => document.querySelector("#teamBtn").click()); await wait(page, 400);
+    const h = await page.evaluate(() => document.querySelector("#reqList").offsetHeight);
+    await page.locator('#reqList [data-approve="casey@pvrs.org"]').scrollIntoViewIfNeeded().catch(() => {});
+    if (h < 60 || !(await page.locator("#reqList").getByText("Casey New").isVisible()) || !(await page.locator('#reqList [data-approve="casey@pvrs.org"]').isVisible())) fail("phone request box: " + h + "px"); else ok("on a phone, Team shows a request's name with Approve and Deny");
+    await ctx.close();
+  }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {
     const { ctx, page } = await open(browser, { url: "/apply?src=flyer", user: null }); await wait(page, 600);

@@ -2514,3 +2514,7 @@ input:focus-visible,textarea:focus-visible,select:focus-visible{outline:none;box
 .mc-item{appearance:none;border:0;text-align:left;font:inherit;color:var(--fg);background:var(--fill);border-radius:12px;padding:8px 12px;cursor:pointer;min-height:44px;display:flex;flex-direction:column;gap:2px}
 .mc-item small{color:var(--fg2);font-size:12.5px}
 .mc-item:hover{background:var(--fill2)}
+
+/* Windows: boxes never get squeezed to fit (Nov 20: the access-request box in Team shrank to 0 px on phones,
+   hiding the name and Approve). The window scrolls instead. */
+.modal .sheet>.ios,.modal .sheet>.note,.modal .sheet>.help,.modal .sheet>.group{flex-shrink:0}
