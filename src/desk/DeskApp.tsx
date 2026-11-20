@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Bell, Calendar, FileText, LayoutGrid, List, MessageSquare, Plus, Search, Settings as SettingsIcon, Shield, Sparkles, Users, BarChart3, ClipboardList } from "lucide-react";
 import { useBackend, useGate, useToast } from "../appContext";
 import { InterviewPanel } from "./interview";
-import { BulkBar, DupeBanner, Flyer, NotifySheet, Tour, mailRef, refUrl, usePushRefresh } from "./tools";
+import { BulkBar, DupeBanner, Flyer, NotifySheet, mailRef, refUrl, usePushRefresh } from "./tools";
 import { ThemeDialog, ThemePicker } from "../themePicker";
 import { MedControl, type McContext } from "./MedControl";
 import { docId, type Snap } from "../lib/backend";
@@ -10,10 +10,10 @@ import {
   ALL_TABS, DAY, LANES, STAGES, TYPES, canEditPath, canSeeApplicant, daysWaiting, first, get, inBoardQueue, inOrient, okEmail, refNudge,
   isSecurePath, ivScore, laneOf, mergeApplicants, nest, nextActionLabel, phaseBits, progress, refStatus, searchDesk,
   statusOf, tabDone, todoItems, type Applicant, type Settings, type TabId, ROLE_LABEL, showField, needsAction,
-  welcomeMessage, portalPayload, onbItems, issueItems, skillItems, today, HEARD, signatureText,
+  welcomeMessage, portalPayload, onbItems, issueItems, skillItems, today, HEARD, signatureText, orientDue,
 } from "../lib/domain";
 
-type View = "pipeline" | "messages" | "slots" | "board" | "team" | "settings" | "reports" | "orient" | "signoffs" | "library";
+type View = "pipeline" | "field" | "messages" | "slots" | "board" | "team" | "settings" | "reports" | "orient" | "signoffs" | "library";
 
 export function DeskApp() {
   const backend = useBackend();
@@ -44,7 +44,6 @@ export function DeskApp() {
   const [questions, setQuestions] = useState<string[]>([]);
   const [picked, setPicked] = useState<string[]>([]);
   const [selecting, setSelecting] = useState(false);
-  const [tourOn, setTourOn] = useState(false);
   const [notifyOn, setNotifyOn] = useState(false);
   const [themeOn, setThemeOn] = useState(false);
   const [accountOn, setAccountOn] = useState(false);
@@ -198,13 +197,13 @@ export function DeskApp() {
           {actor.canEdit ? <button type="button" data-screen="ai-button" aria-label="Med Control" className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/80 px-3 py-1.5 text-sm font-semibold text-blue shadow-sm hairline" onClick={() => setAiOpen(true)}><Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">Med Control</span><span className="text-[11px] font-medium text-muted">⌘J</span></button> : null}
           <button type="button" className="grid h-9 w-9 place-items-center rounded-full bg-white hairline" aria-label="Notifications" onClick={() => setNotifyOn(true)}><Bell className="h-4 w-4" /></button>
         </header>
-        <main className="min-h-0 min-w-0 flex-1 overflow-auto px-3 py-4 pb-8 md:px-6">
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto px-4 py-6 pb-28 md:px-8 md:pb-8">
           {view === "pipeline" && (
             <section data-screen="pipeline">
               <div className={`flex flex-wrap items-end justify-between gap-3 ${selected ? "hidden lg:flex" : ""}`}>
                 <div>
-                  <h1 className="text-3xl font-semibold tracking-tight">Pipeline</h1>
-                  <p className="text-sm text-muted">{apps.length} people · {save}</p>
+                  <h1 className="text-3xl font-semibold tracking-tight">Dispatch</h1>
+                  <p className="text-sm text-muted">Applicants in process · {apps.length} people · {save}</p>
                 </div>
                 <div className="seg" role="tablist" aria-label="Pipeline layout">
                   <button type="button" aria-pressed={mode === "board"} className="inline-flex items-center gap-1 text-sm" onClick={() => setMode("board")}><LayoutGrid className="h-3.5 w-3.5" /> Board</button>
@@ -256,7 +255,7 @@ export function DeskApp() {
                     })}
                   </div>
                   <div className={`min-w-0 ${selected ? "" : "hidden lg:block"}`}>
-                    {selected ? <button type="button" className="mb-3 text-sm font-semibold text-blue lg:hidden" onClick={() => setSel(null)}>‹ Pipeline</button> : null}
+                    {selected ? <button type="button" className="mb-3 text-sm font-semibold text-blue lg:hidden" onClick={() => setSel(null)}>‹ Dispatch</button> : null}
                     {selected ? <File a={selected} apps={apps} actor={actor} tab={tab} setTab={setTab} settings={settings} save={save} fieldValue={fieldValue} edit={edit} welcome={welcome} questions={questions} setQuestions={setQuestions} onMessage={() => { setThread(threadFor(selected)); setTab("msgs"); }} /> : <div className="card grid h-64 place-items-center p-6 text-center text-sm text-muted">Choose someone on the left. Their file opens here, and edits save as you go.</div>}
                   </div>
                 </div>
@@ -264,6 +263,7 @@ export function DeskApp() {
               {mode === "board" && selected ? <div className="mt-4"><File a={selected} apps={apps} actor={actor} tab={tab} setTab={setTab} settings={settings} save={save} fieldValue={fieldValue} edit={edit} welcome={welcome} questions={questions} setQuestions={setQuestions} onMessage={() => setTab("msgs")} /></div> : null}
             </section>
           )}
+          {view === "field" && <FieldTraining apps={apps} settings={settings} edit={edit} openFile={openFile} canEdit={actor.canEdit} />}
           {view === "messages" && <Messages channels={channels} posts={posts} channelId={channelId} setChannelId={setChannelId} actorEmail={actor.email} actorName={actor.name} backend={backend} toast={toast} />}
           {view === "slots" && <Slots slots={slots} backend={backend} actor={actor} toast={toast} />}
           {view === "board" && <BoardMeet apps={apps.filter(inBoardQueue)} onOpen={openFile} settings={settings} />}
@@ -274,13 +274,13 @@ export function DeskApp() {
           {view === "signoffs" && <Signoffs backend={backend} actorEmail={actor.email} />}
           {view === "library" && <Library backend={backend} canEdit={actor.canEdit} />}
         </main>
-      <nav className="frost flex shrink-0 border-t border-black/5 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Desk">
-        <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => { setView("pipeline"); setFilter("all"); }}><LayoutGrid className="h-5 w-5" />Pipeline</button>
-        <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => { setView("pipeline"); setFilter("onb"); }}><ClipboardList className="h-5 w-5" />Onboard</button>
-        <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => setView("messages")}><MessageSquare className="h-5 w-5" />Messages</button>
-        <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => setMobileMore(true)}><Plus className="h-5 w-5" />More</button>
-      </nav>
       </div>
+      <nav className="dock md:hidden" aria-label="Desk">
+        <button type="button" aria-pressed={view === "pipeline"} onClick={() => { setView("pipeline"); setFilter("all"); setSel(null); }}><LayoutGrid className="h-5 w-5" />Dispatch</button>
+        <button type="button" title="Field training" aria-pressed={view === "field"} onClick={() => { setView("field"); setSel(null); }}><ClipboardList className="h-5 w-5" />Training</button>
+        <button type="button" aria-pressed={view === "messages"} onClick={() => setView("messages")}><MessageSquare className="h-5 w-5" />Messages</button>
+        <button type="button" aria-pressed={mobileMore} onClick={() => setMobileMore(true)}><Plus className="h-5 w-5" />More</button>
+      </nav>
       {palette ? (
         <div className="fixed inset-0 z-40 grid place-items-start bg-black/30 p-4 pt-[12vh]" onClick={() => setPalette(false)}>
           <div className="card w-full max-w-xl overflow-hidden" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Search">
@@ -297,8 +297,8 @@ export function DeskApp() {
                     else if (h.id === "slots") setView("slots");
                     else if (h.id === "board") setView("board");
                     else if (h.id === "reports" || h.id === "flyer") setView("reports");
-                    else if (h.id === "tour") setTourOn(true);
                     else if (h.id === "notif") setNotifyOn(true);
+                    else if (h.id === "field") setView("field");
                     else if (h.id === "orient") setView("orient");
                     else if (h.id === "library") setView("library");
                     else if (h.id === "new") addApplicant(backend, actor.email, toast, openFile);
@@ -313,8 +313,8 @@ export function DeskApp() {
       ) : null}
       {mobileMore ? (
         <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setMobileMore(false)}>
-          <div className="card absolute inset-x-3 bottom-4 p-3" onClick={(e) => e.stopPropagation()}>
-            {[["slots", "Interview times"], ["board", "Board meeting"], ["reports", "Reports"], ...(actor.canEdit ? [["team", "Team"], ["settings", "Settings"]] : [])].map(([id, label]) => (
+          <div className="card absolute inset-x-3 p-3" style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }} onClick={(e) => e.stopPropagation()}>
+            {[["field", "Field training"], ["slots", "Interview times"], ["board", "Board meeting"], ["reports", "Reports"], ...(actor.canEdit ? [["team", "Team"], ["settings", "Rig check"]] : [])].map(([id, label]) => (
               <button key={id} type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setView(id as View); setMobileMore(false); }}>{label}</button>
             ))}
             <button type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setMobileMore(false); setThemeOn(true); }}>Appearance</button>
@@ -322,7 +322,6 @@ export function DeskApp() {
         </div>
       ) : null}
       {actor.canEdit ? <MedControl open={aiOpen} onClose={() => setAiOpen(false)} context={context} hints={hints} onOpen={(id) => { openFile(id); setAiOpen(false); }} /> : null}
-      <Tour role={actor.role === "owner" || actor.role === "full" ? "owner" : actor.role} email={actor.email} force={tourOn} onClose={() => setTourOn(false)} />
       {notifyOn ? <NotifySheet onClose={() => setNotifyOn(false)} /> : null}
       {themeOn ? <ThemeDialog email={actor.email} onClose={() => setThemeOn(false)} /> : null}
     </div>
@@ -336,16 +335,32 @@ function initials(name?: string) {
 function threadFor(a: Applicant) { return a._id; }
 
 function Nav({ view, setView, actorCan, admin, requests }: { view: View; setView: (v: View) => void; actorCan: boolean; admin: boolean; requests: number }) {
-  const item = (id: View, label: string, Icon: typeof LayoutGrid, show = true) => show ? (
-    <button key={id} type="button" onClick={() => setView(id)} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm ${view === id ? "bg-blue/10 font-semibold text-blue" : "hover:bg-black/5"}`}>
-      <Icon className="h-4 w-4 shrink-0" /> <span className="flex-1">{label}</span>{id === "team" && requests ? <span className="rounded-full bg-crimson px-1.5 text-[10px] text-white">{requests}</span> : null}
+  const item = (id: View, label: string, hint: string, Icon: typeof LayoutGrid, show = true) => show ? (
+    <button key={id} type="button" title={hint} onClick={() => setView(id)} className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm transition ${view === id ? "bg-blue/10 font-semibold text-blue" : "hover:bg-black/5"}`}>
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 flex-1"><span className="block">{label}</span><span className="block text-[11px] font-normal text-muted">{hint}</span></span>
+      {id === "team" && requests ? <span className="rounded-full bg-crimson px-1.5 text-[10px] text-white">{requests}</span> : null}
     </button>
   ) : null;
   return (
-    <nav className="mt-4 space-y-4 overflow-auto text-sm" aria-label="Desk">
-      <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">Pipeline</div>{item("pipeline", "Overview", LayoutGrid)}{admin ? item("board", "Board meeting", Users) : null}{admin ? item("orient", "Orientation board", ClipboardList) : null}{item("signoffs", "Trainer sign-offs", Shield, true)}</div>
-      <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">Work</div>{item("slots", "Interview times", Calendar)}{item("messages", "Messages", MessageSquare)}{item("library", "Documents", FileText)}{admin ? item("reports", "Reports", BarChart3) : null}</div>
-      {actorCan ? <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">Admin</div>{item("team", "Team", Users)}{item("settings", "Settings", SettingsIcon)}</div> : null}
+    <nav className="mt-5 space-y-5 overflow-auto text-sm" aria-label="Desk">
+      <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">On the desk</div>
+        {item("pipeline", "Dispatch", "Applicants in process", LayoutGrid)}
+        {item("field", "Field training", "After the board says yes", ClipboardList)}
+        {admin ? item("board", "Board meeting", "The vote", Users) : null}
+        {admin ? item("orient", "Paperwork grid", "Every checklist line", ClipboardList) : null}
+        {item("signoffs", "Trainer sign-offs", "Skills on the rig", Shield, true)}
+      </div>
+      <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">Work</div>
+        {item("slots", "Interview times", "Open slots", Calendar)}
+        {item("messages", "Messages", "Squad channels", MessageSquare)}
+        {item("library", "Documents", "Shared files", FileText)}
+        {admin ? item("reports", "Reports", "This year", BarChart3) : null}
+      </div>
+      {actorCan ? <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">Admin</div>
+        {item("team", "Team", "Who can sign in", Users)}
+        {item("settings", "Rig check", "How the desk is set", SettingsIcon)}
+      </div> : null}
     </nav>
   );
 }
@@ -380,6 +395,7 @@ function File({ a, apps, actor, tab, setTab, settings, save, fieldValue, edit, w
           <div className="flex min-w-0 flex-1 items-start gap-3">
           <span className={`lane-${laneOf(a)} grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-[var(--lane)]/20 text-lg font-semibold text-[var(--lane-ink)]`}>{initials(a.name)}</span>
           <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">Run sheet</p>
             <h2 className="text-2xl font-semibold">{a.name}</h2>
             <p className="text-sm text-muted [overflow-wrap:anywhere]">{a.type} · {a.location === "other" ? a.locationOther : a.location || "Potsdam"} · {st.head}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs">{a.email ? <a className="rounded-full bg-[#f5f5f7] px-2 py-1" href={`mailto:${a.email}`}>{a.email}</a> : null}{a.phone ? <span className="rounded-full bg-[#f5f5f7] px-2 py-1">{a.phone}</span> : null}</div>
@@ -707,7 +723,8 @@ function SettingsPanel({ settings, backend, toast }: { settings: Settings; backe
   }
   return (
     <section className="max-w-2xl space-y-4" data-screen="settings">
-      <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
+      <h1 className="text-3xl font-semibold tracking-tight">Rig check</h1>
+      <p className="text-sm text-muted">How the desk is set. Appearance stays on this device.</p>
       <div className="card p-4"><ThemePicker email={backend.current()?.email} /></div>
       <label className="block text-sm">Signature<textarea className={`${box} mt-1`} rows={4} defaultValue={settings.signature || signatureText(settings)} onBlur={(e) => save({ signature: e.target.value })} /></label>
       <label className="block text-sm">Documents email<input className={`${box} mt-1`} defaultValue={String(settings.docsEmail || "")} onBlur={(e) => save({ docsEmail: e.target.value })} /></label>
@@ -747,6 +764,85 @@ function printPacket(a: Applicant) {
   if (!root.parentElement) document.body.appendChild(root);
   root.innerHTML = `<article style="font-family:system-ui;padding:32px"><h1>${a.name}</h1><p>${a.type || ""} · ${a.email || ""}</p><p>Interview score ${s.n ? s.avg.toFixed(1) : "n/a"}${s.n && s.avg < 3 ? " · flagged under 3" : ""}</p><p>References ${refStatus(a).got} of ${refStatus(a).need}. License numbers are not printed.</p><p>Committee: ${String(get(a, "appr.committee") || "—")} · Board: ${String(get(a, "board.result") || "—")}</p></article>`;
   window.print();
+}
+
+function FieldTraining({ apps, settings, edit, openFile, canEdit }: {
+  apps: Applicant[]; settings: Settings; edit: (a: Applicant, p: string, v: unknown) => void; openFile: (id: string) => void; canEdit: boolean;
+}) {
+  const people = apps.filter((a) => inOrient(a) && progress(a).stage !== "act");
+  const paper = onbItems(settings);
+  const gear = issueItems(settings);
+  return (
+    <section data-screen="field" className="mx-auto max-w-3xl">
+      <h1 className="text-3xl font-semibold tracking-tight">Field training</h1>
+      <p className="mt-1 text-sm text-muted">People the board accepted. Paperwork, gear, and the first shifts.</p>
+      {!people.length ? <div className="card mt-6 p-8 text-center text-sm text-muted">Nobody is in field training right now.</div> : null}
+      <div className="mt-6 space-y-5">
+        {people.map((a) => {
+          const paperDone = paper.filter(([k]) => get(a, `onb.items.${k}`)).length;
+          const gearDone = gear.filter(([k]) => get(a, `onb.issue.${k}`)).length;
+          const nextPaper = paper.find(([k]) => !get(a, `onb.items.${k}`));
+          const nextGear = gear.find(([k]) => !get(a, `onb.issue.${k}`));
+          const ster = get(a, "bg.sterResult");
+          const sterLabel = ster === "clear" ? "Sterling clear" : get(a, "bg.sterDone") ? "Sterling needs a look" : get(a, "bg.sterReq") ? "Sterling running" : "Sterling not started";
+          const due = orientDue(a, settings);
+          const overdue = !!due && due < today();
+          const mentor = String(get(a, "onb.mentor") || "");
+          const started = String(get(a, "onb.orientStarted") || get(a, "board.date") || "");
+          return (
+            <article key={a._id} className="card p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="lane-onb grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[var(--lane)]/20 text-sm font-semibold text-[var(--lane-ink)]">{initials(a.name)}</span>
+                  <div>
+                    <h2 className="text-xl font-semibold">{a.name}</h2>
+                    <p className="text-sm text-muted">{a.type || "Member"}{started ? ` · since ${started}` : ""}</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                  <span className="rounded-full bg-soft px-2 py-1">{sterLabel}</span>
+                  {overdue ? <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-900">Overdue {due}</span> : due ? <span className="rounded-full bg-soft px-2 py-1">Due {due}</span> : null}
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Progress label="Paperwork" done={paperDone} total={paper.length} />
+                <Progress label="Gear and access" done={gearDone} total={gear.length} />
+              </div>
+              <p className="mt-4 text-sm"><span className="text-muted">Next: </span><b>{nextPaper?.[1] || nextGear?.[1] || "Nothing left on the lists"}</b></p>
+              <p className="mt-1 text-sm text-muted">{mentor ? `Mentor: ${mentor}` : "No mentor named yet."}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {canEdit && nextPaper ? <button type="button" className="rounded-full bg-blue px-3 py-1.5 text-sm font-semibold text-white" onClick={() => edit(a, `onb.items.${nextPaper[0]}`, today())}>Mark next paperwork done</button> : null}
+                {canEdit && nextGear ? <button type="button" className="rounded-full px-3 py-1.5 text-sm hairline" onClick={() => edit(a, `onb.issue.${nextGear[0]}`, today())}>Issue {nextGear[1]}</button> : null}
+                {canEdit && !mentor ? <button type="button" className="rounded-full px-3 py-1.5 text-sm hairline" onClick={() => { const name = window.prompt("Mentor's name"); if (name) { edit(a, "onb.mentor", name); edit(a, "onb.mentorSince", today()); } }}>Name a mentor</button> : null}
+                <button type="button" className="rounded-full px-3 py-1.5 text-sm hairline" onClick={() => openFile(a._id)}>Open run sheet</button>
+              </div>
+              <ul className="mt-4 max-h-52 space-y-1 overflow-auto pr-1 text-sm">
+                {paper.map(([k, label]) => {
+                  const done = !!get(a, `onb.items.${k}`);
+                  return (
+                    <li key={k} className="flex items-center justify-between gap-2 rounded-xl px-2 py-1.5">
+                      <span className={done ? "text-muted line-through" : ""}>{label}</span>
+                      {canEdit ? <button type="button" className="shrink-0 rounded-full px-2 py-1 text-xs hairline" onClick={() => { edit(a, `onb.items.${k}`, done ? "" : today()); if (done) edit(a, `onb.undone.${k}`, today()); }}>{done ? "Undo" : "Done"}</button> : <span className="text-xs text-muted">{done ? "Done" : "Open"}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function Progress({ label, done, total }: { label: string; done: number; total: number }) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return (
+    <div>
+      <div className="flex justify-between text-xs font-semibold"><span>{label}</span><span className="tabular text-muted">{done} of {total}</span></div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-black/10"><div className="h-full rounded-full bg-blue" style={{ width: `${pct}%` }} /></div>
+    </div>
+  );
 }
 
 function OrientBoard({ apps, settings, edit }: { apps: Applicant[]; settings: Settings; edit: (a: Applicant, p: string, v: unknown) => void }) {

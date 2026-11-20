@@ -35,9 +35,9 @@
 ::selection { background: color-mix(in srgb, var(--color-blue) 35%, white); }
 
 .frost {
-  background: var(--frost, rgba(255, 255, 255, 0.72));
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  background: var(--frost, rgba(255, 255, 255, 0.62));
+  backdrop-filter: saturate(180%) blur(28px);
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
 }
 .hairline { box-shadow: inset 0 0 0 1px var(--color-line); }
 .mesh {
@@ -61,12 +61,56 @@
 .seg > button[aria-pressed="true"] { background: var(--color-card); color: var(--color-ink); box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 6px 16px -8px rgba(15,23,42,.35); }
 .card {
   box-sizing: border-box;
-  background: var(--color-card);
-  border-radius: 20px;
-  border: 1px solid var(--color-line);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -6px rgba(15, 23, 42, 0.06);
+  background: color-mix(in srgb, var(--color-card) 78%, transparent);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border-radius: 24px;
+  border: 1px solid color-mix(in srgb, white 70%, var(--color-line));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 1px 2px rgba(15, 23, 42, 0.04), 0 18px 40px -22px rgba(15, 23, 42, 0.28);
   min-width: 0;
+  transition: transform 180ms ease, box-shadow 180ms ease;
 }
+.dock {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  max-width: calc(100% - 20px);
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 18px 40px -16px rgba(24, 36, 70, 0.38);
+  backdrop-filter: saturate(180%) blur(22px);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+}
+.dock button {
+  display: flex;
+  min-width: 64px;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 52px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 10.5px;
+  font-weight: 650;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+.dock button[aria-pressed="true"] {
+  color: var(--color-blue);
+  background: color-mix(in srgb, var(--color-blue) 16%, transparent);
+}
+.dock button:active { transform: scale(0.94); }
+@media (min-width: 768px) { .dock { display: none; } }
 h1, h2, .display { letter-spacing: -0.025em; }
 .tabular { font-variant-numeric: tabular-nums; }
 .press { transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease; }
@@ -122,7 +166,17 @@ html[data-mode="dark"] .bg-white\/95 { background-color: var(--color-card); }
 html[data-mode="dark"] .bg-\[\#f5f5f7\],
 html[data-mode="dark"] .bg-\[\#e8e8ed\],
 html[data-mode="dark"] .bg-\[\#efeff4\] { background-color: var(--color-soft); color: var(--color-ink); }
-html[data-mode="dark"] .card { background-color: #1c1c1e; color: #f5f5f7; }
+html[data-mode="dark"] .card {
+  background: color-mix(in srgb, #1c1c1e 76%, transparent);
+  color: #f5f5f7;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 40px -18px rgba(0, 0, 0, 0.65);
+}
+html[data-mode="dark"] .dock {
+  background: rgba(28, 30, 38, 0.55);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 18px 40px -16px rgba(0, 0, 0, 0.6);
+}
 html[data-mode="dark"] .bg-black\/5 { background-color: rgba(255, 255, 255, 0.08); }
 html[data-mode="dark"] .bg-black\/10 { background-color: rgba(255, 255, 255, 0.12); }
 html[data-mode="dark"] .text-blue { color: var(--accent-ink); }
@@ -169,7 +223,7 @@ html[data-mode="dark"] .bg-red-50 { background-color: #3f1512; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rise, .press { animation: none; transition: none; }
+  .rise, .press, .dock button, .card { animation: none; transition: none; }
   .confetti { display: none !important; }
   .ecg-trail, .ecg-head { animation: none; stroke-dasharray: none; opacity: 0; }
   .lightbar { animation: none; opacity: 0.1; }
