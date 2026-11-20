@@ -947,7 +947,7 @@ export function searchDesk(q: string, apps: Applicant[], actor: Actor, messages:
     ["Interview times", "Post or manage times", "slots"],
     ["Messages", "Squad channels", "messages"],
     ["Team", "Who can sign in", "team"],
-    ["Rig check", "Emails, checklists, Med Control", "settings"],
+    ["Settings", "Emails, checklists, Med Control", "settings"],
     ["Reports", "How long each stretch takes", "reports"],
     ["Paperwork grid", "Every checklist line", "orient"],
     ["Documents", "Shared files", "library"],

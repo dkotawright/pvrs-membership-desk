@@ -63,9 +63,18 @@ test("owner pipeline shows every lane and opens a file", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Orientation" })).toBeVisible();
   await expectOneSidebar(page, "Orientation");
   await page.screenshot({ path: "/opt/cursor/artifacts/onboard-desktop.png", fullPage: false });
-  for (const name of ["Messages", "Board meeting", "Rig check", "Dispatch"]) {
+  for (const name of ["Messages", "Board meeting", "Settings", "Dispatch"]) {
     await page.locator("aside nav").getByRole("button", { name: new RegExp("^" + name) }).click();
     await expectOneSidebar(page, name);
+    if (name === "Settings") {
+      await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+      await expect(page.getByText("Rig check")).toHaveCount(0);
+      await page.screenshot({ path: "/opt/cursor/artifacts/settings-nav.png", fullPage: false });
+      await page.getByPlaceholder("Search people, stages, actions").fill("Settings");
+      await expect(page.getByRole("button", { name: /Emails, checklists, Med Control/ })).toBeVisible();
+      await page.getByPlaceholder("Search people, stages, actions").fill("");
+      await page.keyboard.press("Escape");
+    }
   }
   await page.getByRole("button", { name: /Dispatch/ }).first().click();
   await page.getByRole("button", { name: "List", exact: true }).click();
@@ -83,6 +92,8 @@ test("search finds an applicant and Med Control opens", async ({ page }) => {
   await page.getByPlaceholder("Search people, stages, actions").fill("Riley");
   await expect(page.getByRole("button", { name: /Riley Brooks/ }).last()).toBeVisible();
   await page.keyboard.press("Escape");
+  await page.getByPlaceholder("Search people, stages, actions").fill("");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Med Control" }).click();
   const mc = page.getByRole("dialog", { name: "Med Control" });
   await expect(mc).toBeVisible();
@@ -90,6 +101,7 @@ test("search finds an applicant and Med Control opens", async ({ page }) => {
   await expect(mc.getByText("Claude")).toBeVisible();
   await mc.getByRole("button", { name: "Today" }).click();
   await expect(mc.getByText(/ready for the board/i).first()).toBeVisible();
+  await page.screenshot({ path: "/opt/cursor/artifacts/med-control.png", fullPage: false });
   await mc.getByRole("button", { name: "Clear" }).click();
   await expect(mc.getByText(/ready for the board/i)).toHaveCount(0);
   await mc.getByRole("button", { name: "Today" }).click();
@@ -102,7 +114,6 @@ test("search finds an applicant and Med Control opens", async ({ page }) => {
   await expect(mc.getByText(/ready for the board/i).first()).toBeVisible();
   await page.locator("aside nav").getByRole("button", { name: /^Messages/ }).click();
   await expect(mc.getByText(/ready for the board/i)).toHaveCount(0);
-  await page.screenshot({ path: "/opt/cursor/artifacts/med-control.png" });
 });
 
 test("messages are a channel, not a buried menu", async ({ page }) => {
@@ -175,7 +186,12 @@ test("mobile pipeline and home", async ({ page }) => {
     await page.getByRole("button", { name, exact: true }).click();
     await expect(page.locator("nav.dock button.on")).toHaveCount(1);
     await expect(page.locator("nav.dock button.on")).toHaveText(name);
-    if (name === "More") await page.locator(".fixed.inset-0").click({ position: { x: 8, y: 8 } });
+    if (name === "More") {
+      await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
+      await expect(page.getByText("Rig check")).toHaveCount(0);
+      await page.screenshot({ path: "/opt/cursor/artifacts/settings-more-mobile.png", fullPage: false });
+      await page.locator(".fixed.inset-0").click({ position: { x: 8, y: 8 } });
+    }
   }
   await page.getByRole("button", { name: "Orientation", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Orientation" })).toBeVisible();
@@ -229,7 +245,7 @@ test("appearance is per person and reaches the portal", async ({ page }) => {
   await page.getByRole("button", { name: /Jordan Hale/ }).first().click();
   await expect(page.getByRole("heading", { name: "Jordan Hale" })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/applicant-file-dark.png", fullPage: false });
-  await page.getByRole("button", { name: /Rig check/ }).click();
+  await page.getByRole("button", { name: /^Settings/ }).click();
   await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
   await expect(page.getByRole("radio", { name: "Purple" })).toHaveAttribute("aria-checked", "true");
   await page.screenshot({ path: "/opt/cursor/artifacts/theme-picker.png", fullPage: false });

@@ -327,7 +327,7 @@ export function DeskApp() {
       {mobileMore ? (
         <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setMobileMore(false)}>
           <div className="card absolute inset-x-3 p-3" style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }} onClick={(e) => e.stopPropagation()}>
-            {[["field", "Orientation"], ["slots", "Interview times"], ["board", "Board meeting"], ["reports", "Reports"], ...(actor.canEdit ? [["team", "Team"], ["settings", "Rig check"]] : [])].map(([id, label]) => (
+            {[["field", "Orientation"], ["slots", "Interview times"], ["board", "Board meeting"], ["reports", "Reports"], ...(actor.canEdit ? [["team", "Team"], ["settings", "Settings"]] : [])].map(([id, label]) => (
               <button key={id} type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setView(id as View); setMobileMore(false); }}>{label}</button>
             ))}
             <button type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setMobileMore(false); setThemeOn(true); }}>Appearance</button>
@@ -372,7 +372,7 @@ function Nav({ view, setView, actorCan, admin, requests }: { view: View; setView
       </div>
       {actorCan ? <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">Admin</div>
         {item("team", "Team", "Who can sign in", Users)}
-        {item("settings", "Rig check", "How the desk is set", SettingsIcon)}
+        {item("settings", "Settings", "How the desk is set", SettingsIcon)}
       </div> : null}
     </nav>
   );
@@ -736,7 +736,7 @@ function SettingsPanel({ settings, backend, toast }: { settings: Settings; backe
   }
   return (
     <section className="max-w-2xl space-y-4" data-screen="settings">
-      <h1 className="text-3xl font-semibold tracking-tight">Rig check</h1>
+      <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
       <p className="text-sm text-muted">How the desk is set. Appearance stays on this device.</p>
       <div className="card p-4"><ThemePicker email={backend.current()?.email} /></div>
       <label className="block text-sm">Signature<textarea className={`${box} mt-1`} rows={4} defaultValue={settings.signature || signatureText(settings)} onBlur={(e) => save({ signature: e.target.value })} /></label>
