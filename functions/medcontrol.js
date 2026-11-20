@@ -1,26 +1,45 @@
-// Med Control: the desk's AI assistant (Claude). One callable function, three jobs:
-//   chat  - answer questions about the roster ("who's waiting on references?") and draft emails   [Claude Haiku 5.5]
-//   brief - a one-page applicant brief: summary, interview summary, combined reference summary, an advisory
-//           recommendation (proceed / look closer / not ready), strengths, follow-ups, questions, reference digest; saved to applicants/{id}/private/main.ai.brief                     [Claude Sonnet 5.5]
-//   reply - a draft answer to the applicant's latest portal message                                [Claude Haiku 5.5]
-// Owner only (Dkota, Nov 2026: no one else, so it can't be spammed), capped per day. The function loads the records itself and filters them here,
-// so the model NEVER sees: license numbers, date/place of birth, addresses, phone numbers, reference contact details,
-// conviction explanations, uploaded files, or anything in the confidential vault. It only drafts; people send.
-// Needs the secret ANTHROPIC_API_KEY (docs/med-control.md). Deploy: firebase deploy --only functions:ai
+// Med Control: the desk's AI assistant. One callable function.
+//   briefing     - what needs attention today                                          [Groq fast model]
+//   chat         - questions about the roster, agendas, email drafts                   [Groq fast model]
+//   brief        - one-page applicant & board brief, saved on the private record       [Groq deep model]
+//   questions    - interview questions tailored to this applicant                      [Groq deep model]
+//   reply        - draft answer to the applicant's latest portal message               [Groq fast model]
+//   draft_email  - welcome, reference nudge, interview, no-show, check-in (review first) [Groq fast model]
+//   usage        - today's call count, no model call
+// Groq's free tier is the default (GROQ_API_KEY). Claude (ANTHROPIC_API_KEY) is optional.
+// Secrets are bound only when named in MEDCONTROL_SECRETS at deploy time, so a Groq-only
+// deploy does not fail because the Claude secret is missing. See docs/med-control.md.
+// Owner and Full access only, capped per day. Records are filtered here before any model sees them.
+// Never sent: license numbers, date/place of birth, addresses, phones, emails, conviction
+// explanations, uploaded files, reference contacts, or confidential vault items.
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { initializeApp, getApps } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getFirestore } = require("firebase-admin/firestore");
 const Anthropic = require("@anthropic-ai/sdk");
 
 if (!getApps().length) initializeApp();
 const db = getFirestore();
-const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
-// Must match public/js/config.js and the rules.
+// Must match src/lib/config.ts and the rules.
 const OWNER_EMAIL = "dkota@pvrs.org";
-const CHAT_MODEL = "claude-haiku-5-5", BRIEF_MODEL = "claude-sonnet-5-5";
-const DAILY_LIMIT = 150;   // calls per person per day; a runaway loop can't run up the bill
+const CHAT_MODEL = process.env.ANTHROPIC_CHAT_MODEL || "claude-haiku-5-5";
+const BRIEF_MODEL = process.env.ANTHROPIC_BRIEF_MODEL || "claude-sonnet-5-5";
+const GROQ_FAST = process.env.GROQ_FAST_MODEL || "openai/gpt-oss-20b";
+const GROQ_DEEP = process.env.GROQ_DEEP_MODEL || "openai/gpt-oss-120b";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const DAILY_LIMIT = 150;
+const DEFAULT_TONE = "Write like the Potsdam Volunteer Rescue Squad membership coordinator: warm, plain, specific, and short. No jargon.";
+
+// A listed secret must exist in Secret Manager or the whole deploy fails. Only list the ones this deploy asked for.
+function bindSecrets(){
+  const want = String(process.env.MEDCONTROL_SECRETS || "groq").split(",").map(s => s.trim()).filter(Boolean);
+  const list = [];
+  if (want.includes("groq")) list.push(defineSecret("GROQ_API_KEY"));
+  if (want.includes("anthropic")) list.push(defineSecret("ANTHROPIC_API_KEY"));
+  return list.length ? list : [defineSecret("GROQ_API_KEY")];
+}
+const SECRETS = bindSecrets();
 
 /* ---------- who may use it ---------- */
 // The caller's team role, or null. Any lookup failure counts as "no role", so it refuses rather than lets through.
@@ -139,43 +158,145 @@ Rules you always follow:
 - If the records don't contain the answer, say so plainly. Don't guess dates, names or results.
 - Write in plain, friendly, professional English. Use applicants' names exactly as written in the records. Keep answers short: a sentence or a short list.`;
 
-const client = () => new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+function providerName(){
+  if (process.env.GROQ_API_KEY) return "groq";
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  return "none";
+}
 const textOf = r => (r.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
 function apiError(e){
   if (e instanceof HttpsError) return e;
   logger.error("Med Control API error", { status: e && e.status, message: e && e.message });
-  if (e instanceof Anthropic.AuthenticationError) return new HttpsError("failed-precondition", "Med Control's API key isn't working. Check docs/med-control.md.");
-  if (e instanceof Anthropic.RateLimitError) return new HttpsError("resource-exhausted", "Med Control is busy. Try again in a minute.");
-  if (e instanceof Anthropic.APIError) return new HttpsError("unavailable", "Med Control couldn't answer right now. Try again.");
+  if (e instanceof Anthropic.AuthenticationError || (e && e.status === 401)) return new HttpsError("failed-precondition", "Med Control's API key isn't working. Check docs/med-control.md.");
+  if (e instanceof Anthropic.RateLimitError || (e && e.status === 429)) return new HttpsError("resource-exhausted", "Med Control is busy. Try again in a minute.");
+  if (e instanceof Anthropic.APIError || (e && e.status >= 500)) return new HttpsError("unavailable", "Med Control couldn't answer right now. Try again.");
   return new HttpsError("internal", "Med Control hit a problem. Try again.");
 }
 function checkStop(r){
-  if (r.stop_reason === "refusal") throw new HttpsError("failed-precondition", "Med Control can't help with that one.");
+  if (r && r.stop_reason === "refusal") throw new HttpsError("failed-precondition", "Med Control can't help with that one.");
 }
+function parseJson(text){
+  const t = String(text || "").trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  const i = t.indexOf("{"), j = t.lastIndexOf("}");
+  if (i < 0 || j < i) throw new HttpsError("internal", "Med Control's answer came back garbled. Try again.");
+  try { return JSON.parse(t.slice(i, j + 1)); } catch { throw new HttpsError("internal", "Med Control's answer came back garbled. Try again."); }
+}
+async function groqOnce(model, messages, maxTokens, json){
+  const body = { model, messages, temperature: 0.3 };
+  body.max_tokens = maxTokens;
+  if (json) body.response_format = { type: "json_object" };
+  const res = await fetch(GROQ_URL, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + process.env.GROQ_API_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 400 && maxTokens) {
+    const retry = { ...body }; delete retry.max_tokens; retry.max_completion_tokens = maxTokens;
+    const again = await fetch(GROQ_URL, { method: "POST", headers: { Authorization: "Bearer " + process.env.GROQ_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify(retry) });
+    if (!again.ok) { const err = new Error(await again.text()); err.status = again.status; throw err; }
+    const data = await again.json();
+    return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+  }
+  if (!res.ok) { const err = new Error(await res.text()); err.status = res.status; throw err; }
+  const data = await res.json();
+  return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+}
+async function groq(deep, messages, maxTokens, json){
+  const primary = deep ? GROQ_DEEP : GROQ_FAST, fallback = deep ? GROQ_FAST : GROQ_DEEP;
+  try { return { text: await groqOnce(primary, messages, maxTokens, json), model: primary }; }
+  catch (e) {
+    if (e && e.status === 429 && fallback !== primary) {
+      logger.warn("Groq rate limit, trying the other free model", { primary });
+      return { text: await groqOnce(fallback, messages, maxTokens, json), model: fallback };
+    }
+    throw e;
+  }
+}
+function anthropic(){ return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }); }
+async function squadVoice(){
+  let tone = DEFAULT_TONE, signature = "Dkota Wright\nPotsdam Volunteer Rescue Squad\ndkota@pvrs.org";
+  try {
+    const s = await db.doc("settings/main").get();
+    if (s.exists) {
+      if (typeof s.data().aiTone === "string" && s.data().aiTone.trim()) tone = clip(s.data().aiTone, 800);
+      if (typeof s.data().signature === "string" && s.data().signature.trim()) signature = clip(s.data().signature, 500);
+    }
+  } catch (e) { logger.warn("Med Control couldn't read settings", e && e.message); }
+  return { tone, signature };
+}
+async function rosterOf(hintsIn){
+  const [apps, privs] = await Promise.all([db.collection("applicants").get(), db.collectionGroup("private").get()]);
+  const pm = new Map(privs.docs.filter(d => d.id === "main").map(d => [d.ref.parent.parent.id, d.data()]));
+  const hints = cleanHints(hintsIn);
+  return apps.docs.map(d => ({ ...safeApplicant(d.id, d.data(), pm.get(d.id), false), desk: hints[d.id] }));
+}
+function attentionItems(roster){
+  const out = [], soon = Date.now() + 30 * 864e5;
+  const expSoon = v => { if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false; return new Date(v + "T12:00:00").getTime() <= soon; };
+  for (const a of roster) {
+    const id = a.id, name = a.name || "An applicant";
+    const waiting = (a.references || []).filter(r => r && r.name && !r.returned);
+    if (waiting.length) out.push({ id, title: `${name}: references still out`, sub: waiting.map(r => r.name).join(", ") });
+    if (a.committee && a.committee.committee === "yes" && !(a.board && a.board.result)) out.push({ id, title: `${name} is ready for the board`, sub: "Committee has approved" });
+    if (a.scheduling && a.scheduling.scheduled && !a.scheduling.completed) out.push({ id, title: `${name}'s interview`, sub: String(a.scheduling.scheduled) });
+    else if (a.desk && a.desk.next && /interview/i.test(String(a.desk.next)) && !(a.scheduling && a.scheduling.scheduled)) out.push({ id, title: `${name} has no interview time`, sub: String(a.desk.next) });
+    const dates = [];
+    if (a.license && expSoon(a.license.expires)) dates.push("driver's license " + a.license.expires);
+    if (a.onboarding && expSoon(a.onboarding.cprExpires)) dates.push("CPR " + a.onboarding.cprExpires);
+    if (a.onboarding && expSoon(a.onboarding.emsCertExpires)) dates.push("EMS cert " + a.onboarding.emsCertExpires);
+    if (dates.length) out.push({ id, title: `${name}: something expires soon`, sub: dates.join(", ") });
+    if (a.desk && a.desk.todo && !out.some(x => x.id === id)) out.push({ id, title: String(a.desk.todo), sub: a.desk.next || name });
+  }
+  const seen = new Set();
+  return out.filter(x => { const k = x.id + x.title; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 12);
+}
+const BRIEF_RULES = `Write an applicant brief for the membership committee and board. Be fair and factual; base every point on the record. Mark a reference "waiting" if it hasn't come back.
+The recommendation is advice to the committee, which makes the decision. Weigh only what bears on doing this volunteer work: commitment, availability, reliability, teamwork and what references said. Never weigh or mention age, gender, race, ethnicity, national origin, religion, disability, health, sexual orientation or family status, even if they appear in the record. A "yes" to the conviction or driving question means look_closer, with a reason saying the committee should review the explanation on file; you never see that explanation, so don't guess at it or judge it. Don't use "reject", "deny" or similar words.
+Return JSON with keys summary, interviewSummary, referencesSummary, recommendation (proceed, look_closer, or not_ready), recommendationReasons, strengths, followUps, questions, references (array of {name, tone, note} where tone is strong, positive, mixed, concern, or waiting).`;
 
 /* ---------- jobs ---------- */
-async function chat(data){
+function contextLine(data){
+  const c = data && data.context && typeof data.context === "object" ? data.context : {};
+  const view = clip(c.view, 40), name = clip(c.applicantName, 80), id = /^[A-Za-z0-9_-]{1,64}$/.test(c.applicantId || "") ? c.applicantId : "";
+  return `The coordinator currently has this open: view ${view || "pipeline"}${name ? ", applicant " + name : ""}${id ? " (id " + id + ")" : ""}.`;
+}
+async function say(deep, system, messages, maxTokens, json){
+  if (providerName() === "none") throw new HttpsError("failed-precondition", "Med Control isn't set up yet. Add a free Groq key. See docs/med-control.md.");
+  if (providerName() === "groq") return groq(deep, [{ role: "system", content: system }, ...messages], maxTokens, json);
+  const model = deep ? BRIEF_MODEL : CHAT_MODEL;
+  const r = await anthropic().messages.create({ model, max_tokens: maxTokens, system, messages });
+  checkStop(r);
+  return { text: textOf(r), model: r.model || model, usage: r.usage };
+}
+async function chat(data, voice){
   const msgs = Array.isArray(data.messages) ? data.messages.slice(-20) : [];
   const history = msgs.filter(m => m && (m.role === "user" || m.role === "assistant") && typeof m.text === "string" && m.text.trim())
     .map(m => ({ role: m.role, content: clip(m.text, 4000) }));
   if (!history.length || history[history.length - 1].role !== "user") throw new HttpsError("invalid-argument", "Ask a question.");
   while (history.length && history[0].role !== "user") history.shift();
-  const [apps, privs] = await Promise.all([db.collection("applicants").get(), db.collectionGroup("private").get()]);
-  const pm = new Map(privs.docs.filter(d => d.id === "main").map(d => [d.ref.parent.parent.id, d.data()]));
-  const hints = cleanHints(data.hints);
-  const roster = apps.docs.map(d => ({ ...safeApplicant(d.id, d.data(), pm.get(d.id), false), desk: hints[d.id] }));
+  const roster = await rosterOf(data.hints);
   const today = new Date().toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  const r = await client().messages.create({
-    model: CHAT_MODEL, max_tokens: 4000,
-    output_config: { effort: "low" },
-    system: [
-      { type: "text", text: SQUAD + `\nWhen you mention an applicant, use their full name. When asked for an email or message, write the draft with a Subject line first.` },
-      { type: "text", text: `Today is ${today}.\n<record>\n${JSON.stringify(roster)}\n</record>`, cache_control: { type: "ephemeral" } },
-    ],
-    messages: history,
-  });
-  checkStop(r);
-  return { text: textOf(r), usage: r.usage };
+  const system = SQUAD + "\n" + voice.tone + "\n" + contextLine(data) + "\nWhen you mention an applicant, use their full name and the id from the record as [[Full Name|id]]. When asked for an email, write a Subject line first. People review every draft before it is sent.";
+  const record = { role: "user", content: `Today is ${today}.\n<record>\n${JSON.stringify(roster)}\n</record>\nUse the record above with the conversation that follows.` };
+  if (providerName() === "anthropic") {
+    const r = await anthropic().messages.create({
+      model: CHAT_MODEL, max_tokens: 4000,
+      system: [{ type: "text", text: system }, { type: "text", text: record.content, cache_control: { type: "ephemeral" } }],
+      messages: history,
+    });
+    checkStop(r);
+    return { text: textOf(r), model: r.model || CHAT_MODEL, usage: r.usage };
+  }
+  const out = await say(false, system, [record, ...history], 4000, false);
+  return { text: out.text, model: out.model };
+}
+async function briefing(data, voice){
+  const roster = await rosterOf(data.hints);
+  const items = attentionItems(roster);
+  const today = new Date().toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "long", month: "long", day: "numeric" });
+  const system = SQUAD + "\n" + voice.tone + "\nWrite a daily briefing for the membership coordinator: stalled files, references still out, interviews coming up or not booked, people ready for the board, certificates expiring, and orientation bottlenecks. Use only the record. Mention people by full name. Under 180 words.";
+  const out = await say(false, system, [{ role: "user", content: `Today is ${today}.\n<record>\n${JSON.stringify(roster)}\n</record>\nAlready flagged:\n${JSON.stringify(items)}\nWrite the briefing.` }], 1200, false);
+  return { text: out.text, items, model: out.model };
 }
 
 const BRIEF_SCHEMA = { type: "object", additionalProperties: false, required: ["summary", "interviewSummary", "referencesSummary", "recommendation", "recommendationReasons", "strengths", "followUps", "questions", "references"],
@@ -191,25 +312,37 @@ const BRIEF_SCHEMA = { type: "object", additionalProperties: false, required: ["
     references: { type: "array", items: { type: "object", additionalProperties: false, required: ["name", "tone", "note"],
       properties: { name: { type: "string" }, tone: { type: "string", enum: ["strong", "positive", "mixed", "concern", "waiting"] }, note: { type: "string", description: "One sentence." } } } },
   } };
+function shapeBrief(out, who, model){
+  const REC = ["proceed", "look_closer", "not_ready"];
+  const TONES = ["strong", "positive", "mixed", "concern", "waiting"];
+  return { interviewSummary: clip(out.interviewSummary, 2000), referencesSummary: clip(out.referencesSummary, 2000), recommendation: REC.includes(out.recommendation) ? out.recommendation : "look_closer",
+    recommendationReasons: (out.recommendationReasons || []).slice(0, 5).map(x => clip(x, 300)), summary: clip(out.summary, 1500), strengths: (out.strengths || []).slice(0, 6).map(x => clip(x, 300)), followUps: (out.followUps || []).slice(0, 6).map(x => clip(x, 300)),
+    questions: (out.questions || []).slice(0, 5).map(x => clip(x, 400)),
+    references: (Array.isArray(out.references) ? out.references : []).slice(0, 4).filter(x => x && typeof x === "object").map(x => ({ name: clip(x.name, 100), tone: TONES.includes(x.tone) ? x.tone : "waiting", note: clip(x.note, 300) })),
+    at: Date.now(), by: who.email, model: model || "" };
+}
 async function brief(data, who){
   if (!who.owner) throw new HttpsError("permission-denied", "Only the owner makes briefs; admins can read them.");
   const { shared, priv } = await loadOne(data.id);
   const rec = safeApplicant(data.id, shared, priv, true);
-  const r = await client().beta.messages.create({
-    model: BRIEF_MODEL, max_tokens: 16000,
-    betas: ["server-side-fallback-2026-07-01"], fallbacks: "default",
-    output_config: { effort: "medium", format: { type: "json_schema", schema: BRIEF_SCHEMA } },
-    system: SQUAD + `\nWrite an applicant brief for the membership committee and board. Be fair and factual; base every point on the record. Mark a reference "waiting" if it hasn't come back.
-The recommendation is advice to the committee, which makes the decision. Weigh only what bears on doing this volunteer work: commitment, availability, reliability, teamwork and what references said. Never weigh or mention age, gender, race, ethnicity, national origin, religion, disability, health, sexual orientation or family status, even if they appear in the record. A "yes" to the conviction or driving question means look_closer, with a reason saying the committee should review the explanation on file; you never see that explanation, so don't guess at it or judge it. Don't use "reject", "deny" or similar words.`,
-    messages: [{ role: "user", content: `<record>\n${JSON.stringify(rec)}\n</record>\nWrite the brief.` }],
-  });
-  checkStop(r);
-  let out; try { out = JSON.parse(textOf(r)); } catch { throw new HttpsError("internal", "Med Control's brief came back garbled. Try again."); }
-  const REC = ["proceed", "look_closer", "not_ready"];
-  const b = { interviewSummary: clip(out.interviewSummary, 2000), referencesSummary: clip(out.referencesSummary, 2000), recommendation: REC.includes(out.recommendation) ? out.recommendation : "look_closer",
-    recommendationReasons: (out.recommendationReasons || []).slice(0, 5).map(x => clip(x, 300)), summary: clip(out.summary, 1500), strengths: (out.strengths || []).slice(0, 6).map(x => clip(x, 300)), followUps: (out.followUps || []).slice(0, 6).map(x => clip(x, 300)),
-    questions: (out.questions || []).slice(0, 5).map(x => clip(x, 400)), references: (out.references || []).slice(0, 4).map(x => ({ name: clip(x.name, 100), tone: x.tone, note: clip(x.note, 300) })),
-    at: Date.now(), by: who.email, model: r.model || BRIEF_MODEL };
+  const user = `<record>\n${JSON.stringify(rec)}\n</record>\nWrite the brief as JSON.`;
+  let out, model;
+  if (providerName() === "anthropic") {
+    const r = await anthropic().beta.messages.create({
+      model: BRIEF_MODEL, max_tokens: 16000,
+      betas: ["server-side-fallback-2026-07-01"], fallbacks: "default",
+      output_config: { effort: "medium", format: { type: "json_schema", schema: BRIEF_SCHEMA } },
+      system: SQUAD + "\n" + BRIEF_RULES,
+      messages: [{ role: "user", content: user }],
+    });
+    checkStop(r);
+    try { out = JSON.parse(textOf(r)); } catch { throw new HttpsError("internal", "Med Control's brief came back garbled. Try again."); }
+    model = r.model || BRIEF_MODEL;
+  } else {
+    const r = await say(true, SQUAD + "\n" + BRIEF_RULES, [{ role: "user", content: user }], 4000, true);
+    out = parseJson(r.text); model = r.model;
+  }
+  const b = shapeBrief(out, who, model);
   await db.doc(`applicants/${data.id}/private/main`).set({ ai: { brief: b } }, { merge: true });
   return { brief: b };
 }
@@ -222,27 +355,65 @@ async function reply(data){
   const rec = safeApplicant(data.id, shared, priv, false);
   const hint = cleanHints({ [data.id]: data.hint })[data.id] || {};
   const typeInfo = clip(typeof data.typeInfo === "string" ? data.typeInfo : "", 300);
-  const r = await client().messages.create({
-    model: CHAT_MODEL, max_tokens: 2000,
-    output_config: { effort: "low" },
-    system: SQUAD + `\nDraft a reply from the membership coordinator to the applicant's latest message in their applicant portal. Answer what they asked, warmly and briefly (under 120 words). No signature (the portal shows who it's from). Only use facts from the record or the PVRS process above; if you're unsure, say we'll follow up. Never mention board votes, check results, notes or other applicants.`,
-    messages: [{ role: "user", content: `<record>\n${JSON.stringify({ firstName: String(shared.name || "").split(/\s+/)[0], type: rec.type, typeRequirements: typeInfo, stage: hint.stage || rec.stage, nextStep: hint.next, interview: hint.booked, references: (rec.references || []).map(x => ({ name: x.name, received: !!x.returned })) })}\n</record>\n<thread>\n${thread}\n</thread>\nDraft the reply text only.` }],
-  });
-  checkStop(r);
-  return { text: textOf(r) };
+  const system = SQUAD + `\nDraft a reply from the membership coordinator to the applicant's latest message in their applicant portal. Answer what they asked, warmly and briefly (under 120 words). No signature (the portal shows who it's from). Only use facts from the record or the PVRS process above; if you're unsure, say we'll follow up. Never mention board votes, check results, notes or other applicants.`;
+  const out = await say(false, system, [{ role: "user", content: `<record>\n${JSON.stringify({ firstName: String(shared.name || "").split(/\s+/)[0], type: rec.type, typeRequirements: typeInfo, stage: hint.stage || rec.stage, nextStep: hint.next, interview: hint.booked, references: (rec.references || []).map(x => ({ name: x.name, received: !!x.returned })) })}\n</record>\n<thread>\n${thread}\n</thread>\nDraft the reply text only.` }], 800, false);
+  return { text: out.text, model: out.model };
 }
 
-exports.medControl = onCall({ secrets: [ANTHROPIC_API_KEY], maxInstances: 3, timeoutSeconds: 120, memory: "512MiB" }, async req => {
+const EMAILS = {
+  welcome: "A welcome email after we receive their application, with how to sign in to the applicant portal.",
+  ref_nudge: "A short note asking them to nudge a reference who hasn't answered yet. Do not name check results.",
+  interview: "An invitation to pick an interview time in their portal.",
+  noshow: "A kind follow-up after a missed interview, inviting them to pick a new time.",
+  checkin: "A warm onboarding check-in asking how orientation is going.",
+};
+async function questions(data, voice){
+  const { shared, priv } = await loadOne(data.id);
+  const rec = safeApplicant(data.id, shared, priv, true);
+  const system = SQUAD + "\n" + voice.tone + "\nWrite interview questions for the Membership Committee. Tailor them to this person's membership type, EMS or education background, and what they already wrote. Do not repeat a question the record shows was already answered in depth. Return JSON: {\"questions\":[\"...\"]} with 6 to 8 questions.";
+  const out = await say(true, system, [{ role: "user", content: `<record>\n${JSON.stringify(rec)}\n</record>` }], 1500, true);
+  const parsed = parseJson(out.text);
+  const list = (parsed.questions || []).slice(0, 8).map(q => clip(q, 400)).filter(Boolean);
+  if (!list.length) throw new HttpsError("internal", "Med Control didn't return questions. Try again.");
+  return { questions: list, model: out.model };
+}
+async function draftEmail(data, voice){
+  const kind = EMAILS[data.kind] ? data.kind : "";
+  if (!kind) throw new HttpsError("invalid-argument", "Unknown email.");
+  const { shared, priv } = await loadOne(data.id);
+  const rec = safeApplicant(data.id, shared, priv, false);
+  const system = SQUAD + "\n" + voice.tone + "\nDraft an email the coordinator will review and send themselves. Nothing is sent automatically. Do not include board votes, check results, notes, license details, or other applicants. Sign off with the signature given. Return JSON: {\"subject\":\"...\",\"text\":\"...\"}.";
+  const out = await say(false, system, [{ role: "user", content: `Kind: ${kind}. Purpose: ${EMAILS[kind]}\nSignature:\n${voice.signature}\n<record>\n${JSON.stringify({ name: rec.name, firstName: String(shared.name || "").split(/\s+/)[0], type: rec.type, stage: rec.stage, references: (rec.references || []).map(x => ({ name: x.name, received: !!x.returned })) })}\n</record>` }], 1200, true);
+  const parsed = parseJson(out.text);
+  return { subject: clip(parsed.subject, 140) || "PVRS Membership", text: clip(parsed.text, 4000), model: out.model };
+}
+async function usageFor(email){
+  const day = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  let n = 0;
+  try { const cur = await db.doc(`aiUsage/${email}_${day}`).get(); n = cur.exists ? cur.data().n || 0 : 0; } catch { n = 0; }
+  return { n, limit: DAILY_LIMIT, provider: providerName(), fastModel: GROQ_FAST, deepModel: GROQ_DEEP };
+}
+
+const JOBS = ["chat", "brief", "reply", "briefing", "questions", "draft_email", "usage"];
+exports.medControl = onCall({ secrets: SECRETS, maxInstances: 3, timeoutSeconds: 120, memory: "512MiB" }, async req => {
   const who = await checkCaller(req.auth);
   const data = req.data || {};
-  if (!["chat", "brief", "reply"].includes(data.job)) throw new HttpsError("invalid-argument", "Unknown request.");
-  await countCall(who.email);
+  if (!JOBS.includes(data.job)) throw new HttpsError("invalid-argument", "Unknown request.");
+  if (data.job === "usage") return usageFor(who.email);
+  const n = await countCall(who.email);
+  const voice = await squadVoice();
   try {
-    if (data.job === "chat") return await chat(data);
-    if (data.job === "brief") return await brief(data, who);
-    return await reply(data);
+    const calls = { n, limit: DAILY_LIMIT, provider: providerName(), fastModel: GROQ_FAST, deepModel: GROQ_DEEP };
+    if (data.job === "chat") return { ...await chat(data, voice), calls };
+    if (data.job === "briefing") return { ...await briefing(data, voice), calls };
+    if (data.job === "brief") return { ...await brief(data, who), calls };
+    if (data.job === "questions") return { ...await questions(data, voice), calls };
+    if (data.job === "draft_email") return { ...await draftEmail(data, voice), calls };
+    return { ...await reply(data), calls };
   } catch (e) { throw apiError(e); }
 });
 // exported so tests can check the privacy filter without calling the API
 exports._safeApplicant = safeApplicant;
 exports._checkCaller = checkCaller;
+exports._providerName = providerName;
+exports.DAILY_LIMIT = DAILY_LIMIT;

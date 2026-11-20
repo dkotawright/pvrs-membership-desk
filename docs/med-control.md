@@ -1,55 +1,67 @@
-# Med Control (the desk's AI assistant)
+# Med Control
 
-Med Control is Claude, built into the desk for the owner only (never admins, interviewers, members or applicants):
+Med Control is the desk's assistant for the owner and anyone with Full access. It drafts and finds. It never sends, edits a file, or approves anyone.
 
-- **Chat** (sidebar → Med Control, or ⌘K "Med Control"): ask about applicants, deadlines and the board; ask for email drafts. Answers link to the applicant's file.
-- **Brief** (Board tab → Make brief, owner only): a one-page summary, strengths, things to follow up on, interview questions and a reference digest.
-- **Draft a reply** (Messages tab → Draft with Med Control): writes an answer to the applicant's latest message into the reply box. Nothing is sent until you press Send.
+It runs on **Groq's free tier** by default (no credit card, OpenAI-compatible API, Zero Data Retention available). **Claude is optional** if `ANTHROPIC_API_KEY` is also set. Groq is used whenever its key is present.
 
-## What it can and can't see
-The server function (`functions/medcontrol.js`) loads the records and filters them **before** anything goes to the AI.
+| Job | What you get | Model |
+|---|---|---|
+| Daily briefing | What needs you today, with links into each file | Fast (`openai/gpt-oss-20b`) |
+| Chat | Questions about the roster, agendas, email drafts | Fast |
+| Applicant brief | One page for the committee, saved on the private record | Deep (`openai/gpt-oss-120b`) |
+| Interview questions | Questions tailored to that person's membership type and background | Deep |
+| Reply / email draft | Welcome, reference nudge, interview invite, no-show, check-in, or a portal reply. You review it, then you send it | Fast |
 
-| Sent to the AI | Never sent |
-|---|---|
-| Names, membership type, stage, dates | Driver's license numbers |
-| Interview answers (yes/no only on convictions) | Date and place of birth |
-| Reference names, relationships and their answers | Addresses, phone numbers, emails |
-| Check results (MVR yes/no, Sterling clear/review), board votes | Conviction explanations |
-| Education, certifications, work history (no supervisor contacts) | Uploaded files and confidential paperwork |
-| Admin notes | Reference contact details |
+If a model hits Groq's rate limit, the function tries the other free model once. Override the ids with `GROQ_FAST_MODEL` and `GROQ_DEEP_MODEL` if Groq renames them.
 
-`tests/medcontrol-privacy.test.cjs` checks this filter (run `node tests/medcontrol-privacy.test.cjs`).
+Each person is capped at **150 calls a day** (`aiUsage/{email}_{day}`). The usage check itself does not count.
 
-Anthropic doesn't train its models on data sent through the paid API by default. Still, **get the board/chief's OK before turning it on**, since applicant information leaves PVRS's systems.
+## What the model is allowed to see
 
-## Cost
-Claude Haiku 5.5 for chat and reply drafts, Claude Sonnet 5.5 for briefs. Roughly **$1–3 a month** at PVRS's volume. Each person is capped at 150 requests a day.
+`safeApplicant` in `functions/medcontrol.js` builds the record **before** any request leaves PVRS. `tests/medcontrol-privacy.test.cjs` guards it.
 
-## One-time setup (owner)
+Sent: names, membership type, stage, dates, interview answers (yes/no only on convictions), reference names and their answers, check results, board votes, education, certifications, work history without supervisor contacts, admin notes.
 
-1. **Board OK.** Get it in writing (meeting minutes are fine).
-2. **Anthropic account.** Go to https://console.anthropic.com and sign up with dkota@pvrs.org.
-   - **Billing:** add a payment method and $10 of credit.
-   - **Limits:** set a monthly spend limit of $10 so it can never surprise you.
-3. **API key.** In the console, open **API keys → Create key**. Name it `pvrs-med-control`, then copy it.
-4. **Store the key as a secret.** In Terminal, from the project folder, run this and paste the key when it asks:
+Never sent: driver's license numbers, date or place of birth, addresses, phone numbers, emails, conviction explanations, reference contact details, uploaded files, confidential vault items.
+
+## Two-minute Groq setup
+
+1. Create a free account at [console.groq.com](https://console.groq.com). No credit card.
+2. Open **Settings → Data controls** and turn on **Zero Data Retention**.
+3. **API keys → Create API key**. Copy it.
+4. From this folder:
+
+```bash
+firebase functions:secrets:set GROQ_API_KEY
+```
+
+5. Deploy the function. If the Claude secret is not set, tell the deploy to bind Groq only:
+
+```bash
+MEDCONTROL_SECRETS=groq firebase deploy --only functions:ai
+```
+
+GitHub Actions checks which of `GROQ_API_KEY` and `ANTHROPIC_API_KEY` exist and binds only those, so a missing Claude key does not fail the deploy.
+
+6. In the desk, **Settings → PVRS AI preferences → Med Control on**. The button in the top bar (and ⌘J) opens the assistant. The same screen shows today's count, `n / 150`, and which provider answered.
+
+## Optional Claude
+
+If you already have an Anthropic key:
 
 ```bash
 firebase functions:secrets:set ANTHROPIC_API_KEY
+MEDCONTROL_SECRETS=groq,anthropic firebase deploy --only functions:ai
 ```
 
-5. **Deploy the function:**
-
-```bash
-firebase deploy --only functions:ai
-```
-
-6. **Switch it on.** In the desk, go to **Settings → Med Control → On → Save**. The Med Control button appears in your sidebar. Nobody else sees it.
+Groq still wins when both keys are present. Claude is the fallback only when `GROQ_API_KEY` is empty.
 
 ## Turning it off
-Settings → Med Control → Off hides it everywhere right away. To cut access completely, delete the key in the Anthropic console.
+
+Settings → Med Control off hides the assistant. Delete the key in the Groq console to cut it off completely.
 
 ## If something goes wrong
-- *"Med Control isn't set up yet"*: the function isn't deployed (step 5).
-- *"API key isn't working"*: re-run step 4 with a fresh key, then step 5.
-- *"Daily limit is used up"*: wait until midnight, or raise `DAILY_LIMIT` in `functions/medcontrol.js`.
+
+- *"isn't set up yet"*: the function is deployed but neither key is on the running service. Set `GROQ_API_KEY` and deploy again.
+- *"API key isn't working"*: create a new Groq key and set the secret again.
+- *"Daily limit is used up"*: it resets at midnight Eastern. The cap is `DAILY_LIMIT` in `functions/medcontrol.js`.

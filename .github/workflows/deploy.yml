@@ -6,6 +6,7 @@ name: Test and deploy
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 concurrency:
@@ -24,11 +25,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install test tools
-        working-directory: tests
-        run: npm ci && npx playwright install --with-deps chromium
+      - name: Install the app
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
       - name: Browser tests
-        run: node tests/browser.test.mjs
+        run: npm run test:e2e
       - name: Med Control privacy filter
         run: npm ci --prefix functions && node tests/medcontrol-privacy.test.cjs
       - name: Notification functions
@@ -53,6 +59,7 @@ jobs:
       - run: npx -y firebase-tools@15 emulators:exec --only firestore,storage --project pvrs-rules-test "node tests/rules.test.mjs"
 
   deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -78,9 +85,20 @@ jobs:
             --filter="bindings.role=roles/firebaserules.firestoreServiceAgent AND bindings.members=${SA}" --format='value(bindings.members)')
           if [ -n "$HIT" ]; then echo "UPLOAD-ROLE: PRESENT on the Storage service account."; else echo "UPLOAD-ROLE: MISSING. Applicant uploads will be refused until it is granted."; echo "Holders of that role:"; gcloud projects get-iam-policy pvrs-membership --flatten='bindings[].members' --filter="bindings.role=roles/firebaserules.firestoreServiceAgent" --format='value(bindings.members)'; exit 1; fi
       # Website and rules first, so they go live even if the function deploy hits a problem.
+      - name: Build the website
+        run: npm ci && npm run build
       - name: Deploy website and rules
         run: npx -y firebase-tools@15 deploy --only hosting,firestore:rules,storage --project pvrs-membership --non-interactive
       - name: Install function dependencies
         run: npm ci --prefix functions
+      # Bind only the AI secrets that already exist, so a Groq-only project does not fail on a missing Claude key.
+      - name: Choose Med Control secrets
+        run: |
+          SECRETS=""
+          if gcloud secrets describe GROQ_API_KEY --project pvrs-membership >/dev/null 2>&1; then SECRETS="groq"; fi
+          if gcloud secrets describe ANTHROPIC_API_KEY --project pvrs-membership >/dev/null 2>&1; then SECRETS="${SECRETS:+$SECRETS,}anthropic"; fi
+          if [ -z "$SECRETS" ]; then SECRETS="groq"; fi
+          echo "MEDCONTROL_SECRETS=$SECRETS" >> "$GITHUB_ENV"
+          echo "Med Control secrets: $SECRETS"
       - name: Deploy server functions (notifications and Med Control)
         run: npx -y firebase-tools@15 deploy --only functions:push,functions:ai --project pvrs-membership --non-interactive --force
