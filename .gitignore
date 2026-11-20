@@ -1,4 +1,6 @@
 .firebase/
+dist/
+test-results/
 node_modules/
 .DS_Store
 *.log
