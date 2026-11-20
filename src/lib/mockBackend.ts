@@ -154,7 +154,7 @@ export function createMock(seed: PvrsSeed): Backend {
     async removeFile(path) { files.delete(path); },
     async call(name, data) {
       const job = (data as { job?: string; kind?: string; id?: string })?.job;
-      const calls = { n: 4, limit: 150, provider: "groq", fastModel: "openai/gpt-oss-20b", deepModel: "openai/gpt-oss-120b" };
+      const calls = { n: 4, limit: 150, provider: "anthropic", chatModel: "claude-haiku-5-5", briefModel: "claude-sonnet-5-5", fastModel: "openai/gpt-oss-20b", deepModel: "openai/gpt-oss-120b" };
       if (name !== "medControl") return {};
       if (job === "usage") return calls;
       if (job === "briefing") return { text: "Jordan Hale still needs an interview time. Riley Brooks is ready for the board. Morgan Ellis is partway through orientation.", items: [

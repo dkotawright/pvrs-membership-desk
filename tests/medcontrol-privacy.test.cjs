@@ -38,5 +38,20 @@ if (!scored.includes('"comm":4')) { fail++; console.log("✗ committee scores mi
     if (r !== "permission-denied") { fail++; console.log(`✗ ${e}: ${r}`); } else console.log(`✓ ${e} is refused`); }
   const un = await _checkCaller({ token: { email: "dkota@pvrs.org", email_verified: false } }).then(() => "allowed", err => err.code);
   if (un !== "unauthenticated") { fail++; console.log("✗ unverified owner email allowed"); } else console.log("✓ an unverified email is refused");
+  const { _providerName, DAILY_LIMIT } = require("../functions/medcontrol.js");
+  if (DAILY_LIMIT !== 150) { fail++; console.log("✗ daily cap changed: " + DAILY_LIMIT); } else console.log("✓ the daily cap is still 150");
+  const prevA = process.env.ANTHROPIC_API_KEY, prevG = process.env.GROQ_API_KEY;
+  process.env.ANTHROPIC_API_KEY = "present"; process.env.GROQ_API_KEY = "present";
+  if (_providerName() !== "anthropic") { fail++; console.log("✗ Claude is not the default when both keys exist: " + _providerName()); } else console.log("✓ Claude is the provider when both keys exist");
+  delete process.env.ANTHROPIC_API_KEY;
+  if (_providerName() !== "groq") { fail++; console.log("✗ Groq is not the fallback when Claude is missing"); } else console.log("✓ Groq is used only when the Claude key is absent");
+  delete process.env.GROQ_API_KEY;
+  if (_providerName() !== "none") { fail++; console.log("✗ a missing key still names a provider"); } else console.log("✓ neither key means no provider");
+  if (prevA === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = prevA;
+  if (prevG === undefined) delete process.env.GROQ_API_KEY; else process.env.GROQ_API_KEY = prevG;
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../functions/medcontrol.js"), "utf8");
+  const logs = src.match(/logger\.(?:error|warn|info|log)\([^;]*\)/g) || [];
+  const leaky = logs.filter(line => /\b(message|text|prompt|content|body)\b/.test(line));
+  if (leaky.length) { fail++; console.log("✗ a log line can carry prompt or response text: " + leaky.join(" | ")); } else console.log("✓ logs do not take prompt or response text");
   process.exit(fail ? 1 : 0);
 })();

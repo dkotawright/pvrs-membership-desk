@@ -84,9 +84,24 @@ test("search finds an applicant and Med Control opens", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Riley Brooks/ }).last()).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Med Control" }).click();
-  await expect(page.getByRole("dialog", { name: "Med Control" })).toBeVisible();
-  await page.getByRole("button", { name: "Today" }).click();
-  await expect(page.getByText(/ready for the board/i).first()).toBeVisible();
+  const mc = page.getByRole("dialog", { name: "Med Control" });
+  await expect(mc).toBeVisible();
+  await expect(mc.getByText("Chats aren't saved and clear when you close this.")).toBeVisible();
+  await expect(mc.getByText("Claude")).toBeVisible();
+  await mc.getByRole("button", { name: "Today" }).click();
+  await expect(mc.getByText(/ready for the board/i).first()).toBeVisible();
+  await mc.getByRole("button", { name: "Clear" }).click();
+  await expect(mc.getByText(/ready for the board/i)).toHaveCount(0);
+  await mc.getByRole("button", { name: "Today" }).click();
+  await expect(mc.getByText(/ready for the board/i).first()).toBeVisible();
+  await mc.getByRole("button", { name: "Close" }).click();
+  await expect(mc).toHaveCount(0);
+  await page.getByRole("button", { name: "Med Control" }).click();
+  await expect(mc.getByText(/ready for the board/i)).toHaveCount(0);
+  await mc.getByRole("button", { name: "Today" }).click();
+  await expect(mc.getByText(/ready for the board/i).first()).toBeVisible();
+  await page.locator("aside nav").getByRole("button", { name: /^Messages/ }).click();
+  await expect(mc.getByText(/ready for the board/i)).toHaveCount(0);
   await page.screenshot({ path: "/opt/cursor/artifacts/med-control.png" });
 });
 

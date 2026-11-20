@@ -745,13 +745,13 @@ function SettingsPanel({ settings, backend, toast }: { settings: Settings; backe
       <label className="block text-sm">Idle sign-out (minutes)<input type="number" className={`${box} mt-1`} defaultValue={Number(settings.idleMinutes || 30)} onBlur={(e) => save({ idleMinutes: Number(e.target.value) })} /></label>
       <div className="card p-4">
         <h2 className="text-lg font-semibold">PVRS AI preferences</h2>
-        <p className="mt-1 text-sm text-muted">Med Control drafts only. You send. Groq’s free tier is the default; Claude is optional.</p>
+        <p className="mt-1 text-sm text-muted">Med Control drafts only. You send. Claude answers. Groq is used only if Claude fails or is rate limited.</p>
         <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={!!settings.ai} onChange={(e) => save({ ai: e.target.checked })} /> Med Control on</label>
         <label className="mt-3 block text-sm">Squad tone
           <textarea className={`${box} mt-1`} rows={3} defaultValue={String(settings.aiTone || DEFAULT_AI_TONE)} onBlur={(e) => save({ aiTone: e.target.value })} />
         </label>
         <p className="mt-3 text-sm">{usage ? <><b>{usage.n} / {usage.limit}</b> today · {usage.provider === "groq" ? "Groq free tier" : usage.provider === "anthropic" ? "Claude" : "No key yet"}</> : "Usage loads when the function is deployed."}</p>
-        <p className="mt-2 text-xs text-muted">Setup takes about two minutes. See docs/med-control.md: free Groq account, Zero Data Retention, then firebase functions:secrets:set GROQ_API_KEY.</p>
+        <p className="mt-2 text-xs text-muted">Claude is the provider whenever its key is on the function. Nothing in this screen switches it. The count above is the only thing stored.</p>
       </div>
     </section>
   );
