@@ -2785,8 +2785,9 @@ function tidyOnb(){ if (!S.canEdit || !S.ready) return; clearTimeout(tidyT); tid
   const items = onbItems(), keyOf = re => (items.find(([, l]) => re.test(l)) || [])[0], blank = (a, k) => k && !get(a, `onb.items.${k}`) && !get(a, `onb.undone.${k}`);
   for (const x of S.forms || []) { const a = S.apps.get(x.appId), f = formByKey(x.id), k = f && f.item && keyOf(f.item);
     if (a && blank(a, k) && x.signedAt) edit(x.appId, `onb.items.${k}`, isoDay(x.signedAt)); }
-  const ster = keyOf(/sterling/i);
+  const ster = keyOf(/sterling/i), appl = keyOf(/^completed application/i);
   for (const [id, a] of S.apps) { if (!inOrient(a)) continue;
+    if (orientOpen(a) && blank(a, appl)) edit(id, `onb.items.${appl}`, get(a, "app.received") || get(a, "onb.orientStarted") || today());
     if (orientOpen(a) && blank(a, ster) && get(a, "bg.sterDone")) edit(id, `onb.items.${ster}`, get(a, "bg.sterDone"));
     if (!onbCustom()) for (const [old, news] of ONB_SPLIT) { const d = get(S.apps.get(id), `onb.items.${onbKey(old)}`); if (d) for (const n of news) if (blank(S.apps.get(id), onbKey(n))) edit(id, `onb.items.${onbKey(n)}`, d); } }
 }, 1200); }
@@ -3676,7 +3677,8 @@ const isClosedFile = a => isDeclined(a) || a.status === "withdrawn";
 const orientReady = a => get(a, "board.result") === "approved" && !isClosedFile(a) && sterlingClear(a) && !get(a, "onb.orientStarted");
 // onb.direct: added straight to orientation, with no application and no board vote. Orientation is open for them
 // without Sterling. Everyone else still waits for a board approval and a clear Sterling result.
-const orientOpen = a => !isClosedFile(a) && !!get(a, "onb.orientStarted") && (!!get(a, "onb.direct") || (get(a, "board.result") === "approved" && sterlingClear(a)));
+// onb.byHand: the owner moved them to orientation without the board vote or a clear Sterling (Nov 20, Dkota: "I decide").
+const orientOpen = a => !isClosedFile(a) && !!get(a, "onb.orientStarted") && (!!get(a, "onb.direct") || !!get(a, "onb.byHand") || (get(a, "board.result") === "approved" && sterlingClear(a)));
 const orientWaiting = a => get(a, "board.result") === "approved" && !isClosedFile(a) && !sterlingClear(a);
 const orientCounts = a => { const its = onbItems(); return { total: its.length, done: its.filter(([k]) => get(a, `onb.items.${k}`)).length }; };
 const orientAllDone = a => { const c = orientCounts(a); return c.total > 0 && c.done >= c.total; };
@@ -3823,12 +3825,18 @@ function openOrientBook(id){
 // Applicant → New member. Only possible once the board approved and Sterling is complete and clear (Dkota's rule).
 function openMoveToOrientation(id){
   const a = S.apps.get(id); if (!S.canEdit || !a) return ownerOnlyToast();
-  if (!orientReady(a)) return toast(sterlingClear(a) ? "They're not ready to move." : "Orientation stays locked until Sterling is complete and clear.");
+  if (get(a, "onb.orientStarted")) return toast(`${first(a.name) || "They"} ${first(a.name) ? "is" : "are"} already in orientation.`);
+  // No checks (Dkota, Nov 20): list what isn't done, then let the owner decide.
+  const ready = orientReady(a), missing = [
+    isClosedFile(a) ? "Their file is marked declined or withdrawn" : "",
+    get(a, "board.result") !== "approved" ? "The board vote isn't saved as Approved" : "",
+    !get(a, "bg.sterDone") ? "Sterling isn't complete" : get(a, "bg.sterResult") !== "clear" ? "Sterling isn't marked clear" : ""].filter(Boolean);
   const M = openModal(`<h3>Move ${esc(first(a.name) || "them")} to orientation?</h3>
-    <p class="help">Sterling is complete and clear. Their next sign-in shows only the orientation dashboard: checklist, booking a time with you, documents and messages. The application pages go away for them. Nothing in their file changes.</p>
+    ${ready ? "" : `<div class="note warn"><b>Not everything is done.</b> You can still move them; their orientation dashboard opens right away.<ul style="margin:6px 0 0;padding-left:18px">${missing.map(m => `<li>${esc(m)}</li>`).join("")}</ul></div>`}
+    <p class="help">${ready ? "Sterling is complete and clear. " : ""}Their next sign-in shows only the orientation dashboard: checklist, booking a time with you, documents and messages. The application pages go away for them. Nothing in their file changes.</p>
     <div class="field"><label for="mvEmail">Sign-in email</label><input id="mvEmail" type="email" value="${esc(a.email || "")}"><p class="help">Change this if they should now sign in with a different address, like a PVRS one. They'd need to use the new address from then on.</p></div>
     <label class="row" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="mvMail" checked style="width:auto"> Also open an email telling them</label>
-    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="mvGo">Move to orientation</button></div>`);
+    <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="mvGo">${ready ? "Move to orientation" : "Move them anyway"}</button></div>`);
   M.onclick = async e => { if (e.target.closest("[data-x]")) return closeModal(); const go = e.target.closest("#mvGo"); if (!go) return;
     const email = lower($("#mvEmail").value.trim()), mail = $("#mvMail").checked;
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Enter a valid email address.");
@@ -3836,12 +3844,14 @@ function openMoveToOrientation(id){
     try {
       if (email !== lower(a.email)) edit(id, "email", email);
       edit(id, "onb.orientStarted", today());
-      const appKey = (onbItems().find(([, l]) => /^completed application/i.test(l)) || [])[0];   // already known from their file
-      if (appKey && get(a, "app.complete") === "yes" && !get(a, `onb.items.${appKey}`)) edit(id, `onb.items.${appKey}`, get(a, "app.received") || today());
+      if (!ready) edit(id, "onb.byHand", true);
+      // The application doesn't hold anyone up once they're in orientation: tick its checklist line.
+      const appKey = (onbItems().find(([, l]) => /^completed application/i.test(l)) || [])[0];
+      if (appKey && !get(a, `onb.items.${appKey}`)) edit(id, `onb.items.${appKey}`, get(a, "app.received") || today());
       if (!get(a, "portal.invited")) await inviteToPortal(id, false);
-      await addDoc(collection(db, "portal", id, "messages"), { text: `Hi ${first(a.name) || "there"}, your background check is complete, so you're moving on to orientation! Your dashboard now has your checklist. Please pick a time to come in and meet with me.`, from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() });
+      await addDoc(collection(db, "portal", id, "messages"), { text: `Hi ${first(a.name) || "there"}, ${sterlingClear(a) ? "your background check is complete, so " : ""}you're moving on to orientation! Your dashboard now has your checklist. Please pick a time to come in and meet with me.`, from: "staff", by: S.me, name: first(S.name) || "PVRS", at: Date.now() });
       closeModal(); toast(`${first(a.name) || "They"} moved to orientation.`);
-      if (mail) { const l = document.createElement("a"); l.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("PVRS orientation: you're cleared to start")}&body=${encodeURIComponent(`Hi ${first(a.name) || "there"},\n\nYour background check is complete, so you're moving on to orientation.\n\nSign in at ${location.origin}/signin with ${email} to see your checklist and pick a time to come in. The sign-in email often lands in spam or junk, so check there if you don't see it.\n\nThank you,\n${sig()}`)}`; l.click(); }
+      if (mail) { const l = document.createElement("a"); l.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("PVRS orientation: you're cleared to start")}&body=${encodeURIComponent(`Hi ${first(a.name) || "there"},\n\n${sterlingClear(a) ? "Your background check is complete, so you're" : "You're"} moving on to orientation.\n\nSign in at ${location.origin}/signin with ${email} to see your checklist and pick a time to come in. The sign-in email often lands in spam or junk, so check there if you don't see it.\n\nThank you,\n${sig()}`)}`; l.click(); }
     } catch (err) { console.error(err); go.disabled = false; toast("Couldn't finish that. Try again."); } };
 }
 // Checklist items the new member can still send in (not dated yet, and not the application / orientation form).
@@ -3877,7 +3887,7 @@ function openOrientDocs(id){
     openEmail("orientdocs", [...asked.map(([, l]) => l), ...custom], id);
   };
 }
-function moveBackToApplicant(id){ const a = S.apps.get(id); if (!S.canEdit || !a) return; edit(id, "onb.orientStarted", ""); if (get(a, "onb.direct")) edit(id, "onb.direct", false); toast(`${first(a.name) || "They"} moved back to the applicant view.`); }
+function moveBackToApplicant(id){ const a = S.apps.get(id); if (!S.canEdit || !a) return; edit(id, "onb.orientStarted", ""); if (get(a, "onb.byHand")) edit(id, "onb.byHand", false); if (get(a, "onb.direct")) edit(id, "onb.direct", false); toast(`${first(a.name) || "They"} moved back to the applicant view.`); }
 // New member → Squad member: gives them a Member account, so their next sign-in opens the desk (Messages) instead of the dashboard.
 function openMakeMember(id){
   const a = S.apps.get(id); if (!S.canEdit || !a) return ownerOnlyToast();
@@ -4057,8 +4067,8 @@ function openOrientPacket(id, opts = {}){
 function renderOrientTab(a){
   const el = $("#orientBox"); if (!el) return; const id = a._id;
   if (orientReady(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Onboard<small>Approved by the board${get(a, "board.date") ? " " + esc(fmtDate(get(a, "board.date"))) : ""}. Sterling is complete and clear, so they're ready for orientation.</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-oact="move">Move to orientation</button>` : ""}</div>`; }
-  else if (!orientOpen(a) && !inOrient(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Applicant<small>Moves to Onboard as soon as the board result is saved as Approved.</small></span></div>`; }
-  else if (!orientOpen(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Onboard<small>Approved by the board${get(a, "board.date") ? " " + esc(fmtDate(get(a, "board.date"))) : ""}. Orientation opens once Sterling is complete and clear. ${get(a, "bg.sterDone") ? (get(a, "bg.sterResult") ? "Sterling is marked Needs review." : "Enter the Sterling result above.") : get(a, "bg.sterReq") ? "Sterling requested " + esc(fmtDate(get(a, "bg.sterReq"))) + "." : "Sterling not requested yet."}</small></span></div>`; }
+  else if (!orientOpen(a) && !inOrient(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Applicant<small>Moves to Onboard as soon as the board result is saved as Approved. You can also move them to orientation by hand.</small></span>${S.canEdit ? `<button class="btn small" type="button" data-oact="move">Move to orientation</button>` : ""}</div>`; }
+  else if (!orientOpen(a)) { el.innerHTML = `<div class="row"><span class="lbl">Status: Onboard<small>Approved by the board${get(a, "board.date") ? " " + esc(fmtDate(get(a, "board.date"))) : ""}. Orientation opens once Sterling is complete and clear. ${get(a, "bg.sterDone") ? (get(a, "bg.sterResult") ? "Sterling is marked Needs review." : "Enter the Sterling result above.") : get(a, "bg.sterReq") ? "Sterling requested " + esc(fmtDate(get(a, "bg.sterReq"))) + "." : "Sterling not requested yet."}</small></span>${S.canEdit && !get(a, "onb.orientStarted") ? `<button class="btn small" type="button" data-oact="move">Move to orientation anyway</button>` : ""}</div>`; }
   else { const s = orientSession(id), c = orientCounts(a), l = orientDaysLeft(a), key = orientItemKey(), att = key && get(a, `onb.items.${key}`);
     el.innerHTML = `<div class="row"><span class="lbl">Status: ${get(a, "onb.memberSince") ? "Squad member" : "New member"}<small>In orientation since ${esc(fmtDate(get(a, "onb.orientStarted")))}${get(a, "onb.direct") ? " · started here, no application on file" : ""}${get(a, "onb.memberSince") ? " · member since " + esc(fmtDate(get(a, "onb.memberSince"))) : ""}</small></span>
         ${S.canEdit && !get(a, "onb.memberSince") ? `<button class="copy" type="button" data-oact="back">${get(a, "onb.direct") ? "Take off orientation" : "Move back"}</button><button class="btn small" type="button" data-oact="member">Make squad member</button>` : ""}</div>

@@ -1905,6 +1905,26 @@ try {
     if ((await page.evaluate(() => window.__mock.docs.get("staff/ava@pvrs.org").role)) !== "assistant") fail("assistant role not saved"); else ok("the owner can make someone the Assistant");
     await ctx.close();
   }
+  // ---- Move to orientation by hand, no checks (Nov 20): warn what's missing, then move; earlier steps stop counting
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await pickApplicant(page, "Marcus Bell");   // in screening: no board vote, no Sterling
+    await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    const mv = page.locator('#orientBox [data-oact="move"]');
+    if (!(await mv.count())) fail("no Move button for an applicant"); else ok("an applicant's Onboard tab has Move to orientation");
+    await mv.click(); await wait(page, 300);
+    const m = await page.locator("#modal").textContent();
+    if (!/board vote isn't saved/.test(m) || !/Sterling isn't complete/.test(m) || (await page.locator("#mvGo").textContent()) !== "Move them anyway") fail("move warning: " + m.slice(0, 200)); else ok("moving by hand lists what isn't done and still lets you move");
+    await page.locator("#mvMail").uncheck(); await page.locator("#mvGo").click(); await wait(page, 1500);
+    const pv = await priv(page, "a2"), pd = await page.evaluate(() => window.__mock.docs.get("portal/a2"));
+    const appKey = Object.keys(pv.onb?.items || {}).find(k => /^completed_application/.test(k));
+    if (!pv.onb?.orientStarted || pv.onb?.byHand !== true || !appKey || !pd?.orientation) fail("moved by hand: " + JSON.stringify({ onb: pv.onb, orient: !!pd?.orientation })); else ok("they're in orientation, the application line is ticked and their dashboard is open");
+    const msgs = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/a2/messages/")).map(([, v]) => v.text).join(" | "));
+    if (/background check is complete/.test(msgs)) fail("message claims Sterling is done"); else ok("the welcome-to-orientation message doesn't claim a finished background check");
+    const pr = await page.evaluate(() => { const t = document.querySelector("#dProg"); return t ? t.textContent.replace(/\s+/g, " ") : ""; });
+    if (/Screening\s*\d+ of|Interview\s*\d+ of/.test(pr)) fail("earlier steps still counted: " + pr.slice(0, 200)); else ok("once in orientation, the application and interview steps no longer count against them");
+    await ctx.close();
+  }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {
     const { ctx, page } = await open(browser, { url: "/apply?src=flyer", user: null }); await wait(page, 600);

@@ -130,6 +130,9 @@ export const STAGES = {
 export const stageVar = st => `var(${(STAGES[st] || STAGES.open).c})`;
 export function progress(a){
   const done = MILESTONES.map(m => m[1](a));
+  // Once someone is in orientation, the application, interview, board and Sterling steps no longer hold them up
+  // (Dkota, Nov 20: people added or moved by hand, like Lilly, could never reach Active).
+  if (get(a, "onb.orientStarted")) for (let i = 0; i < 11; i++) done[i] = true;
   const n = done.filter(Boolean).length, cur = done.indexOf(false);
   let stage;
   if (a.status === "hold") stage = "hold";
