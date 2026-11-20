@@ -1932,6 +1932,87 @@ try {
     if (v !== "Flyer or poster") fail(`?src=flyer didn't pre-pick: "${v}"`); else ok("scanning the flyer pre-picks Flyer or poster on the application");
     await ctx.close();
   }
+  // ---- Dock redesign (Nov 20): floating dock, command bar, appearance switch, and the read-only additions
+  {
+    const noon = new Date(); noon.setHours(12, 0, 0, 0);
+    const { ctx, page } = await open(browser, { seed: [["slots/wk1", { start: noon.getTime(), duration: 30, location: "Station", bookedBy: "a1", host: "dkota@pvrs.org", hostName: "Dkota" }],
+      ["slots/wk2", { start: noon.getTime() + 36e5, duration: 30, location: "Station", bookedBy: null }]] });
+    await wait(page, 1500);
+    const dataNow = () => page.evaluate(() => JSON.stringify([...window.__mock.docs.entries()].filter(([k]) => !k.startsWith("presence/")).sort()));
+    // the owner's desk syncs portal pages and stage mirrors on its own after loading; wait for that to finish
+    const settle = async () => { await wait(page, 6500); let a = await dataNow(); for (let i = 0; i < 12; i++) { await wait(page, 900); const b = await dataNow(); if (b === a) return b; a = b; } return a; };
+    const before = await settle();
+    // the dock: icons only until hovered
+    const w0 = await page.locator(".app > .side").evaluate(e => e.getBoundingClientRect().width);
+    const lblHidden = await page.locator("#overviewBtn .nl").isHidden();
+    await page.locator("#overviewBtn").hover(); await wait(page, 300);
+    const w1 = await page.locator(".app > .side").evaluate(e => e.getBoundingClientRect().width);
+    if (!(w0 < 100 && lblHidden && w1 > 200 && await page.locator("#overviewBtn .nl").isVisible())) fail(`dock: closed ${w0}px (labels hidden ${lblHidden}), open ${w1}px`); else ok("the desk menu is a floating icon dock that opens with labels on hover");
+    await page.mouse.move(900, 500); await wait(page, 300);
+    // command bar
+    await page.locator("#cmdBar").click(); await wait(page, 300);
+    if (await page.locator("#palQ").isHidden()) fail("command bar didn't open the search"); else ok("the floating command bar opens ⌘K search");
+    await page.locator("#palQ").fill("week cal"); await wait(page, 200);
+    if (!/Week calendar/.test(await page.locator("#palList").textContent())) fail("⌘K has no Week calendar"); else ok("⌘K finds the week calendar");
+    await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await wait(page, 300);
+    // appearance
+    const th = [];
+    for (let i = 0; i < 3; i++) { await page.locator("#themeBtn").click(); await wait(page, 100); th.push(await page.evaluate(() => (document.documentElement.getAttribute("data-theme") || "system") + ":" + (localStorage.getItem("pvrsTheme") || "-"))); }
+    if (th.join(",") !== "light:light,dark:dark,system:-") fail("appearance cycle: " + th.join(",")); else ok("appearance switch cycles light, dark, follow the device (saved on this device only)");
+    await page.locator("#themeBtn").click(); await page.locator("#themeBtn").click(); await wait(page, 100);
+    if (await dataNow() !== before) fail("dock, command bar or appearance changed stored data"); else ok("dock, command bar and appearance switch save nothing to the database");
+    await page.reload(); await wait(page, 1500);
+    if (await page.evaluate(() => document.documentElement.getAttribute("data-theme")) !== "dark") fail("dark choice not kept after reload"); else ok("the appearance choice is kept after a reload");
+    const before2 = await settle();   // the mock data is made fresh on reload
+    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    if (bg !== "rgb(20, 18, 16)") fail("dark background not applied: " + bg); else ok("dark appearance applies the dark palette");
+    await page.evaluate(() => localStorage.removeItem("pvrsTheme"));
+    // week calendar
+    await page.locator("#calBtn").click(); await wait(page, 300);
+    const cal = await page.locator("#wcal").textContent();
+    if (!/Georgia Thurmond/.test(cal) || !/Open interview time/.test(cal) || !/1 interview booked · 1 open interview time/.test(cal)) fail("week calendar: " + cal.slice(0, 300)); else ok("week calendar shows booked and open interview times for the week");
+    await page.locator('#wcal [data-wk="1"]').click(); await wait(page, 200);
+    if (/Georgia Thurmond/.test(await page.locator("#wcal").textContent())) fail("next week still shows this week's interview"); else ok("week calendar moves to the next week");
+    await page.locator('#wcal [data-wk="0"]').click(); await wait(page, 200);
+    await page.locator("#wcal [data-wcopen]").first().click(); await wait(page, 600);
+    if (!/Georgia Thurmond/.test(await page.locator(".dname").textContent())) fail("calendar entry didn't open the file"); else ok("clicking a booked interview on the calendar opens the file");
+    // file timeline
+    await page.locator('.tabdock [data-tab="notes"]').click(); await wait(page, 400);
+    const tl = await page.locator("#tlList").textContent();
+    if (!/Application received/.test(tl) || !/Driving record \(MVR\) done/.test(tl) || !/Reference received: Sam Ortiz/.test(tl) || !/days later/.test(tl)) fail("timeline: " + tl.slice(0, 300)); else ok("the Notes tab shows the file's dates in order as a timeline");
+    await page.locator("#overviewBtn").click(); await wait(page, 600);
+    // waiting on
+    const wc = () => page.locator("#waitCard").textContent();
+    if (!/Marcus Bell/.test(await wc()) || /Georgia Thurmond/.test(await wc())) fail("waiting on you: " + (await wc()).slice(0, 300)); else ok("Waiting on: You lists files whose next step is the squad's");
+    await page.locator('#waitCard [data-wait="refs"]').click(); await wait(page, 300);
+    if (!/Georgia Thurmond/.test(await wc()) || !/1 of 3 in · waiting on Ann Lee/.test(await wc())) fail("waiting on refs: " + (await wc()).slice(0, 300)); else ok("Waiting on: References names who hasn't answered");
+    // filters
+    const names = () => page.evaluate(() => [...document.querySelectorAll("#list .arow")].map(r => r.querySelector("b,strong,.nm")?.textContent || r.textContent).join("|"));
+    const all0 = await names();
+    await page.locator("#xfBtn").click(); await wait(page, 200);
+    await page.locator("#xfType").selectOption("Associate"); await wait(page, 300);
+    const assoc = await names();
+    if (!/Marcus Bell/.test(assoc) || /Georgia/.test(assoc) || !/Filters · 1/.test(await page.locator("#xfBtn").textContent())) fail("type filter: " + assoc); else ok("list filter by membership type");
+    await page.locator("#xfType").selectOption(""); await page.locator("#xfLoc").selectOption("other"); await wait(page, 300);
+    if (/Georgia|Marcus/.test(await names())) fail("location filter kept Potsdam people"); else ok("list filter by location");
+    await page.locator("#xfLoc").selectOption(""); await page.locator("#xfStale").check(); await wait(page, 300);
+    const stale = await names();
+    if (/Georgia|Marcus/.test(stale)) fail("stale filter kept recently changed files: " + stale); else ok("list filter: no movement in 14+ days");
+    await page.locator("#xfClear").click(); await wait(page, 300);
+    if (await names() !== all0) fail("Clear filters didn't restore the list"); else ok("Clear filters brings everyone back");
+    await page.locator("#xfStage").selectOption("screen"); await wait(page, 400);
+    if (await page.locator("#rosterTitle").textContent() !== "Screening") fail("stage filter didn't switch the list"); else ok("list filter by stage");
+    if (await dataNow() !== before2) fail("read-only additions changed stored data"); else ok("dock, calendar, timeline, Waiting on, filters and appearance saved nothing");
+    await ctx.close();
+  }
+  // phones: the command bar stays out of the way (the bottom menu is there), filters still reachable
+  {
+    const { ctx, page } = await open(browser, { w: 390, h: 844 });
+    if (await page.locator("#cmdBar").isVisible()) fail("command bar shows on phones"); else ok("phones keep the bottom menu, no command bar");
+    await page.locator("#xfBtn").click(); await wait(page, 200);
+    if (await page.locator("#xfType").isHidden()) fail("filters hidden on phones"); else ok("list filters work on phones");
+    await ctx.close();
+  }
 } catch (e) { errors.push("[harness] " + (e.stack || e.message)); }
 await browser.close();
 console.log(notes.join("\n"));

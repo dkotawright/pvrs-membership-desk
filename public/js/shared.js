@@ -201,3 +201,15 @@ export function timelineHTML(steps){
     <span class="mtext"><span class="mlabel">${esc(s.label)}</span>${s.state!=="todo"&&s.detail?`<small>${esc(s.detail)}</small>`:""}</span></div>`).join("")}</div>`;
 }
 export const checkSVG = CHECK;
+
+// Appearance (Nov 20): light, dark or follow the device. Saved in this browser only (localStorage "pvrsTheme");
+// index.html applies it before the page draws. Nothing about it is stored in Firestore.
+export const THEME_LABEL = { system: "Follow this device", light: "Light", dark: "Dark" };
+export function getTheme(){ try { const t = localStorage.getItem("pvrsTheme"); return t === "light" || t === "dark" ? t : "system"; } catch { return "system"; } }
+export function setTheme(t){
+  if (t !== "light" && t !== "dark") t = "system";
+  try { if (t === "system") localStorage.removeItem("pvrsTheme"); else localStorage.setItem("pvrsTheme", t); } catch {}
+  if (t === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t);
+  return t;
+}
+export const nextTheme = () => setTheme({ system: "light", light: "dark", dark: "system" }[getTheme()]);
