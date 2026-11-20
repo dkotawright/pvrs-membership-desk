@@ -1,6 +1,6 @@
 # PVRS Membership Desk
 
-The desk is a React app in `src/` (Vite, Tailwind). Vercel hosts the site; Firebase is still the backend. See `HOSTING.md` and `FEATURES.md`. Firebase config lives in `src/lib/config.ts`.
+The desk is a React app in `src/` (Vite, Tailwind). Firebase Hosting serves `dist/`. See `HOSTING.md` and `FEATURES.md`. Firebase config lives in `src/lib/config.ts`.
 
 # PVRS Membership Desk: setup guide
 
