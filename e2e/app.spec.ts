@@ -1,12 +1,13 @@
 import { test, expect } from "@playwright/test";
 import { declinedSeed, interviewerSeed, memberSeed, ownerSeed, portalSeed } from "../src/lib/demo";
 
-async function boot(page: import("@playwright/test").Page, seed: object | null, path = "/") {
-  await page.addInitScript((s) => {
+async function boot(page: import("@playwright/test").Page, seed: object | null, path = "/", theme: { mode: string; accent: string } | null = null) {
+  await page.addInitScript(({ s, theme }) => {
     try { localStorage.setItem("pvrsTourOff", "1"); } catch { /* ignore */ }
+    localStorage.setItem("pvrsTheme", JSON.stringify(theme || { mode: "light", accent: "crimson" }));
     (window as unknown as { __PVRS_MOCK: boolean; __PVRS_SEED: object | null }).__PVRS_MOCK = true;
     (window as unknown as { __PVRS_SEED: object | null }).__PVRS_SEED = s;
-  }, seed);
+  }, { s: seed, theme });
   await page.goto(path);
 }
 
@@ -132,4 +133,38 @@ test("mobile portal", async ({ page }) => {
   await boot(page, portalSeed());
   await expect(page.getByRole("heading", { name: /Hi Jordan/ })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/portal-mobile.png", fullPage: false });
+  for (const width of [360, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    const marks = page.locator("[data-marker]");
+    const n = await marks.count();
+    expect(n).toBeGreaterThan(3);
+    for (let i = 0; i < n; i++) {
+      const box = await marks.nth(i).boundingBox();
+      expect(box).toBeTruthy();
+      expect(Math.abs((box?.width || 0) - (box?.height || 0))).toBeLessThan(1.5);
+      expect(box?.width || 0).toBeGreaterThan(16);
+    }
+    const card = page.locator("#journey");
+    const cardBox = await card.boundingBox();
+    expect(cardBox).toBeTruthy();
+    expect((cardBox?.x || 0) + (cardBox?.width || 0)).toBeLessThanOrEqual(width + 1);
+  }
+});
+
+test("appearance is per person and reaches the portal", async ({ page }) => {
+  await boot(page, ownerSeed(), "/", { mode: "dark", accent: "purple" });
+  await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
+  await expect(page.locator("html")).toHaveAttribute("data-accent", "purple");
+  await page.screenshot({ path: "/opt/cursor/artifacts/pipeline-dark.png", fullPage: false });
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+  await page.screenshot({ path: "/opt/cursor/artifacts/theme-picker.png", fullPage: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await boot(page, portalSeed(), "/", { mode: "dark", accent: "crimson" });
+  await expect(page.getByRole("heading", { name: /Hi Jordan/ })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
+  await page.screenshot({ path: "/opt/cursor/artifacts/portal-dark-mobile.png", fullPage: false });
+  await page.getByRole("button", { name: "Appearance" }).click();
+  await expect(page.getByRole("dialog", { name: "Appearance" })).toBeVisible();
 });

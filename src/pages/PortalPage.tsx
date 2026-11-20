@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useBackend, useGo, useToast } from "../appContext";
+import { ThemeDialog } from "../themePicker";
 import { CONTACT_EMAIL } from "../lib/config";
 import { DAY, first, isConfidential, icsFile, slotLong, slotTime } from "../lib/domain";
 import { docId } from "../lib/backend";
@@ -32,6 +33,7 @@ export function PortalPage({ id, backToDesk = false }: { id: string; backToDesk?
   const [forms, setForms] = useState<{ id: string; data: Record<string, unknown> }[]>([]);
   const [pick, setPick] = useState<string | null>(null);
   const [text, setText] = useState("");
+  const [themeOn, setThemeOn] = useState(false);
   const [drag, setDrag] = useState(false);
   const [signing, setSigning] = useState<string | null>(null);
   const me = backend.current();
@@ -147,10 +149,11 @@ export function PortalPage({ id, backToDesk = false }: { id: string; backToDesk?
   return (
     <div data-screen="portal" className={`flex h-dvh flex-col overflow-hidden bg-canvas lane-${lane}`}>
       <header className="frost z-20 shrink-0 border-b border-black/5">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-          <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="h-12 w-12 crest" />
+        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2 px-4 py-3">
+          <img src="/img/icon-192.png" alt="Potsdam Volunteer Rescue Squad" className="h-12 w-12 shrink-0 rounded-2xl" />
           <div className="flex gap-2 text-sm">
             {backToDesk ? <button type="button" className="rounded-full px-3 py-1 hairline" onClick={() => go("/")}>Back to the desk</button> : null}
+            <button type="button" className="rounded-full px-3 py-1 hairline" onClick={() => setThemeOn(true)}>Appearance</button>
             <button type="button" className="rounded-full px-3 py-1 hairline" onClick={() => backend.signOut().then(() => location.replace("/signin"))}>Sign out</button>
           </div>
         </div>
@@ -226,12 +229,12 @@ export function PortalPage({ id, backToDesk = false }: { id: string; backToDesk?
             {steps.length ? (
               <>
                 <p className="mt-1 text-sm text-muted">{steps.every((s) => s.state === "done") ? "All steps complete" : `Step ${Math.max(1, cur + 1)} of ${steps.length}: ${steps[Math.max(0, cur)]?.label || ""}${steps[Math.max(0, cur)]?.short ? ` (${steps[Math.max(0, cur)].short})` : ""}`}</p>
-                <div className="mt-3 flex gap-1">{steps.map((s, i) => <i key={i} className={`h-1.5 flex-1 rounded-full ${s.state === "done" ? "bg-[var(--lane)]" : s.state === "now" ? "bg-[var(--lane)]/50" : "bg-black/10"}`} />)}</div>
-                <ol className="mt-4 space-y-3">
+                <div className="mt-3 flex min-w-0 gap-1 overflow-hidden">{steps.map((s, i) => <i key={i} className={`h-1.5 min-w-0 flex-1 rounded-full ${s.state === "done" ? "bg-[var(--lane)]" : s.state === "now" ? "bg-[var(--lane)]/50" : "bg-black/10"}`} />)}</div>
+                <ol className="mt-4 min-w-0 space-y-3">
                   {steps.map((s) => (
-                    <li key={s.label} className="flex gap-3 text-sm">
-                      <span className={`mt-0.5 grid h-5 w-5 place-items-center rounded-full text-[10px] ${s.state === "done" ? "bg-act text-white" : s.state === "now" ? "bg-[var(--lane)] text-white" : "bg-black/10"}`}>{s.state === "done" ? "✓" : ""}</span>
-                      <span><b>{s.label}</b>{s.state !== "todo" && s.detail ? <div className="text-muted">{s.detail}</div> : null}</span>
+                    <li key={s.label} className="flex min-w-0 items-start gap-3 text-sm">
+                      <span data-marker className={`mark mt-0.5 grid place-items-center text-[10px] leading-none ${s.state === "done" ? "bg-act text-white" : s.state === "now" ? "bg-[var(--lane)] text-white" : "bg-black/10"}`}>{s.state === "done" ? "✓" : ""}</span>
+                      <span className="min-w-0 flex-1"><b className="block">{s.label}</b>{s.state !== "todo" && s.detail ? <div className="text-muted [overflow-wrap:anywhere]">{s.detail}</div> : null}</span>
                     </li>
                   ))}
                 </ol>
@@ -310,6 +313,7 @@ export function PortalPage({ id, backToDesk = false }: { id: string; backToDesk?
         <a href="#messages" className="px-3 py-2">Messages</a>
       </nav>
       {signing ? <SignSheet formKey={signing} appId={id} onClose={() => setSigning(null)} /> : null}
+      {themeOn ? <ThemeDialog email={backend.current()?.email} onClose={() => setThemeOn(false)} /> : null}
     </div>
   );
 }

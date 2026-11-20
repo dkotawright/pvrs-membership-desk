@@ -3,6 +3,7 @@ import type { Backend, SessionUser } from "./lib/backend";
 import { createBackend } from "./lib/backend";
 import { PAPERWORK_EMAIL, OWNER_EMAIL } from "./lib/config";
 import { lower, resolveActor, type Actor, type StaffDoc } from "./lib/domain";
+import { applyTheme, readTheme } from "./lib/theme";
 
 const BackendCtx = createContext<Backend | null>(null);
 export function useBackend() {
@@ -58,6 +59,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <ToastCtx.Provider value={setToast}>
         <NavCtx.Provider value={go}>
           <Session path={path}>
+            <ThemeSync />
             {children}
             {toast ? <div role="status" className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-sm text-white shadow-lg">{toast}</div> : null}
           </Session>
@@ -137,3 +139,15 @@ function Session({ children, path }: { children: ReactNode; path: string }) {
 
 const PathCtx = createContext("/");
 export function usePath() { return useContext(PathCtx); }
+
+function ThemeSync() {
+  const { user } = useGate();
+  useEffect(() => {
+    const apply = () => applyTheme(readTheme(user?.email));
+    apply();
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [user?.email]);
+  return null;
+}

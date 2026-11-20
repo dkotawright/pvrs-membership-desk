@@ -3,6 +3,7 @@ import { Bell, Calendar, FileText, LayoutGrid, List, MessageSquare, Plus, Search
 import { useBackend, useGate, useToast } from "../appContext";
 import { InterviewPanel } from "./interview";
 import { BulkBar, DupeBanner, Flyer, NotifySheet, Tour, mailRef, refUrl, usePushRefresh } from "./tools";
+import { ThemeDialog, ThemePicker } from "../themePicker";
 import { MedControl, type McContext } from "./MedControl";
 import { docId, type Snap } from "../lib/backend";
 import {
@@ -45,6 +46,8 @@ export function DeskApp() {
   const [selecting, setSelecting] = useState(false);
   const [tourOn, setTourOn] = useState(false);
   const [notifyOn, setNotifyOn] = useState(false);
+  const [themeOn, setThemeOn] = useState(false);
+  const [accountOn, setAccountOn] = useState(false);
   usePushRefresh();
 
   useEffect(() => {
@@ -166,15 +169,23 @@ export function DeskApp() {
     <div data-screen="desk" className="flex h-dvh overflow-hidden bg-canvas text-ink">
       <aside className="frost hidden h-full w-64 shrink-0 flex-col border-r border-black/5 px-3 py-4 md:flex">
         <div className="flex items-center gap-2 px-2">
-          <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="h-12 w-12 crest" />
-          <div>
+          <img src="/img/icon-192.png" alt="" className="h-12 w-12 shrink-0 rounded-2xl" />
+          <div className="min-w-0">
             <div className="text-sm font-semibold">PVRS Membership</div>
             <div className="text-[11px] text-muted">{actor.role === "owner" ? "Owner" : actor.role === "full" ? "Full access" : ROLE_LABEL[actor.role] || actor.role}</div>
           </div>
         </div>
         <Nav view={view} setView={(v) => { setView(v); setSel(null); }} actorCan={actor.canEdit} admin={actor.adminView} requests={requests.filter((r) => r.data.status === "pending").length} />
         {actor.canEdit ? <button type="button" className="mx-2 mt-3 inline-flex items-center justify-center gap-1 rounded-full bg-crimson py-2.5 text-sm font-semibold text-white shadow-md" onClick={() => addApplicant(backend, actor.email, toast, openFile)}><Plus className="h-4 w-4" /> New applicant</button> : null}
-        <button type="button" className="mx-2 mt-auto flex items-center gap-2 px-2 py-2 text-left text-xs text-muted" onClick={() => backend.signOut().then(() => location.replace("/signin"))}><span className="grid h-8 w-8 place-items-center rounded-full bg-blue/10 text-xs font-semibold text-blue">{initials(actor.name || actor.email)}</span><span><b className="block text-ink">{actor.name || "Signed in"}</b>Sign out</span></button>
+        <div className="relative mx-2 mt-auto">
+          {accountOn ? (
+            <div className="card absolute bottom-14 left-0 z-30 w-64 p-3" role="menu">
+              <ThemePicker email={actor.email} compact />
+              <button type="button" className="mt-3 w-full rounded-full px-3 py-2 text-sm hairline" onClick={() => backend.signOut().then(() => location.replace("/signin"))}>Sign out</button>
+            </div>
+          ) : null}
+          <button type="button" className="flex w-full items-center gap-2 px-2 py-2 text-left text-xs text-muted" aria-expanded={accountOn} aria-label="Account and appearance" onClick={() => setAccountOn((v) => !v)}><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-blue/10 text-xs font-semibold text-blue">{initials(actor.name || actor.email)}</span><span className="min-w-0"><b className="block truncate text-ink">{actor.name || "Signed in"}</b>Appearance</span></button>
+        </div>
       </aside>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="frost sticky top-0 z-20 flex items-center gap-2 border-b border-black/5 px-3 py-2.5">
@@ -306,12 +317,14 @@ export function DeskApp() {
             {[["slots", "Interview times"], ["board", "Board meeting"], ["reports", "Reports"], ...(actor.canEdit ? [["team", "Team"], ["settings", "Settings"]] : [])].map(([id, label]) => (
               <button key={id} type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setView(id as View); setMobileMore(false); }}>{label}</button>
             ))}
+            <button type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setMobileMore(false); setThemeOn(true); }}>Appearance</button>
           </div>
         </div>
       ) : null}
       {actor.canEdit ? <MedControl open={aiOpen} onClose={() => setAiOpen(false)} context={context} hints={hints} onOpen={(id) => { openFile(id); setAiOpen(false); }} /> : null}
       <Tour role={actor.role === "owner" || actor.role === "full" ? "owner" : actor.role} email={actor.email} force={tourOn} onClose={() => setTourOn(false)} />
       {notifyOn ? <NotifySheet onClose={() => setNotifyOn(false)} /> : null}
+      {themeOn ? <ThemeDialog email={actor.email} onClose={() => setThemeOn(false)} /> : null}
     </div>
   );
 }
@@ -695,6 +708,7 @@ function SettingsPanel({ settings, backend, toast }: { settings: Settings; backe
   return (
     <section className="max-w-2xl space-y-4" data-screen="settings">
       <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
+      <div className="card p-4"><ThemePicker email={backend.current()?.email} /></div>
       <label className="block text-sm">Signature<textarea className={`${box} mt-1`} rows={4} defaultValue={settings.signature || signatureText(settings)} onBlur={(e) => save({ signature: e.target.value })} /></label>
       <label className="block text-sm">Documents email<input className={`${box} mt-1`} defaultValue={String(settings.docsEmail || "")} onBlur={(e) => save({ docsEmail: e.target.value })} /></label>
       <label className="block text-sm">Board emails<input className={`${box} mt-1`} defaultValue={String(settings.boardEmails || "")} onBlur={(e) => save({ boardEmails: e.target.value })} /></label>

@@ -8,6 +8,22 @@
     <meta name="apple-mobile-web-app-title" content="PVRS Desk" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem("pvrsTheme");
+          var t = raw ? JSON.parse(raw) : { mode: "system", accent: "crimson" };
+          var modes = ["light", "dark", "system"];
+          var accents = ["crimson", "blue", "green", "purple", "orange", "graphite"];
+          var mode = modes.indexOf(t.mode) >= 0 ? t.mode : "system";
+          var accent = accents.indexOf(t.accent) >= 0 ? t.accent : "crimson";
+          var dark = mode === "dark" || (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.dataset.mode = dark ? "dark" : "light";
+          document.documentElement.dataset.accent = accent;
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+        } catch (e) { /* keep the light crimson default */ }
+      })();
+    </script>
     <title>PVRS Membership</title>
     <link rel="icon" type="image/png" sizes="192x192" href="/img/icon-192.png" />
     <link rel="apple-touch-icon" href="/img/icon-180.png" />

@@ -4,21 +4,12 @@ import { useBackend, useGate, useGo, useToast } from "../appContext";
 import { CONTACT_EMAIL } from "../lib/config";
 import { lower, okEmail } from "../lib/domain";
 
-function Brand({ light = false }: { light?: boolean }) {
-  return (
-    <a href="/" data-nav="/" className="inline-flex items-center gap-2 font-semibold tracking-tight">
-      <img src="/img/logo.png" alt="" className="h-9 w-9 rounded-xl logo-mark" />
-      <span className={light ? "text-white" : ""}>PVRS <span className="font-medium text-muted">Membership</span></span>
-    </a>
-  );
-}
-
 export function PublicBar() {
   const go = useGo();
   return (
     <header className="frost sticky top-0 z-30 flex items-center justify-between border-b border-black/5 px-5 py-3">
       <button type="button" onClick={() => go("/")} className="inline-flex items-center gap-2 font-semibold tracking-tight">
-        <img src="/img/logo.png" alt="" className="h-8 w-8 rounded-lg logo-mark" />
+        <img src="/img/icon-192.png" alt="" className="h-10 w-10 rounded-xl" />
         PVRS
       </button>
       <nav className="flex items-center gap-2 text-sm">
@@ -43,38 +34,61 @@ export function HomePage() {
     [GraduationCap, "Associate", "Students. Half-time resident. Fifteen spots."],
     [HandHeart, "Auxiliary", "Already in EMS. Lighter meeting load."],
   ] as const;
+  const why = [
+    ["Your town", "Calls stay in Potsdam and the towns around it."],
+    ["Your squad", "EMTs, drivers, and members train together."],
+    ["Your pace", "The application takes about 15 minutes, then you follow it in your own portal."],
+  ];
   return (
-    <div data-screen="home" className="mesh min-h-full">
-      <header className="frost sticky top-0 z-30 mx-auto flex max-w-6xl items-center justify-between rounded-b-3xl border border-white/70 px-4 py-3 shadow-sm">
-        <button type="button" onClick={() => go("/")} className="inline-flex items-center gap-2 font-semibold"><img src="/img/logo.png" alt="" className="h-11 w-11 crest" /> PVRS</button>
-        <nav className="flex items-center gap-2">
-          <button type="button" onClick={() => go("/signin")} className="rounded-full px-3 py-2 text-sm font-medium">Sign in</button>
-          <button type="button" onClick={() => go("/apply")} className="rounded-full bg-crimson px-4 py-2 text-sm font-semibold text-white shadow-md press">Apply Now</button>
-        </nav>
-      </header>
-      <main className="relative mx-auto max-w-5xl px-5 py-16 text-center sm:py-24">
-        <div aria-hidden className="pointer-events-none absolute inset-x-8 -top-6 h-64 rounded-full bg-gradient-to-br from-blue/25 via-crimson/15 to-transparent blur-3xl" />
-        <div className="relative">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted">Potsdam Volunteer Rescue Squad · Est. 1955</p>
-        <h1 className="mx-auto mt-4 max-w-3xl text-5xl font-semibold sm:text-7xl">Serve Potsdam.<br />Save lives.</h1>
-        <p className="mx-auto mt-5 max-w-xl text-lg text-muted">Volunteer EMTs, drivers, and members. Apply in about 15 minutes. Your progress saves on this device, then follows you in your own portal.</p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <button type="button" onClick={() => go("/apply")} className="rounded-full bg-crimson px-6 py-3 text-base font-semibold text-white shadow-lg press">Apply to join PVRS</button>
-          <button type="button" onClick={() => go("/signin")} className="rounded-full bg-white/80 px-6 py-3 text-base font-semibold shadow-sm backdrop-blur hairline press">Member and applicant sign in</button>
+    <div data-screen="home" className="min-h-full bg-canvas">
+      <section className="relative isolate min-h-[100dvh] overflow-hidden bg-[#07111f] text-white">
+        <img src="/img/hero.svg" alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#07111f] via-[#07111f]/80 to-[#07111f]/25" />
+        <header className="relative z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-4 sm:px-8">
+          <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="wordmark h-12 max-w-full mix-blend-screen sm:h-20" />
+          <nav className="flex items-center gap-1.5">
+            <button type="button" onClick={() => go("/signin")} className="rounded-full px-3 py-2 text-sm font-medium text-white">Sign in</button>
+            <button type="button" onClick={() => go("/apply")} className="rounded-full bg-crimson px-3 py-2 text-sm font-semibold text-white shadow-lg press sm:px-4">Apply</button>
+          </nav>
+        </header>
+        <div className="relative z-10 flex min-h-[calc(100dvh-7rem)] flex-col justify-end px-4 pb-10 sm:px-8 sm:pb-14">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">Potsdam Volunteer Rescue Squad</p>
+          <h1 className="mt-3 max-w-4xl text-6xl font-semibold leading-[0.92] text-white sm:text-8xl">Serve Potsdam.<br />Save lives.</h1>
+          <p className="mt-5 max-w-xl text-lg text-white/80">Volunteer EMTs, drivers, and members. Your progress saves on this device, then follows you in your own portal.</p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <button type="button" onClick={() => go("/apply")} className="rounded-full bg-crimson px-7 py-3.5 text-base font-semibold text-white shadow-lg press">Apply to join PVRS</button>
+            <button type="button" onClick={() => go("/signin")} className="rounded-full bg-white/10 px-7 py-3.5 text-base font-semibold text-white ring-1 ring-white/30 press">Member and applicant sign in</button>
+          </div>
+          <dl className="mt-10 grid grid-cols-2 gap-4 border-t border-white/15 pt-6 sm:grid-cols-4">
+            {[["1955", "On the squad since"], ["Potsdam", "St. Lawrence County"], ["Volunteer", "EMTs, drivers, members"], ["15 min", "To start an application"]].map(([n, l]) => (
+              <div key={l}><dt className="text-3xl font-semibold text-white">{n}</dt><dd className="text-sm text-white/70">{l}</dd></div>
+            ))}
+          </dl>
         </div>
-        <ol className="mx-auto mt-12 grid max-w-3xl grid-cols-2 gap-3 text-left sm:grid-cols-4">
+      </section>
+      <section className="mx-auto max-w-6xl px-4 py-14 sm:px-8">
+        <h2 className="text-3xl font-semibold">Why people join</h2>
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          {why.map(([title, sub]) => (
+            <article key={title} className="card p-5"><h3 className="text-xl font-semibold">{title}</h3><p className="mt-2 text-sm text-muted">{sub}</p></article>
+          ))}
+        </div>
+        <h2 className="mt-12 text-3xl font-semibold">Ways to serve</h2>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {tracks.map(([Icon, title, sub]) => (
+            <article key={title} className="card overflow-hidden p-0">
+              <div className="h-1.5 bg-crimson" />
+              <div className="p-5"><Icon className="h-7 w-7 text-crimson" aria-hidden /><h3 className="mt-4 text-2xl font-semibold">{title}</h3><p className="mt-2 text-sm text-muted">{sub}</p></div>
+            </article>
+          ))}
+        </div>
+        <ol className="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {steps.map(([Icon, title, sub], i) => (
-            <li key={title} className="card p-4"><Icon className="h-5 w-5 text-blue" aria-hidden /><div className="mt-3 text-xs text-muted">0{i + 1}</div><div className="font-semibold">{title}</div><div className="text-sm text-muted">{sub}</div></li>
+            <li key={title} className="card p-4"><Icon className="h-5 w-5 text-blue" aria-hidden /><div className="mt-3 text-xs font-semibold text-blue">0{i + 1}</div><div className="text-lg font-semibold">{title}</div><div className="text-sm text-muted">{sub}</div></li>
           ))}
         </ol>
-        <div className="mt-8 grid gap-3 text-left sm:grid-cols-3">
-          {tracks.slice(0, 3).map(([Icon, title, sub]) => (
-            <article key={title} className="card p-5"><Icon className="h-5 w-5 text-crimson" aria-hidden /><h2 className="mt-3 text-xl font-semibold">{title}</h2><p className="mt-1 text-sm text-muted">{sub}</p></article>
-          ))}
-        </div>
-        <p className="mt-6 text-sm text-muted"><Sparkles className="mr-1 inline h-4 w-4" /> The fourth track, {tracks[3][1]}, is on the application. Questions: {CONTACT_EMAIL}</p>
-        </div>
-      </main>
+        <p className="mt-8 text-sm text-muted"><Sparkles className="mr-1 inline h-4 w-4" /> Questions: {CONTACT_EMAIL}</p>
+      </section>
     </div>
   );
 }
@@ -176,7 +190,7 @@ export function SignInPage() {
   return (
     <div data-screen="signin" className="mesh grid min-h-full place-items-center px-4 py-10">
       <section className="card w-full max-w-md bg-white p-6 opacity-100 sm:p-8">
-          <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="mx-auto crest" />
+          <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="wordmark mx-auto h-16" />
           <p className="mt-4 text-center text-xs font-semibold uppercase tracking-[0.18em] text-muted">{greet()} · Potsdam</p>
           <div className="mt-2 flex justify-center"><Weather /></div>
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-muted">Membership portal</p>
@@ -275,7 +289,7 @@ export function VerifyPage() {
   return (
     <div className="grid min-h-full place-items-center px-5" data-screen="verify">
       <div className="card w-full max-w-md p-8">
-        <img src="/img/logo.png" alt="" className="h-12 w-12 rounded-xl logo-mark" />
+        <img src="/img/icon-192.png" alt="" className="h-12 w-12 rounded-2xl" />
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">Confirm your email</h1>
         <p className="mt-2 text-sm text-muted">We sent a link to {gate.user?.email}. Open it, then come back. It can take a minute and may land in spam.</p>
         <button type="button" className="mt-5 w-full rounded-full bg-blue py-3 font-semibold text-white" onClick={async () => { const u = await backend.reload(); if (!u?.emailVerified) toast("Not confirmed yet. Open the link in the email we sent."); else location.reload(); }}>I’ve confirmed it</button>
@@ -313,7 +327,7 @@ export function NoAccessPage() {
   return (
     <div className="grid min-h-full place-items-center px-5" data-screen="noaccess">
       <div className="card w-full max-w-md p-8">
-        <img src="/img/logo.png" alt="" className="h-12 w-12 rounded-xl logo-mark" />
+        <img src="/img/icon-192.png" alt="" className="h-12 w-12 rounded-2xl" />
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">{pending ? "Access requested" : denied ? "Access not approved" : "No application or team access found"}</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted">
           {pending ? `The membership coordinator will review your request for ${email}. This page opens the desk once you’re approved.`
@@ -333,5 +347,3 @@ export function NoAccessPage() {
     </div>
   );
 }
-
-void Brand;

@@ -122,7 +122,7 @@ export function ApplyPage() {
     <div data-screen="apply" className="min-h-full bg-canvas">
       <PublicBar />
       <main className="mx-auto max-w-2xl px-4 py-8">
-        <div className="card p-5 opacity-100 sm:p-8">
+        <div className="card min-w-0 p-5 opacity-100 sm:p-8">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Membership application · Step {step + 1} of {APPLY_STEPS.length}</p>
@@ -133,10 +133,10 @@ export function ApplyPage() {
           <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-black/5" role="progressbar" aria-valuenow={step + 1} aria-valuemax={APPLY_STEPS.length}>
             <div className="h-full rounded-full bg-blue transition-all" style={{ width: `${((step + 1) / APPLY_STEPS.length) * 100}%` }} />
           </div>
-          <ol className="mt-3 flex flex-wrap gap-1 text-xs text-ink">
+          <ol className="mt-3 flex min-w-0 flex-wrap gap-1 text-xs text-ink">
             {APPLY_STEPS.map((s, i) => (
-              <li key={s.key}>
-                <button type="button" disabled={i > maxStep} onClick={() => go(i)} className={`whitespace-nowrap rounded-full px-2 py-1 ${i === step ? "bg-ink text-white" : i < step ? "text-blue" : ""}`}>{s.title}</button>
+              <li key={s.key} className="max-w-full shrink-0">
+                <button type="button" disabled={i > maxStep} onClick={() => go(i)} className={`box-border max-w-full whitespace-nowrap rounded-full px-2 py-1 ${i === step ? "bg-ink text-white" : i < step ? "text-blue" : ""}`}>{s.title}</button>
               </li>
             ))}
           </ol>

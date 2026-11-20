@@ -18,3 +18,4 @@ The React app in `src/` uses the same Firebase project, collections, and securit
 | Notifications drawer and on-device alert opt-in | `NotifySheet` |
 | Portal, secure uploads, vault, signing | `PortalPage.tsx`, `VaultPage.tsx` |
 | Med Control on Groq, optional Claude, daily cap, privacy filter | `functions/medcontrol.js` |
+| Light, Dark, System, and six accents, saved on this device per person | `src/lib/theme.ts` |
