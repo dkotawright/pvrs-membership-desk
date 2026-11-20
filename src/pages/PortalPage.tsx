@@ -166,7 +166,7 @@ export function PortalPage({ id, backToDesk = false }: { id: string; backToDesk?
       </div>
       <main className="mx-auto mt-4 max-w-3xl space-y-4 px-4 pb-6">
         <section className="card p-5" aria-label="Your next step" data-screen="next-step">
-          <p className="text-xs font-semibold uppercase tracking-widest text-[var(--lane)]">Your next step</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-[var(--lane-ink)]">Your next step</p>
           {move ? (
             <>
               <h2 className="mt-1 text-2xl font-semibold tracking-tight">{move.title}</h2>
@@ -199,7 +199,7 @@ export function PortalPage({ id, backToDesk = false }: { id: string; backToDesk?
         {nm && orient ? (
           <section className="card p-5" id="orient">
             <h2 className="text-xl font-semibold">Orientation</h2>
-            <p className="mt-1 text-3xl font-semibold tracking-tight"><span className="text-[var(--lane)]">{orient.done}</span> of {orient.total} done</p>
+            <p className="mt-1 text-3xl font-semibold tracking-tight"><span className="text-[var(--lane-ink)]">{orient.done}</span> of {orient.total} done</p>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/5"><div className="h-full bg-[var(--lane)]" style={{ width: `${orient.total ? (orient.done / orient.total) * 100 : 0}%` }} /></div>
             <ul className="mt-4 space-y-2">
               {orient.items.map((item) => (

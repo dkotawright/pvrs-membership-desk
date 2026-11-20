@@ -22,12 +22,15 @@ export function ThemePicker({ email, compact = false }: { email?: string; compac
         ))}
       </div>
       <div className="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Accent">
-        {ACCENTS.map((a) => (
-          <button key={a.id} type="button" role="radio" aria-checked={choice.accent === a.id} aria-pressed={choice.accent === a.id} onClick={() => update({ ...choice, accent: a.id })} className="inline-flex items-center gap-2 rounded-full bg-soft px-3 py-1.5 text-sm hairline">
-            <span className="h-4 w-4 shrink-0 rounded-full" style={{ background: a.color }} aria-hidden />
-            {a.label}
-          </button>
-        ))}
+        {ACCENTS.map((a) => {
+          const on = choice.accent === a.id;
+          return (
+            <button key={a.id} type="button" role="radio" aria-checked={on} aria-pressed={on} onClick={() => update({ ...choice, accent: a.id })} className={`inline-flex items-center gap-2 rounded-full bg-soft px-3 py-1.5 text-sm ${on ? "font-semibold ring-2 ring-ink ring-offset-2 ring-offset-card" : "hairline"}`}>
+              <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: a.color }} aria-hidden>{on ? "✓" : ""}</span>
+              {a.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

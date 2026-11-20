@@ -41,17 +41,23 @@ export function HomePage() {
   ];
   return (
     <div data-screen="home" className="min-h-full bg-canvas">
-      <section className="relative isolate min-h-[100dvh] overflow-hidden bg-[#07111f] text-white">
-        <img src="/img/hero.svg" alt="" className="absolute inset-0 h-full w-full object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#07111f] via-[#07111f]/80 to-[#07111f]/25" />
-        <header className="relative z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 py-4 sm:px-8">
-          <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="wordmark h-12 max-w-full mix-blend-screen sm:h-20" />
+      <section className="relative isolate flex min-h-[100dvh] flex-col overflow-hidden bg-[#07111f] text-white">
+        <img src="/img/hero.svg" alt="" className="pointer-events-none absolute inset-0 hidden h-full w-full object-cover object-right sm:block" />
+        <div className="pointer-events-none absolute inset-0 hidden bg-gradient-to-r from-[#07111f] from-40% via-[#07111f]/80 to-transparent sm:block" />
+        <header className="relative z-10 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-4 sm:px-8">
+          <button type="button" onClick={() => go("/")} className="flex min-w-0 items-center gap-2.5 text-left text-white">
+            <img src="/img/icon-192.png" alt="" className="h-11 w-11 shrink-0 rounded-xl sm:h-12 sm:w-12" />
+            <span className="min-w-0">
+              <span className="block text-base font-semibold leading-none tracking-tight">PVRS</span>
+              <span className="mt-1 hidden text-[11px] font-medium text-white/90 sm:block sm:text-xs">Potsdam Volunteer Rescue Squad</span>
+            </span>
+          </button>
           <nav className="flex items-center gap-1.5">
             <button type="button" onClick={() => go("/signin")} className="rounded-full px-3 py-2 text-sm font-medium text-white">Sign in</button>
             <button type="button" onClick={() => go("/apply")} className="rounded-full bg-crimson px-3 py-2 text-sm font-semibold text-white shadow-lg press sm:px-4">Apply</button>
           </nav>
         </header>
-        <div className="relative z-10 flex min-h-[calc(100dvh-7rem)] flex-col justify-end px-4 pb-10 sm:px-8 sm:pb-14">
+        <div className="relative z-10 flex flex-1 flex-col justify-end px-4 pb-8 sm:px-8 sm:pb-14">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-white/70">Potsdam Volunteer Rescue Squad</p>
           <h1 className="mt-3 max-w-4xl text-6xl font-semibold leading-[0.92] text-white sm:text-8xl">Serve Potsdam.<br />Save lives.</h1>
           <p className="mt-5 max-w-xl text-lg text-white/80">Volunteer EMTs, drivers, and members. Your progress saves on this device, then follows you in your own portal.</p>
@@ -59,7 +65,8 @@ export function HomePage() {
             <button type="button" onClick={() => go("/apply")} className="rounded-full bg-crimson px-7 py-3.5 text-base font-semibold text-white shadow-lg press">Apply to join PVRS</button>
             <button type="button" onClick={() => go("/signin")} className="rounded-full bg-white/10 px-7 py-3.5 text-base font-semibold text-white ring-1 ring-white/30 press">Member and applicant sign in</button>
           </div>
-          <dl className="mt-10 grid grid-cols-2 gap-4 border-t border-white/15 pt-6 sm:grid-cols-4">
+          <img src="/img/hero.svg" alt="" data-hero-rig className="mt-6 h-32 w-full rounded-2xl object-cover object-[72%_58%] sm:hidden" />
+          <dl className="mt-8 grid grid-cols-2 gap-4 border-t border-white/15 pt-6 sm:mt-10 sm:grid-cols-4">
             {[["1955", "On the squad since"], ["Potsdam", "St. Lawrence County"], ["Volunteer", "EMTs, drivers, members"], ["15 min", "To start an application"]].map(([n, l]) => (
               <div key={l}><dt className="text-3xl font-semibold text-white">{n}</dt><dd className="text-sm text-white/70">{l}</dd></div>
             ))}

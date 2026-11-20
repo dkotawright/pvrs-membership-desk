@@ -107,8 +107,16 @@ test("a bad reference link explains itself", async ({ page }) => {
 });
 
 test("mobile pipeline and home", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
   await boot(page, { user: null, docs: {} });
+  for (const width of [360, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    const btn = await page.getByRole("button", { name: "Member and applicant sign in" }).boundingBox();
+    const rig = await page.locator("[data-hero-rig]").boundingBox();
+    expect(btn && rig).toBeTruthy();
+    const hit = btn && rig && btn.x < rig.x + rig.width && btn.x + btn.width > rig.x && btn.y < rig.y + rig.height && btn.y + btn.height > rig.y;
+    expect(hit).toBe(false);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: "/opt/cursor/artifacts/home-mobile.png", fullPage: false });
   await page.goto("/apply");
   await page.screenshot({ path: "/opt/cursor/artifacts/apply-mobile.png", fullPage: false });
@@ -157,8 +165,12 @@ test("appearance is per person and reaches the portal", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
   await expect(page.locator("html")).toHaveAttribute("data-accent", "purple");
   await page.screenshot({ path: "/opt/cursor/artifacts/pipeline-dark.png", fullPage: false });
+  await page.getByRole("button", { name: /Jordan Hale/ }).first().click();
+  await expect(page.getByRole("heading", { name: "Jordan Hale" })).toBeVisible();
+  await page.screenshot({ path: "/opt/cursor/artifacts/applicant-file-dark.png", fullPage: false });
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Purple" })).toHaveAttribute("aria-checked", "true");
   await page.screenshot({ path: "/opt/cursor/artifacts/theme-picker.png", fullPage: false });
   await page.setViewportSize({ width: 390, height: 844 });
   await boot(page, portalSeed(), "/", { mode: "dark", accent: "crimson" });

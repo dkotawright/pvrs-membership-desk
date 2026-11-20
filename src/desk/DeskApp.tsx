@@ -233,7 +233,7 @@ export function DeskApp() {
                     <div key={lane.id} className={`lane-${lane.id} rounded-3xl bg-[#efeff4] p-2`}>
                       <button type="button" className="flex w-full items-baseline justify-between px-2 py-1" onClick={() => setFilter(lane.id)}>
                         <span className="text-sm font-semibold">{lane.label}</span>
-                        <span className="text-2xl font-semibold text-[var(--lane)]">{apps.filter((a) => laneOf(a) === lane.id).length}</span>
+                        <span className="text-2xl font-semibold text-[var(--lane-ink)]">{apps.filter((a) => laneOf(a) === lane.id).length}</span>
                       </button>
                       <div className="space-y-2">
                         {visible.filter((a) => laneOf(a) === lane.id).map((a) => <Card key={a._id} a={a} onOpen={() => selecting ? setPicked((p) => p.includes(a._id) ? p.filter((id) => id !== a._id) : [...p, a._id]) : openFile(a._id)} picked={picked.includes(a._id)} />)}
@@ -249,7 +249,7 @@ export function DeskApp() {
                       const p = progress(a);
                       return (
                         <button key={a._id} type="button" onClick={() => openFile(a._id)} className={`flex w-full items-center gap-3 border-b border-black/5 px-3 py-3 text-left ${sel === a._id ? "bg-blue/5" : ""}`}>
-                          <span className={`lane-${laneOf(a)} grid h-9 w-9 place-items-center rounded-full bg-[var(--lane)]/10 text-xs font-semibold text-[var(--lane)]`}>{initials(a.name)}</span>
+                          <span className={`lane-${laneOf(a)} grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--lane)]/15 text-xs font-semibold text-[var(--lane-ink)]`}>{initials(a.name)}</span>
                           <span className="min-w-0"><b className="block truncate">{a.name}</b><span className="text-xs text-muted">{a.type} · {statusOf(a, p).pill}</span></span>
                         </button>
                       );
@@ -355,10 +355,10 @@ function Card({ a, onOpen, picked }: { a: Applicant; onOpen: () => void; picked?
   const lane = laneOf(a);
   return (
     <button type="button" onClick={onOpen} className={`lane-${lane} card w-full p-3 text-left press hover:-translate-y-0.5 ${picked ? "ring-2 ring-blue" : ""}`}>
-      <div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--lane)]/15 text-[11px] font-semibold text-[var(--lane)]">{initials(a.name)}</span><span className="font-semibold">{a.name || "Unnamed"}</span></div>
+      <div className="flex items-center gap-2"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--lane)]/20 text-[11px] font-semibold text-[var(--lane-ink)]">{initials(a.name)}</span><span className="font-semibold">{a.name || "Unnamed"}</span></div>
       <div className="mt-2 flex items-center justify-between text-xs text-muted"><span>{a.type || "Applicant"}</span><span className={`tabular rounded-full px-2 py-0.5 ${daysWaiting(a) >= 14 ? "bg-amber-100 text-amber-900" : "bg-black/5"}`}>{daysWaiting(a)}d</span></div>
       <div className="mt-2 flex gap-0.5">{[0, 1, 2, 3, 4].map((i) => <i key={i} className={`h-1 flex-1 rounded-full ${i < Math.round((p.n / 14) * 5) ? "bg-[var(--lane)]" : "bg-black/10"}`} />)}</div>
-      <div className="mt-2 text-xs font-medium text-[var(--lane)]">{nextActionLabel(a)}</div>
+      <div className="mt-2 text-xs font-semibold text-[var(--lane-ink)]">{nextActionLabel(a)}</div>
     </button>
   );
 }
@@ -378,7 +378,7 @@ function File({ a, apps, actor, tab, setTab, settings, save, fieldValue, edit, w
       <header className="border-b border-black/5 bg-white px-4 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
           <div className="flex min-w-0 flex-1 items-start gap-3">
-          <span className={`lane-${laneOf(a)} grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-[var(--lane)]/15 text-lg font-semibold text-[var(--lane)]`}>{initials(a.name)}</span>
+          <span className={`lane-${laneOf(a)} grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-[var(--lane)]/20 text-lg font-semibold text-[var(--lane-ink)]`}>{initials(a.name)}</span>
           <div className="min-w-0 flex-1">
             <h2 className="text-2xl font-semibold">{a.name}</h2>
             <p className="text-sm text-muted [overflow-wrap:anywhere]">{a.type} · {a.location === "other" ? a.locationOther : a.location || "Potsdam"} · {st.head}</p>
