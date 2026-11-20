@@ -237,14 +237,27 @@ function render(){
     </form>
     <p class="applyfine">Fields marked <i>*</i> are required. Your answers are kept on this device until you submit. Questions? <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p></div>`;
 }
+function clearFieldError(el){
+  if (!el) return;
+  el.removeAttribute("aria-invalid");
+  const box = el.closest(".af") || el.closest(".afs") || el.closest(".bad");
+  if (box) box.classList.remove("bad");
+}
 function showErrors(list){
   const box = $("#apErr");
   document.querySelectorAll("#applyForm .bad").forEach(el => el.classList.remove("bad"));
-  if (!list.length) { box.hidden = true; return; }
+  document.querySelectorAll("#applyForm [aria-invalid]").forEach(el => el.removeAttribute("aria-invalid"));
+  if (!list.length) { if (box) box.hidden = true; return; }
   box.hidden = false; box.innerHTML = `<b>Please fix ${list.length === 1 ? "this" : "these"}:</b><ul>${list.map(x => `<li>${esc(x.msg)}</li>`).join("")}</ul>`;
-  list.forEach(x => { const el = x.path === "type" ? $(".types") : document.querySelector(`[data-p="${x.path}"], [data-choice="${x.path}"]`); if (el) (el.closest(".af") || el).classList.add("bad"); });
+  list.forEach(x => {
+    const el = x.path === "type" ? $(".types") : document.querySelector(`[data-p="${x.path}"], [data-choice="${x.path}"]`);
+    if (!el) return;
+    (el.closest(".af") || el).classList.add("bad");
+    const field = el.matches("input, textarea, select, button") ? el : el.querySelector("input, textarea, select, button");
+    if (field) { field.setAttribute("aria-invalid", "true"); field.setAttribute("aria-describedby", "apErr"); }
+  });
   const firstEl = list[0].path === "type" ? $(".typecard") : document.querySelector(`[data-p="${list[0].path}"], [data-choice="${list[0].path}"]`);
-  if (firstEl) { firstEl.focus({ preventScroll: true }); firstEl.scrollIntoView({ block: "center", behavior: "smooth" }); }
+  if (firstEl) { firstEl.focus({ preventScroll: true }); firstEl.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }
 }
 function go(step){ A.step = Math.max(0, Math.min(STEPS.length - 1, step)); A.maxStep = Math.max(A.maxStep, A.step); saveNow(); render(); const g = $("#apply"); if (g) g.scrollTop = 0; }
 
@@ -281,6 +294,7 @@ function bind(){
   R.addEventListener("input", e => {
     const el = e.target.closest("[data-p]"); if (!el) return;
     set(A.data, el.dataset.p, el.type === "checkbox" ? el.checked : el.value);
+    clearFieldError(el);
     if (el.type === "checkbox") render();
     const sv = $("#apSaved"); if (sv) sv.textContent = "Saving…"; save(); setTimeout(() => { const s2 = $("#apSaved"); if (s2) s2.textContent = "Saved on this device"; }, 500);
   });

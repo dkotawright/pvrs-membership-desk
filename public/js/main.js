@@ -71,7 +71,8 @@ $("#confirmForm").addEventListener("submit", e => { e.preventDefault(); const v 
 $("#linkForm").addEventListener("submit", async e => {
   e.preventDefault();
   const email = lower($("#linkEmail").value);
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast("Enter a valid email address.");
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $("#linkEmail").setAttribute("aria-invalid", "true"); $("#linkEmail").focus(); return toast("Enter a valid email address."); }
+  $("#linkEmail").removeAttribute("aria-invalid");
   const btn = e.target.querySelector("button"); btn.disabled = true;
   try {
     await sendSignInLinkToEmail(auth, email, linkSettings());
@@ -266,7 +267,10 @@ async function startFor(user){
     homeView = "noaccess"; showNoAccess(user, email, req.exists() ? req.data() : null);
   } catch (err) {
     console.error(err);
-    $("#noaccessMsg").textContent = `Something went wrong loading your account. Try again, or contact ${CONTACT_EMAIL}.`;
+    $("#noaccessTitle").textContent = "Couldn't open your account";
+    $("#noaccessMsg").textContent = `Something went wrong loading your account. Check your connection and try again, or contact ${CONTACT_EMAIL}.`;
+    $("#accessBox").innerHTML = `<button class="btn primary block" type="button" id="retryLoad">Try again</button>`;
+    $("#retryLoad").onclick = () => location.reload();
     homeView = "noaccess"; show("noaccess");
   }
 }

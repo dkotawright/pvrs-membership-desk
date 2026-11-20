@@ -4,3 +4,11 @@ node_modules/
 *.log
 migration/
 tests/shots/
+dist/
+.env
+.env.*
+*.pem
+*firebase-adminsdk*.json
+serviceAccount*.json
+*-service-account*.json
+credentials.json

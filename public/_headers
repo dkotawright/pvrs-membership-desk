@@ -1,0 +1,19 @@
+# Cloudflare Pages. Existing files are served as themselves; this only adds headers.
+# Firebase Hosting ignores this file and uses firebase.json instead.
+/*
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Content-Type-Options: nosniff
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+
+/*.js
+  Cache-Control: no-cache
+
+/*.css
+  Cache-Control: no-cache
+
+/*.html
+  Cache-Control: no-cache
+
+/*.webmanifest
+  Cache-Control: no-cache
