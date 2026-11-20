@@ -134,7 +134,7 @@ const last = () => sent[sent.length - 1];
   check(last().tokens.join() === "ownerTok" && /Ivy signed off Rig walkthrough for New One/.test(last().notification.body), "sign-off alert: " + JSON.stringify(last()));
   // The service worker: every push becomes a notification, even with the app open in front (iPhones switch alerts
   // off for an app that receives pushes without showing anything), and it contains no Firebase code.
-  { const vm = require("vm"), fs = require("fs"), src = fs.readFileSync(path.join(__dirname, "..", "static", "firebase-messaging-sw.js"), "utf8");
+  { const vm = require("vm"), fs = require("fs"), src = fs.readFileSync(path.join(__dirname, "..", "public", "firebase-messaging-sw.js"), "utf8");
     const handlers = {}, shown = [], posted = [];
     const client = { url: "https://pvrs-membership.web.app/", visibilityState: "visible", focused: true, postMessage: m => posted.push(m) };
     const self = { addEventListener: (k, f) => { handlers[k] = f; }, skipWaiting() {}, clients: { claim: async () => {}, matchAll: async () => [client] },

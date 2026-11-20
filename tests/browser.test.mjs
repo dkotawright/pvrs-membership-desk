@@ -1831,6 +1831,32 @@ try {
     if (!(await page.locator('[data-k="onb.items.verification_of_sexual_harassment_preven"]').count())) fail("no harassment line on the checklist"); else ok("the default checklist has Sexual Harassment Prevention training");
     await ctx.close();
   }
+  // ---- Med Control panel as the React desk had it (Nov 20): Today briefing, file chips, linked names, usage, clears on close
+  {
+    const { ctx, page } = await open(browser); await wait(page, 600);
+    await page.evaluate(() => { const m = window.__mock.docs; m.set("settings/main", { ...m.get("settings/main"), ai: true }); window.__mock.emit();
+      window.__mock.ai = d => d.job === "usage" ? { n: 3, limit: 150, provider: "anthropic" }
+        : d.job === "briefing" ? { text: "[[Marcus Bell|a2]] needs a driving record.", items: [{ id: "a2", title: "Run the MVR", sub: "Marcus Bell" }], calls: { n: 4, limit: 150, provider: "groq" } }
+        : d.job === "questions" ? { questions: ["Why EMS?", "Which shifts suit you?"] }
+        : d.job === "draft_email" ? { subject: "Welcome to PVRS", text: "Hi Marcus" } : { text: "x" }; }); await wait(page, 300);
+    await page.locator("#aiBtn").click(); await wait(page, 400);
+    if (!/3 \/ 150 today · Claude/.test(await page.locator("#mcUse").textContent()) || !/clear when you close/.test(await page.locator("#modal").textContent())) fail("usage line: " + await page.locator("#mcUse").textContent()); else ok("Med Control shows today's calls, the model and that chats aren't saved");
+    if (await page.locator('[data-mcjob="questions"]').count()) fail("file chips with no file open"); else ok("with no file open, only Today shows");
+    await page.locator('[data-mcjob="briefing"]').click(); await wait(page, 500);
+    const th = await page.locator("#mcThread").textContent();
+    if (/\[\[/.test(th) || !(await page.locator('#mcThread .mc-link[data-mcopen="a2"]').count()) || !(await page.locator('#mcThread .mc-item[data-mcopen="a2"]').count()) || !/4 \/ 150 today · Groq/.test(await page.locator("#mcUse").textContent())) fail("briefing: " + th.slice(0, 200)); else ok("Today lists what needs you, with names that open the file");
+    await page.locator("[data-x]").click(); await wait(page, 200);
+    await page.locator("#aiBtn").click(); await wait(page, 300);
+    if (/needs a driving record/.test(await page.locator("#mcThread").textContent())) fail("chat kept after close"); else ok("closing Med Control clears the chat");
+    await page.locator("[data-x]").click(); await wait(page, 200);
+    await pickApplicant(page, "Marcus Bell"); await page.locator("#aiBtn").click(); await wait(page, 300);
+    await page.locator('[data-mcjob="questions"]').click(); await wait(page, 400);
+    await page.locator('[data-mcjob="draft_email"]').click(); await wait(page, 400);
+    const calls = await page.evaluate(() => window.__mock.aiCalls.filter(c => ["questions", "draft_email"].includes(c.data.job)).map(c => c.data.job + ":" + c.data.id + ":" + (c.data.kind || "")));
+    const t2 = await page.locator("#mcThread").textContent();
+    if (calls.join() !== "questions:a2:,draft_email:a2:welcome" || !/1\. Why EMS\?/.test(t2) || !(await page.locator("[data-mcmail]").count())) fail("file jobs: " + calls + " " + t2.slice(0, 160)); else ok("with a file open: interview questions and a welcome email draft");
+    await ctx.close();
+  }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {
     const { ctx, page } = await open(browser, { url: "/apply?src=flyer", user: null }); await wait(page, 600);
