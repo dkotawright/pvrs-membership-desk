@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Bell, Calendar, FileText, LayoutGrid, List, MessageSquare, Plus, Search, Settings as SettingsIcon, Shield, Sparkles, Users, BarChart3, ClipboardList } from "lucide-react";
 import { useBackend, useGate, useToast } from "../appContext";
 import { InterviewPanel } from "./interview";
+import { BulkBar, DupeBanner, Flyer, NotifySheet, Tour, mailRef, refUrl, usePushRefresh } from "./tools";
 import { MedControl, type McContext } from "./MedControl";
 import { docId, type Snap } from "../lib/backend";
 import {
-  ALL_TABS, DAY, LANES, STAGES, TYPES, canEditPath, canSeeApplicant, daysWaiting, first, get, inBoardQueue, inOrient,
+  ALL_TABS, DAY, LANES, STAGES, TYPES, canEditPath, canSeeApplicant, daysWaiting, first, get, inBoardQueue, inOrient, okEmail, refNudge,
   isSecurePath, ivScore, laneOf, mergeApplicants, nest, nextActionLabel, phaseBits, progress, refStatus, searchDesk,
   statusOf, tabDone, todoItems, type Applicant, type Settings, type TabId, ROLE_LABEL, showField, needsAction,
   welcomeMessage, portalPayload, onbItems, issueItems, skillItems, today, HEARD, signatureText,
@@ -40,6 +41,11 @@ export function DeskApp() {
   const [mobileMore, setMobileMore] = useState(false);
   const [thread, setThread] = useState("");
   const [questions, setQuestions] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [selecting, setSelecting] = useState(false);
+  const [tourOn, setTourOn] = useState(false);
+  const [notifyOn, setNotifyOn] = useState(false);
+  usePushRefresh();
 
   useEffect(() => {
     const where = actor.adminView ? undefined : [{ field: "interviewers", op: "array-contains" as const, value: actor.email }];
@@ -105,6 +111,7 @@ export function DeskApp() {
     setTab(next || (inOrient(a) ? "onb" : "app"));
     setView("pipeline");
     setMode("list");
+    document.querySelector("[data-screen='desk'] main")?.scrollTo({ top: 0 });
   }
 
   function fieldValue(a: Applicant, path: string) {
@@ -156,8 +163,8 @@ export function DeskApp() {
   const hits = searchDesk(q, apps, actor, posts.map((p) => ({ id: p.id, text: String(p.data.text || ""), channel: channels.find((c) => c.id === channelId)?.data.name as string })));
 
   return (
-    <div data-screen="desk" className="flex min-h-full bg-canvas text-ink">
-      <aside className="frost sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-black/5 px-3 py-4 md:flex">
+    <div data-screen="desk" className="flex h-dvh overflow-hidden bg-canvas text-ink">
+      <aside className="frost hidden h-full w-64 shrink-0 flex-col border-r border-black/5 px-3 py-4 md:flex">
         <div className="flex items-center gap-2 px-2">
           <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="h-12 w-12 crest" />
           <div>
@@ -169,20 +176,21 @@ export function DeskApp() {
         {actor.canEdit ? <button type="button" className="mx-2 mt-3 inline-flex items-center justify-center gap-1 rounded-full bg-crimson py-2.5 text-sm font-semibold text-white shadow-md" onClick={() => addApplicant(backend, actor.email, toast, openFile)}><Plus className="h-4 w-4" /> New applicant</button> : null}
         <button type="button" className="mx-2 mt-auto flex items-center gap-2 px-2 py-2 text-left text-xs text-muted" onClick={() => backend.signOut().then(() => location.replace("/signin"))}><span className="grid h-8 w-8 place-items-center rounded-full bg-blue/10 text-xs font-semibold text-blue">{initials(actor.name || actor.email)}</span><span><b className="block text-ink">{actor.name || "Signed in"}</b>Sign out</span></button>
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="frost sticky top-0 z-20 flex items-center gap-2 border-b border-black/5 px-3 py-2.5">
-          <div className="relative min-w-0 flex-1">
+          <button type="button" className="grid h-10 w-10 place-items-center rounded-full bg-white hairline md:hidden" aria-label="Find" onClick={() => setPalette(true)}><Search className="h-4 w-4" /></button>
+          <div className="relative hidden min-w-0 flex-1 md:block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <input value={q} onChange={(e) => { setQ(e.target.value); setPalette(true); }} onFocus={() => setPalette(true)} placeholder="Search people, stages, actions" aria-label="Search" className="w-full rounded-full bg-white/80 py-2 pl-9 pr-14 text-sm outline-none hairline" />
-            <button type="button" className="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded-full bg-[#e8e8ed] px-2 py-0.5 text-[11px] font-medium sm:inline" onClick={() => setPalette(true)}>⌘K</button>
+            <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-[#e8e8ed] px-2 py-0.5 text-[11px] font-medium" onClick={() => setPalette(true)}>⌘K</button>
           </div>
-          {actor.canEdit ? <button type="button" data-screen="ai-button" className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/80 px-3 py-1.5 text-sm font-semibold text-blue shadow-sm hairline" onClick={() => setAiOpen(true)}><Sparkles className="h-4 w-4" /> Med Control <span className="text-[11px] font-medium text-muted">⌘J</span></button> : null}
-          <button type="button" className="grid h-9 w-9 place-items-center rounded-full bg-white hairline" aria-label="Notifications" onClick={() => setView("settings")}><Bell className="h-4 w-4" /></button>
+          {actor.canEdit ? <button type="button" data-screen="ai-button" aria-label="Med Control" className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/80 px-3 py-1.5 text-sm font-semibold text-blue shadow-sm hairline" onClick={() => setAiOpen(true)}><Sparkles className="h-4 w-4" /> <span className="hidden sm:inline">Med Control</span><span className="text-[11px] font-medium text-muted">⌘J</span></button> : null}
+          <button type="button" className="grid h-9 w-9 place-items-center rounded-full bg-white hairline" aria-label="Notifications" onClick={() => setNotifyOn(true)}><Bell className="h-4 w-4" /></button>
         </header>
-        <main className="flex-1 px-3 py-4 pb-24 md:px-6">
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto px-3 py-4 pb-8 md:px-6">
           {view === "pipeline" && (
             <section data-screen="pipeline">
-              <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className={`flex flex-wrap items-end justify-between gap-3 ${selected ? "hidden lg:flex" : ""}`}>
                 <div>
                   <h1 className="text-3xl font-semibold tracking-tight">Pipeline</h1>
                   <p className="text-sm text-muted">{apps.length} people · {save}</p>
@@ -190,9 +198,10 @@ export function DeskApp() {
                 <div className="seg" role="tablist" aria-label="Pipeline layout">
                   <button type="button" aria-pressed={mode === "board"} className="inline-flex items-center gap-1 text-sm" onClick={() => setMode("board")}><LayoutGrid className="h-3.5 w-3.5" /> Board</button>
                   <button type="button" aria-pressed={mode === "list"} className="inline-flex items-center gap-1 text-sm" onClick={() => setMode("list")}><List className="h-3.5 w-3.5" /> List</button>
+                  {actor.canEdit ? <button type="button" className="rounded-full px-3 text-sm" onClick={() => { setSelecting((v) => !v); setPicked([]); }}>Select</button> : null}
                 </div>
               </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className={`mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4 ${selected ? "hidden lg:grid" : ""}`}>
                 {kpis.map(([id, label, n]) => (
                   <button key={id} type="button" onClick={() => setFilter(filter === id ? "all" : id)} className={`card p-4 text-left press ${filter === id ? "ring-2 ring-blue" : ""}`}>
                     <div className="text-xs font-semibold uppercase tracking-widest text-muted">{label}</div>
@@ -200,14 +209,15 @@ export function DeskApp() {
                   </button>
                 ))}
               </div>
+              {selecting ? <div className={selected ? "hidden lg:block" : ""}><BulkBar ids={picked} apps={apps} onClear={() => setPicked([])} /></div> : null}
               {actor.canEdit && todos[0] ? (
-                <button type="button" className="card mt-4 flex w-full items-center justify-between p-4 text-left" onClick={() => openFile(todos[0].id, todos[0].tab as TabId)}>
+                <button type="button" className={`card mt-4 flex w-full items-center justify-between p-4 text-left ${selected ? "hidden lg:flex" : ""}`} onClick={() => openFile(todos[0].id, todos[0].tab as TabId)}>
                   <span><span className="text-xs font-semibold uppercase tracking-widest text-blue">Your move</span><div className="text-lg font-semibold">{todos[0].text}</div><div className="text-sm text-muted">{todos[0].sub}</div></span>
                   <span className="rounded-full bg-blue px-3 py-1.5 text-sm font-semibold text-white">{todos[0].btn || "Open"}</span>
                 </button>
               ) : null}
               {mode === "board" ? (
-                <div data-screen="board" className="mt-4 grid gap-3 md:grid-cols-5">
+                <div data-screen="board" className={`mt-4 grid gap-3 md:grid-cols-5 ${selected ? "hidden lg:grid" : ""}`}>
                   {LANES.map((lane) => (
                     <div key={lane.id} className={`lane-${lane.id} rounded-3xl bg-[#efeff4] p-2`}>
                       <button type="button" className="flex w-full items-baseline justify-between px-2 py-1" onClick={() => setFilter(lane.id)}>
@@ -215,14 +225,15 @@ export function DeskApp() {
                         <span className="text-2xl font-semibold text-[var(--lane)]">{apps.filter((a) => laneOf(a) === lane.id).length}</span>
                       </button>
                       <div className="space-y-2">
-                        {visible.filter((a) => laneOf(a) === lane.id).map((a) => <Card key={a._id} a={a} onOpen={() => openFile(a._id)} />)}
+                        {visible.filter((a) => laneOf(a) === lane.id).map((a) => <Card key={a._id} a={a} onOpen={() => selecting ? setPicked((p) => p.includes(a._id) ? p.filter((id) => id !== a._id) : [...p, a._id]) : openFile(a._id)} picked={picked.includes(a._id)} />)}
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div data-screen="list" className="mt-4 grid gap-4 lg:grid-cols-[320px_1fr]">
-                  <div className="card max-h-[70vh] overflow-auto">
+                <div data-screen="list" className="mt-4 grid min-w-0 gap-4 lg:grid-cols-[320px_1fr]">
+                  <div className={`card max-h-[70vh] overflow-auto ${selected ? "hidden lg:block" : ""}`}>
+                    {!visible.length ? <div className="grid h-48 place-items-center p-6 text-center text-sm text-muted">Nobody in this view. Clear the filter or add an applicant.</div> : null}
                     {visible.map((a) => {
                       const p = progress(a);
                       return (
@@ -233,10 +244,13 @@ export function DeskApp() {
                       );
                     })}
                   </div>
-                  <div>{selected ? <File a={selected} actor={actor} tab={tab} setTab={setTab} settings={settings} save={save} fieldValue={fieldValue} edit={edit} welcome={welcome} questions={questions} setQuestions={setQuestions} onMessage={() => { setThread(threadFor(selected)); setTab("msgs"); }} /> : <div className="card grid h-64 place-items-center text-sm text-muted">Select someone to open their file.</div>}</div>
+                  <div className={`min-w-0 ${selected ? "" : "hidden lg:block"}`}>
+                    {selected ? <button type="button" className="mb-3 text-sm font-semibold text-blue lg:hidden" onClick={() => setSel(null)}>‹ Pipeline</button> : null}
+                    {selected ? <File a={selected} apps={apps} actor={actor} tab={tab} setTab={setTab} settings={settings} save={save} fieldValue={fieldValue} edit={edit} welcome={welcome} questions={questions} setQuestions={setQuestions} onMessage={() => { setThread(threadFor(selected)); setTab("msgs"); }} /> : <div className="card grid h-64 place-items-center p-6 text-center text-sm text-muted">Choose someone on the left. Their file opens here, and edits save as you go.</div>}
+                  </div>
                 </div>
               )}
-              {mode === "board" && selected ? <div className="mt-4"><File a={selected} actor={actor} tab={tab} setTab={setTab} settings={settings} save={save} fieldValue={fieldValue} edit={edit} welcome={welcome} questions={questions} setQuestions={setQuestions} onMessage={() => setTab("msgs")} /></div> : null}
+              {mode === "board" && selected ? <div className="mt-4"><File a={selected} apps={apps} actor={actor} tab={tab} setTab={setTab} settings={settings} save={save} fieldValue={fieldValue} edit={edit} welcome={welcome} questions={questions} setQuestions={setQuestions} onMessage={() => setTab("msgs")} /></div> : null}
             </section>
           )}
           {view === "messages" && <Messages channels={channels} posts={posts} channelId={channelId} setChannelId={setChannelId} actorEmail={actor.email} actorName={actor.name} backend={backend} toast={toast} />}
@@ -249,13 +263,13 @@ export function DeskApp() {
           {view === "signoffs" && <Signoffs backend={backend} actorEmail={actor.email} />}
           {view === "library" && <Library backend={backend} canEdit={actor.canEdit} />}
         </main>
-      </div>
-      <nav className="frost fixed inset-x-0 bottom-0 z-30 flex border-t border-black/5 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Desk">
+      <nav className="frost flex shrink-0 border-t border-black/5 pb-[env(safe-area-inset-bottom)] md:hidden" aria-label="Desk">
         <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => { setView("pipeline"); setFilter("all"); }}><LayoutGrid className="h-5 w-5" />Pipeline</button>
         <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => { setView("pipeline"); setFilter("onb"); }}><ClipboardList className="h-5 w-5" />Onboard</button>
         <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => setView("messages")}><MessageSquare className="h-5 w-5" />Messages</button>
         <button type="button" className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" onClick={() => setMobileMore(true)}><Plus className="h-5 w-5" />More</button>
       </nav>
+      </div>
       {palette ? (
         <div className="fixed inset-0 z-40 grid place-items-start bg-black/30 p-4 pt-[12vh]" onClick={() => setPalette(false)}>
           <div className="card w-full max-w-xl overflow-hidden" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Search">
@@ -271,7 +285,11 @@ export function DeskApp() {
                     else if (h.id === "team") setView("team");
                     else if (h.id === "slots") setView("slots");
                     else if (h.id === "board") setView("board");
-                    else if (h.id === "reports") setView("reports");
+                    else if (h.id === "reports" || h.id === "flyer") setView("reports");
+                    else if (h.id === "tour") setTourOn(true);
+                    else if (h.id === "notif") setNotifyOn(true);
+                    else if (h.id === "orient") setView("orient");
+                    else if (h.id === "library") setView("library");
                     else if (h.id === "new") addApplicant(backend, actor.email, toast, openFile);
                   }}>
                     <b>{h.title}</b><div className="text-xs text-muted">{h.sub}</div>
@@ -284,7 +302,7 @@ export function DeskApp() {
       ) : null}
       {mobileMore ? (
         <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setMobileMore(false)}>
-          <div className="card absolute inset-x-3 bottom-16 p-3" onClick={(e) => e.stopPropagation()}>
+          <div className="card absolute inset-x-3 bottom-4 p-3" onClick={(e) => e.stopPropagation()}>
             {[["slots", "Interview times"], ["board", "Board meeting"], ["reports", "Reports"], ...(actor.canEdit ? [["team", "Team"], ["settings", "Settings"]] : [])].map(([id, label]) => (
               <button key={id} type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setView(id as View); setMobileMore(false); }}>{label}</button>
             ))}
@@ -292,6 +310,8 @@ export function DeskApp() {
         </div>
       ) : null}
       {actor.canEdit ? <MedControl open={aiOpen} onClose={() => setAiOpen(false)} context={context} hints={hints} onOpen={(id) => { openFile(id); setAiOpen(false); }} /> : null}
+      <Tour role={actor.role === "owner" || actor.role === "full" ? "owner" : actor.role} email={actor.email} force={tourOn} onClose={() => setTourOn(false)} />
+      {notifyOn ? <NotifySheet onClose={() => setNotifyOn(false)} /> : null}
     </div>
   );
 }
@@ -317,11 +337,11 @@ function Nav({ view, setView, actorCan, admin, requests }: { view: View; setView
   );
 }
 
-function Card({ a, onOpen }: { a: Applicant; onOpen: () => void }) {
+function Card({ a, onOpen, picked }: { a: Applicant; onOpen: () => void; picked?: boolean }) {
   const p = progress(a);
   const lane = laneOf(a);
   return (
-    <button type="button" onClick={onOpen} className={`lane-${lane} card w-full p-3 text-left press hover:-translate-y-0.5`}>
+    <button type="button" onClick={onOpen} className={`lane-${lane} card w-full p-3 text-left press hover:-translate-y-0.5 ${picked ? "ring-2 ring-blue" : ""}`}>
       <div className="flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--lane)]/15 text-[11px] font-semibold text-[var(--lane)]">{initials(a.name)}</span><span className="font-semibold">{a.name || "Unnamed"}</span></div>
       <div className="mt-2 flex items-center justify-between text-xs text-muted"><span>{a.type || "Applicant"}</span><span className={`tabular rounded-full px-2 py-0.5 ${daysWaiting(a) >= 14 ? "bg-amber-100 text-amber-900" : "bg-black/5"}`}>{daysWaiting(a)}d</span></div>
       <div className="mt-2 flex gap-0.5">{[0, 1, 2, 3, 4].map((i) => <i key={i} className={`h-1 flex-1 rounded-full ${i < Math.round((p.n / 14) * 5) ? "bg-[var(--lane)]" : "bg-black/10"}`} />)}</div>
@@ -330,8 +350,8 @@ function Card({ a, onOpen }: { a: Applicant; onOpen: () => void }) {
   );
 }
 
-function File({ a, actor, tab, setTab, settings, save, fieldValue, edit, welcome, questions, setQuestions, onMessage }: {
-  a: Applicant; actor: ReturnType<typeof useGate>["actor"] & object; tab: TabId; setTab: (t: TabId) => void; settings: Settings; save: string;
+function File({ a, apps, actor, tab, setTab, settings, save, fieldValue, edit, welcome, questions, setQuestions, onMessage }: {
+  a: Applicant; apps: Applicant[]; actor: ReturnType<typeof useGate>["actor"] & object; tab: TabId; setTab: (t: TabId) => void; settings: Settings; save: string;
   fieldValue: (a: Applicant, path: string) => unknown; edit: (a: Applicant, path: string, value: unknown) => void;
   welcome: (a: Applicant) => void; questions: string[]; setQuestions: (q: string[]) => void; onMessage: () => void;
 }) {
@@ -341,13 +361,16 @@ function File({ a, actor, tab, setTab, settings, save, fieldValue, edit, welcome
   const tabs = actor.role === "interviewer" ? ALL_TABS.filter((t) => t.id === "app" || t.id === "iv") : ALL_TABS;
   const todo = todoItems([a], settings)[0];
   return (
-    <article data-screen="file" className="card overflow-hidden">
+    <article data-screen="file" className="card min-w-0 overflow-hidden">
       <header className="border-b border-black/5 bg-white px-4 py-4">
-        <div className="flex flex-wrap items-start gap-3">
-          <span className={`lane-${laneOf(a)} grid h-14 w-14 place-items-center rounded-2xl bg-[var(--lane)]/15 text-lg font-semibold text-[var(--lane)]`}>{initials(a.name)}</span>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+          <span className={`lane-${laneOf(a)} grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-[var(--lane)]/15 text-lg font-semibold text-[var(--lane)]`}>{initials(a.name)}</span>
           <div className="min-w-0 flex-1">
             <h2 className="text-2xl font-semibold">{a.name}</h2>
-            <p className="text-sm text-muted">{a.type} · {a.location === "other" ? a.locationOther : a.location || "Potsdam"} · {st.head}</p>
+            <p className="text-sm text-muted [overflow-wrap:anywhere]">{a.type} · {a.location === "other" ? a.locationOther : a.location || "Potsdam"} · {st.head}</p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">{a.email ? <a className="rounded-full bg-[#f5f5f7] px-2 py-1" href={`mailto:${a.email}`}>{a.email}</a> : null}{a.phone ? <span className="rounded-full bg-[#f5f5f7] px-2 py-1">{a.phone}</span> : null}</div>
+          </div>
           </div>
           <div className="flex flex-wrap gap-2">
             {todo ? <button type="button" className="rounded-full bg-blue px-3 py-1.5 text-sm font-semibold text-white" onClick={() => { if (todo.act === "invite") void welcome(a); else setTab((todo.tab as TabId) || "app"); }}>{todo.btn || "Your move"}</button> : null}
@@ -357,12 +380,12 @@ function File({ a, actor, tab, setTab, settings, save, fieldValue, edit, welcome
             {inBoardQueue(a) && actor.canEdit ? <button type="button" className="rounded-full px-3 py-1.5 text-sm hairline" onClick={() => setTab("board")}>Record vote</button> : null}
           </div>
         </div>
-        <ol className="mt-4 flex gap-2 overflow-x-auto">
+        <ol className="mt-4 flex w-full gap-1">
           {phaseBits(p).map((ph) => (
-            <li key={ph.id} className="flex min-w-24 flex-1 flex-col gap-1 text-[11px]"><span className={`h-1.5 rounded-full ${ph.state === "todo" ? "bg-black/10" : "bg-blue"}`} /><span className="font-medium">{ph.label}</span></li>
+            <li key={ph.id} className="flex min-w-0 flex-1 flex-col gap-1 text-[10px] leading-tight sm:text-[11px]"><span className={`h-1.5 rounded-full ${ph.state === "todo" ? "bg-black/10" : "bg-blue"}`} /><span className="font-medium">{ph.label}</span></li>
           ))}
         </ol>
-        <div className="seg mt-3 w-full overflow-x-auto" role="tablist">
+        <div className="seg mt-3 flex w-full flex-wrap" role="tablist">
           {tabs.map((t) => (
             <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} aria-pressed={tab === t.id} onClick={() => setTab(t.id)} className="whitespace-nowrap text-sm">{t.label}{tabDone(a, t.id, settings) === "done" ? " ·" : ""}</button>
           ))}
@@ -370,8 +393,14 @@ function File({ a, actor, tab, setTab, settings, save, fieldValue, edit, welcome
         <p className="mt-2 text-xs text-muted">{save === "Saved" ? "Saved" : save}</p>
       </header>
       <div className="space-y-4 p-4">
+        {actor.canEdit ? <DupeBanner a={a} apps={apps} edit={edit} onMerge={async (drop) => {
+          if (get(a, "portal.invited") || get(drop, "portal.invited")) return;
+          if (!a.email && drop.email) edit(a, "email", drop.email);
+          if (!a.phone && drop.phone) edit(a, "phone", drop.phone);
+          await backend.del(`applicants/${drop._id}`);
+        }} /> : null}
         {tab === "app" && <AppTab a={a} actor={actor} fieldValue={fieldValue} edit={edit} />}
-        {tab === "checks" && actor.adminView && <Checks a={a} fieldValue={fieldValue} edit={edit} can={actor.canEdit} />}
+        {tab === "checks" && actor.adminView && <Checks a={a} fieldValue={fieldValue} edit={edit} can={actor.canEdit} settings={settings} />}
         {tab === "iv" && <InterviewPanel a={a} fieldValue={fieldValue} edit={edit} questions={questions} onQuestions={async () => {
           const res = await backend.call("medControl", { job: "questions", id: a._id, context: { view: "iv", applicantId: a._id, applicantName: a.name } }) as { questions?: string[] };
           setQuestions(res.questions || []);
@@ -416,9 +445,12 @@ function AppTab({ a, actor, fieldValue, edit }: { a: Applicant; actor: { canEdit
   );
 }
 
-function Checks({ a, fieldValue, edit, can }: { a: Applicant; fieldValue: (a: Applicant, p: string) => unknown; edit: (a: Applicant, p: string, v: unknown) => void; can: boolean }) {
+function Checks({ a, fieldValue, edit, can, settings }: { a: Applicant; fieldValue: (a: Applicant, p: string) => unknown; edit: (a: Applicant, p: string, v: unknown) => void; can: boolean; settings: Settings }) {
+  const backend = useBackend();
   const dl = get(a, "form.person.dlNumber");
   const rs = refStatus(a);
+  const [answers, setAnswers] = useState<string>("");
+  const me = backend.current()?.email || "";
   return (
     <section className="space-y-4">
       <h3 className="font-semibold">Driving record and license</h3>
@@ -427,18 +459,24 @@ function Checks({ a, fieldValue, edit, can }: { a: Applicant; fieldValue: (a: Ap
       <Row label="Valid?"><select className={box} value={String(fieldValue(a, "dl.valid") || "")} onChange={(e) => edit(a, "dl.valid", e.target.value)}><option value="">—</option><option value="yes">Yes</option><option value="no">No</option></select></Row>
       <Row label="Expires"><input type="date" className={box} value={String(fieldValue(a, "dl.expires") || "")} onChange={(e) => edit(a, "dl.expires", e.target.value)} /></Row>
       {dl ? <p className="text-sm">License number from the application: <b className="font-mono">{String(dl)}</b><span className="block text-xs text-muted">Admins only. Never copied into the portal, board packet, or member view.</span></p> : null}
-      <h3 className="font-semibold">References · {rs.got} of {rs.need}</h3>
+      <div className="flex items-center justify-between"><h3 className="font-semibold">References · {rs.got} of {rs.need}</h3>{can ? <button type="button" className="text-sm font-semibold text-blue" onClick={async () => { for (const i of [1, 2, 3, 4]) { if (!okEmail(get(a, `refs.r${i}.email`)) || get(a, `refs.r${i}.returned`)) continue; const url = await refUrl(backend, a, i, me, edit); if (url) mailRef(a, i, url, settings); } }}>Email all unanswered</button> : null}</div>
       {[1, 2, 3, 4].map((i) => (
         <div key={i} className="rounded-2xl bg-[#f5f5f7] p-3">
           <div className="mb-2 text-sm font-semibold">Reference {i}</div>
           <input className={`${box} mb-2 bg-white`} placeholder="Name" value={String(fieldValue(a, `refs.r${i}.name`) || "")} onChange={(e) => edit(a, `refs.r${i}.name`, e.target.value)} />
           <input className={`${box} mb-2 bg-white`} placeholder="Email" value={String(fieldValue(a, `refs.r${i}.email`) || "")} onChange={(e) => edit(a, `refs.r${i}.email`, e.target.value)} />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <input type="date" className={`${box} bg-white`} value={String(fieldValue(a, `refs.r${i}.returned`) || "")} onChange={(e) => edit(a, `refs.r${i}.returned`, e.target.value)} />
             {can ? <button type="button" className="rounded-full bg-white px-3 text-sm hairline" onClick={() => edit(a, `refs.r${i}.returned`, today())}>Mark received</button> : null}
+            {can ? <button type="button" className="rounded-full bg-white px-3 text-sm hairline" onClick={async () => { const url = await refUrl(backend, a, i, me, edit); if (url) { mailRef(a, i, url, settings); if (!get(a, `refs.r${i}.contacted`)) { edit(a, `refs.r${i}.contacted`, today()); edit(a, `refs.r${i}.method`, "Email"); } } }}>Email link</button> : null}
+            {can ? <button type="button" className="rounded-full bg-white px-3 text-sm hairline" onClick={async () => { const url = await refUrl(backend, a, i, me, edit); if (url) await navigator.clipboard.writeText(url); }}>Copy link</button> : null}
+            {can && refNudge(a, i) ? <button type="button" className="rounded-full bg-white px-3 text-sm hairline" onClick={async () => { const url = await refUrl(backend, a, i, me, edit); if (url) { mailRef(a, i, url, settings, true); edit(a, `refs.r${i}.reminded`, today()); } }}>Nudge</button> : null}
+            {can ? <button type="button" className="rounded-full bg-white px-3 text-sm hairline" onClick={() => edit(a, `refs.r${i}.replace`, today())}>Ask for a new one</button> : null}
+            {get(a, `refs.r${i}.form`) ? <button type="button" className="rounded-full bg-blue px-3 text-sm font-semibold text-white" onClick={() => setAnswers(JSON.stringify(get(a, `refs.r${i}.form`), null, 2))}>View answers</button> : null}
           </div>
         </div>
       ))}
+      {answers ? <pre className="max-h-48 overflow-auto rounded-2xl bg-white p-3 text-xs">{answers}<button type="button" className="mt-2 block text-sm text-blue" onClick={() => setAnswers("")}>Close</button></pre> : null}
     </section>
   );
 }
@@ -532,16 +570,21 @@ function Messages({ channels, posts, channelId, setChannelId, actorEmail, actorN
 }) {
   const [text, setText] = useState("");
   return (
-    <section data-screen="messages" className="grid gap-4 md:grid-cols-[220px_1fr]">
-      <div className="card p-2">
-        {channels.map((c) => <button key={c.id} type="button" onClick={() => setChannelId(c.id)} className={`block w-full rounded-xl px-3 py-2 text-left text-sm ${c.id === channelId ? "bg-[#f5f5f7] font-semibold" : ""}`}>#{String(c.data.name || c.id)}</button>)}
-        {!channels.length ? <p className="p-3 text-sm text-muted">No channels yet.</p> : null}
+    <section data-screen="messages" className="flex h-full min-h-[70vh] flex-col gap-3 md:grid md:grid-cols-[240px_1fr]">
+      <div className="flex gap-2 overflow-x-auto md:card md:block md:p-2">
+        <p className="hidden px-3 py-2 text-[11px] font-semibold uppercase tracking-widest text-muted md:block">Channels</p>
+        {channels.map((c) => <button key={c.id} type="button" onClick={() => setChannelId(c.id)} className={`flex shrink-0 items-center gap-2 rounded-full bg-white px-3 py-2 text-left text-sm hairline md:w-full md:rounded-xl md:border-0 md:bg-transparent md:shadow-none ${c.id === channelId ? "bg-blue/10 font-semibold text-blue" : ""}`}><span className="grid h-8 w-8 place-items-center rounded-full bg-[#e8e8ed] text-xs">#</span> {String(c.data.name || c.id)}</button>)}
+        {!channels.length ? <p className="p-4 text-sm text-muted">No channels yet. The owner adds them in Team.</p> : null}
       </div>
-      <div className="card flex min-h-[50vh] flex-col p-4">
+      <div className="card flex min-h-0 flex-1 flex-col bg-[#f5f5f7] p-4">
         <h1 className="text-xl font-semibold">#{String(channels.find((c) => c.id === channelId)?.data.name || "Messages")}</h1>
-        <div className="mt-3 flex-1 space-y-2">
+        <div className="mt-3 flex flex-1 flex-col justify-end gap-2">
+          {!posts.length ? <div className="m-auto max-w-xs text-center text-sm text-muted">Nothing in this channel yet. Say hello. Keep medical files and Social Security numbers out of here.</div> : null}
           {posts.sort((a, b) => Number(a.data.at) - Number(b.data.at)).map((p) => (
-            <div key={p.id} className="rounded-2xl bg-[#f5f5f7] px-3 py-2 text-sm"><b>{String(p.data.name || "")}</b><div>{String(p.data.text || "")}</div></div>
+            <div key={p.id} className={`max-w-[75%] rounded-3xl px-4 py-2 text-sm ${p.data.by === actorEmail ? "ml-auto bg-blue text-white" : "bg-white"}`}>
+              <div className="text-[11px] opacity-70">{String(p.data.name || "")}</div>
+              {String(p.data.text || "")}
+            </div>
           ))}
         </div>
         <form className="mt-3 flex gap-2" onSubmit={async (e) => {
@@ -678,7 +721,8 @@ function Reports({ apps }: { apps: Applicant[] }) {
     <section>
       <h1 className="text-3xl font-semibold tracking-tight">Year at a glance</h1>
       <p className="text-sm text-muted">{year} · {apps.length} files on the desk</p>
-      <div className="mt-4 flex h-32 items-end gap-1">{months.map((n, i) => <div key={i} className="flex-1 rounded-t-lg bg-blue/80" style={{ height: `${(n / max) * 100}%` }} title={String(n)} />)}</div>
+      <div className="mt-4 flex h-32 items-end gap-1">{months.map((n, i) => <div key={i} className="flex-1 rounded-t-lg bg-blue/80" style={{ height: `${Math.max(4, (n / max) * 100)}%` }} title={String(n)} />)}</div>
+      <Flyer />
     </section>
   );
 }

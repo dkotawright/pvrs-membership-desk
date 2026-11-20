@@ -3,6 +3,7 @@ import { declinedSeed, interviewerSeed, memberSeed, ownerSeed, portalSeed } from
 
 async function boot(page: import("@playwright/test").Page, seed: object | null, path = "/") {
   await page.addInitScript((s) => {
+    try { localStorage.setItem("pvrsTourOff", "1"); } catch { /* ignore */ }
     (window as unknown as { __PVRS_MOCK: boolean; __PVRS_SEED: object | null }).__PVRS_MOCK = true;
     (window as unknown as { __PVRS_SEED: object | null }).__PVRS_SEED = s;
   }, seed);
@@ -52,7 +53,7 @@ test("owner pipeline shows every lane and opens a file", async ({ page }) => {
 
 test("search finds an applicant and Med Control opens", async ({ page }) => {
   await boot(page, ownerSeed());
-  await page.getByLabel("Search").fill("Riley");
+  await page.getByPlaceholder("Search people, stages, actions").fill("Riley");
   await expect(page.getByRole("button", { name: /Riley Brooks/ }).last()).toBeVisible();
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Med Control" }).click();
@@ -108,6 +109,8 @@ test("mobile pipeline and home", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await boot(page, { user: null, docs: {} });
   await page.screenshot({ path: "/opt/cursor/artifacts/home-mobile.png", fullPage: false });
+  await page.goto("/apply");
+  await page.screenshot({ path: "/opt/cursor/artifacts/apply-mobile.png", fullPage: false });
   await page.goto("/signin");
   await page.screenshot({ path: "/opt/cursor/artifacts/signin-mobile.png", fullPage: false });
   await page.addInitScript((s) => {
@@ -117,4 +120,16 @@ test("mobile pipeline and home", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/pipeline-mobile.png", fullPage: false });
+  await page.getByRole("button", { name: /Jordan Hale/ }).first().click();
+  await expect(page.getByRole("heading", { name: "Jordan Hale" })).toBeVisible();
+  await page.screenshot({ path: "/opt/cursor/artifacts/file-mobile.png", fullPage: false });
+  await page.getByRole("button", { name: /Med Control/ }).click();
+  await page.screenshot({ path: "/opt/cursor/artifacts/medcontrol-mobile.png", fullPage: false });
+});
+
+test("mobile portal", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await boot(page, portalSeed());
+  await expect(page.getByRole("heading", { name: /Hi Jordan/ })).toBeVisible();
+  await page.screenshot({ path: "/opt/cursor/artifacts/portal-mobile.png", fullPage: false });
 });

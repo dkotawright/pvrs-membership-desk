@@ -52,7 +52,9 @@ export function HomePage() {
           <button type="button" onClick={() => go("/apply")} className="rounded-full bg-crimson px-4 py-2 text-sm font-semibold text-white shadow-md press">Apply Now</button>
         </nav>
       </header>
-      <main className="mx-auto max-w-5xl px-5 py-16 text-center sm:py-24">
+      <main className="relative mx-auto max-w-5xl px-5 py-16 text-center sm:py-24">
+        <div aria-hidden className="pointer-events-none absolute inset-x-8 -top-6 h-64 rounded-full bg-gradient-to-br from-blue/25 via-crimson/15 to-transparent blur-3xl" />
+        <div className="relative">
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted">Potsdam Volunteer Rescue Squad · Est. 1955</p>
         <h1 className="mx-auto mt-4 max-w-3xl text-5xl font-semibold sm:text-7xl">Serve Potsdam.<br />Save lives.</h1>
         <p className="mx-auto mt-5 max-w-xl text-lg text-muted">Volunteer EMTs, drivers, and members. Apply in about 15 minutes. Your progress saves on this device, then follows you in your own portal.</p>
@@ -71,6 +73,7 @@ export function HomePage() {
           ))}
         </div>
         <p className="mt-6 text-sm text-muted"><Sparkles className="mr-1 inline h-4 w-4" /> The fourth track, {tracks[3][1]}, is on the application. Questions: {CONTACT_EMAIL}</p>
+        </div>
       </main>
     </div>
   );
@@ -172,7 +175,7 @@ export function SignInPage() {
 
   return (
     <div data-screen="signin" className="mesh grid min-h-full place-items-center px-4 py-10">
-      <section className="card rise w-full max-w-md p-6 sm:p-8">
+      <section className="card w-full max-w-md bg-white p-6 opacity-100 sm:p-8">
           <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="mx-auto crest" />
           <p className="mt-4 text-center text-xs font-semibold uppercase tracking-[0.18em] text-muted">{greet()} · Potsdam</p>
           <div className="mt-2 flex justify-center"><Weather /></div>

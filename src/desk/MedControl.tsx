@@ -45,7 +45,7 @@ export function MedControl({ open, onClose, context, hints, onOpen }: {
 
   if (!open) return null;
   return (
-    <aside data-screen="medcontrol" className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-black/10 bg-white/90 shadow-2xl backdrop-blur-xl" role="dialog" aria-label="Med Control">
+    <aside data-screen="medcontrol" className="fixed inset-0 z-[70] flex flex-col bg-white shadow-2xl sm:left-auto sm:w-full sm:max-w-md sm:border-l sm:border-black/10" role="dialog" aria-label="Med Control">
       <header className="flex items-start justify-between gap-3 border-b border-black/5 px-4 py-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-blue">Med Control</p>

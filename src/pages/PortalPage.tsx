@@ -145,8 +145,8 @@ export function PortalPage({ id, backToDesk = false }: { id: string; backToDesk?
   })();
 
   return (
-    <div data-screen="portal" className={`min-h-full bg-canvas pb-24 lane-${lane}`}>
-      <header className="frost sticky top-0 z-20 border-b border-black/5">
+    <div data-screen="portal" className={`flex h-dvh flex-col overflow-hidden bg-canvas lane-${lane}`}>
+      <header className="frost z-20 shrink-0 border-b border-black/5">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
           <img src="/img/logo.png" alt="Potsdam Volunteer Rescue Squad" className="h-12 w-12 crest" />
           <div className="flex gap-2 text-sm">
@@ -155,12 +155,13 @@ export function PortalPage({ id, backToDesk = false }: { id: string; backToDesk?
           </div>
         </div>
       </header>
+      <div className="min-h-0 flex-1 overflow-auto">
       <div className="mx-auto max-w-3xl px-4 pt-8">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">{nm ? "New member" : "Applicant portal"}</p>
         <h1 className="text-4xl font-semibold">Hi {String(pd.firstName || first(String(pd.name || "")) || "there")}</h1>
         <p className="mt-1 text-muted">{nm ? "Welcome to the squad." : String(pd.type || "Membership") + " · follow every step here"}</p>
       </div>
-      <main className="mx-auto mt-4 max-w-3xl space-y-4 px-4">
+      <main className="mx-auto mt-4 max-w-3xl space-y-4 px-4 pb-6">
         <section className="card p-5" aria-label="Your next step" data-screen="next-step">
           <p className="text-xs font-semibold uppercase tracking-widest text-[var(--lane)]">Your next step</p>
           {move ? (
@@ -302,7 +303,8 @@ export function PortalPage({ id, backToDesk = false }: { id: string; backToDesk?
           </div>
         </section>
       </main>
-      <nav className="frost fixed inset-x-0 bottom-0 z-20 flex justify-around border-t border-black/5 py-2 text-xs sm:hidden" aria-label="Jump to">
+      </div>
+      <nav className="frost flex shrink-0 justify-around border-t border-black/5 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-xs sm:hidden" aria-label="Jump to">
         <a href={nm ? "#orient" : "#journey"} className="px-3 py-2">{nm ? "Orientation" : "My application"}</a>
         <a href="#documents" className="px-3 py-2">Documents</a>
         <a href="#messages" className="px-3 py-2">Messages</a>

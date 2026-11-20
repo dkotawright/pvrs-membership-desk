@@ -15,7 +15,9 @@ const hour = (offsetDays: number, h: number) => {
 };
 
 const base = (name: string, extra: Record<string, unknown>): Record<string, unknown> => ({
-  name, phone: "(315) 555-0142", email: name.split(" ")[0].toLowerCase() + "@example.com",
+  name,
+  phone: /^(Sam|Jordan)\b/.test(name) ? "(315) 555-0142" : `(315) 555-01${String(name.charCodeAt(0)).slice(-2)}`,
+  email: name.split(" ")[0].toLowerCase() + "@example.com",
   type: "Regular", location: "Potsdam", stage: "screen", interviewers: [],
   app: { received: day(-6) }, createdAt: Date.now() - 6 * 864e5, updatedAt: Date.now(), ...extra,
 });
