@@ -267,6 +267,30 @@
   }
   addEventListener("error", function(e){ if (e && e.message) box(e.message + (e.filename ? "  (" + e.filename.replace(location.origin, "") + ":" + e.lineno + ")" : "")); });
   addEventListener("unhandledrejection", function(e){ var r = e && e.reason; box("Unhandled: " + String((r && (r.stack || r.message)) || r).slice(0, 600)); });
+  // Stuck on a blank page or "Loading…" (seen after the React version, Nov 20: data it left in the browser).
+  // After 12 s, offer to clear this site's saved data in this browser and reload. Signs the person out; nothing on the server changes.
+  window.__resetSite = function(){
+    var jobs = [];
+    try { localStorage.clear(); } catch (e) {}
+    try { sessionStorage.clear(); } catch (e) {}
+    try { if (indexedDB.databases) jobs.push(indexedDB.databases().then(function(l){ l.forEach(function(d){ if (d.name) indexedDB.deleteDatabase(d.name); }); })); else ["firebaseLocalStorageDb", "firebase-messaging-database", "firebase-installations-database", "firebase-heartbeat-database"].forEach(function(n){ indexedDB.deleteDatabase(n); }); } catch (e) {}
+    try { if (window.caches) jobs.push(caches.keys().then(function(k){ return Promise.all(k.map(function(n){ return caches.delete(n); })); })); } catch (e) {}
+    try { if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function(r){ return Promise.all(r.map(function(x){ return x.unregister(); })); })); } catch (e) {}
+    Promise.race([Promise.all(jobs).catch(function(){}), new Promise(function(r){ setTimeout(r, 2000); })]).then(function(){ location.replace("/"); });
+  };
+  window.__bootCheck = function(){
+    var load = document.getElementById("loading"), err = document.getElementById("bootErr");
+    var text = (document.body.innerText || "").replace(err ? err.innerText : "", "").trim();
+    if (!(load && !load.hidden) && text.length > 20) return false;
+    var s = document.getElementById("bootStuck"); if (s) return true;
+    s = document.createElement("div"); s.id = "bootStuck"; s.setAttribute("role", "alert");
+    s.style.cssText = "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9999;width:min(420px,calc(100vw - 32px));box-sizing:border-box;background:#fff;color:#171A2B;border-radius:18px;padding:20px;font:15px/1.45 -apple-system,system-ui,sans-serif;box-shadow:0 20px 50px rgba(0,0,0,.25);text-align:left";
+    s.innerHTML = "<b style='font-size:17px'>This page is taking too long to load.</b><p style='margin:8px 0 14px'>Something saved in this browser from an older version of the site may be in the way. Resetting clears it and signs you out on this browser only. Nothing in the desk is deleted.</p><button type='button' id='bootReset' style='min-height:44px;padding:0 18px;border:0;border-radius:999px;background:#171A2B;color:#fff;font:600 15px system-ui,sans-serif;cursor:pointer'>Reset and reload</button> <button type='button' onclick='location.reload()' style='min-height:44px;padding:0 14px;border:0;background:none;font:600 15px system-ui,sans-serif;cursor:pointer'>Just reload</button>";
+    document.body.appendChild(s);
+    document.getElementById("bootReset").onclick = function(){ this.disabled = true; this.textContent = "Resetting…"; window.__resetSite(); };
+    return true;
+  };
+  setTimeout(window.__bootCheck, 12000);
 })();
 </script>
 <script type="module" src="/js/main.js"></script>
