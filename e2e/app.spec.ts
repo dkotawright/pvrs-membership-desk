@@ -13,9 +13,14 @@ async function boot(page: import("@playwright/test").Page, seed: object | null, 
 
 test("home invites people to apply", async ({ page }) => {
   await boot(page, { user: null, docs: {} });
-  await expect(page.getByRole("heading", { name: /Serve Potsdam/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Serve Potsdam." })).toBeVisible();
+  await expect(page.getByText("Save lives.")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Apply to join PVRS/i })).toBeVisible();
   await page.screenshot({ path: "/opt/cursor/artifacts/home-desktop.png", fullPage: false });
+  for (let i = 0; i < 4; i++) {
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: `/opt/cursor/artifacts/home-ecg-${i}.png`, fullPage: false });
+  }
 });
 
 test("sign-in offers Google, a link, and a password", async ({ page }) => {
@@ -111,7 +116,7 @@ test("mobile pipeline and home", async ({ page }) => {
   for (const width of [360, 390, 430]) {
     await page.setViewportSize({ width, height: 844 });
     const btn = await page.getByRole("button", { name: "Member and applicant sign in" }).boundingBox();
-    const rig = await page.locator("[data-hero-rig]").boundingBox();
+    const rig = await page.locator("[data-ecg]").boundingBox();
     expect(btn && rig).toBeTruthy();
     const hit = btn && rig && btn.x < rig.x + rig.width && btn.x + btn.width > rig.x && btn.y < rig.y + rig.height && btn.y + btn.height > rig.y;
     expect(hit).toBe(false);
