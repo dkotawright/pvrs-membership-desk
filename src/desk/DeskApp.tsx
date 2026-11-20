@@ -327,7 +327,7 @@ export function DeskApp() {
       {mobileMore ? (
         <div className="fixed inset-0 z-40 bg-black/30 md:hidden" onClick={() => setMobileMore(false)}>
           <div className="card absolute inset-x-3 p-3" style={{ bottom: "calc(88px + env(safe-area-inset-bottom, 0px))" }} onClick={(e) => e.stopPropagation()}>
-            {[["field", "Orientation"], ["slots", "Interview times"], ["board", "Board meeting"], ["reports", "Reports"], ...(actor.canEdit ? [["team", "Team"], ["settings", "Rig check"]] : [])].map(([id, label]) => (
+            {[["field", "Orientation"], ["slots", "Interview times"], ["board", "Board meeting"], ["reports", "Reports"], ...(actor.canEdit ? [["team", "Team"], ["settings", "Settings"]] : [])].map(([id, label]) => (
               <button key={id} type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setView(id as View); setMobileMore(false); }}>{label}</button>
             ))}
             <button type="button" className="block w-full rounded-xl px-3 py-3 text-left" onClick={() => { setMobileMore(false); setThemeOn(true); }}>Appearance</button>
@@ -372,7 +372,7 @@ function Nav({ view, setView, actorCan, admin, requests }: { view: View; setView
       </div>
       {actorCan ? <div><div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-widest text-muted">Admin</div>
         {item("team", "Team", "Who can sign in", Users)}
-        {item("settings", "Rig check", "How the desk is set", SettingsIcon)}
+        {item("settings", "Settings", "How the desk is set", SettingsIcon)}
       </div> : null}
     </nav>
   );
@@ -736,7 +736,7 @@ function SettingsPanel({ settings, backend, toast }: { settings: Settings; backe
   }
   return (
     <section className="max-w-2xl space-y-4" data-screen="settings">
-      <h1 className="text-3xl font-semibold tracking-tight">Rig check</h1>
+      <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
       <p className="text-sm text-muted">How the desk is set. Appearance stays on this device.</p>
       <div className="card p-4"><ThemePicker email={backend.current()?.email} /></div>
       <label className="block text-sm">Signature<textarea className={`${box} mt-1`} rows={4} defaultValue={settings.signature || signatureText(settings)} onBlur={(e) => save({ signature: e.target.value })} /></label>
@@ -745,13 +745,13 @@ function SettingsPanel({ settings, backend, toast }: { settings: Settings; backe
       <label className="block text-sm">Idle sign-out (minutes)<input type="number" className={`${box} mt-1`} defaultValue={Number(settings.idleMinutes || 30)} onBlur={(e) => save({ idleMinutes: Number(e.target.value) })} /></label>
       <div className="card p-4">
         <h2 className="text-lg font-semibold">PVRS AI preferences</h2>
-        <p className="mt-1 text-sm text-muted">Med Control drafts only. You send. Groq’s free tier is the default; Claude is optional.</p>
+        <p className="mt-1 text-sm text-muted">Med Control drafts only. You send. Claude answers. Groq is used only if Claude fails or is rate limited.</p>
         <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={!!settings.ai} onChange={(e) => save({ ai: e.target.checked })} /> Med Control on</label>
         <label className="mt-3 block text-sm">Squad tone
           <textarea className={`${box} mt-1`} rows={3} defaultValue={String(settings.aiTone || DEFAULT_AI_TONE)} onBlur={(e) => save({ aiTone: e.target.value })} />
         </label>
         <p className="mt-3 text-sm">{usage ? <><b>{usage.n} / {usage.limit}</b> today · {usage.provider === "groq" ? "Groq free tier" : usage.provider === "anthropic" ? "Claude" : "No key yet"}</> : "Usage loads when the function is deployed."}</p>
-        <p className="mt-2 text-xs text-muted">Setup takes about two minutes. See docs/med-control.md: free Groq account, Zero Data Retention, then firebase functions:secrets:set GROQ_API_KEY.</p>
+        <p className="mt-2 text-xs text-muted">Claude is the provider whenever its key is on the function. Nothing in this screen switches it. The count above is the only thing stored.</p>
       </div>
     </section>
   );

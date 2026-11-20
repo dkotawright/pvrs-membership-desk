@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useBackend, useToast } from "../appContext";
 
 export interface McContext { view: string; applicantId?: string; applicantName?: string }
@@ -19,6 +19,24 @@ export function MedControl({ open, onClose, context, hints, onOpen }: {
   const [items, setItems] = useState<McItem[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const turn = useRef(0);
+  const wipe = useCallback(() => {
+    turn.current += 1;
+    setLog([]);
+    setItems([]);
+    setDraft("");
+    setBusy(false);
+  }, []);
+
+  useEffect(() => {
+    if (!open) wipe();
+  }, [open, wipe]);
+  useEffect(() => { wipe(); }, [context.view, context.applicantId, wipe]);
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => { if (e.persisted) wipe(); };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, [wipe]);
 
   useEffect(() => {
     if (!open) return;
@@ -26,21 +44,24 @@ export function MedControl({ open, onClose, context, hints, onOpen }: {
   }, [open, backend]);
 
   async function ask(job: string, extra: Record<string, unknown> = {}, display?: string) {
+    const mine = turn.current;
     setBusy(true);
-    if (display) setLog((l) => [...l, { role: "user", text: display }]);
+    const prior = log;
+    if (display) setLog((l) => (mine === turn.current ? [...l, { role: "user", text: display }] : l));
     try {
-      const messages = job === "chat" ? [...log, { role: "user" as const, text: display || draft }].map((m) => ({ role: m.role, text: m.text })) : undefined;
+      const messages = job === "chat" ? [...prior, { role: "user" as const, text: display || draft }].map((m) => ({ role: m.role, text: m.text })) : undefined;
       const res = await backend.call("medControl", { job, messages, hints, context, ...extra }) as {
         text?: string; items?: McItem[]; calls?: Calls; questions?: string[]; subject?: string;
       };
+      if (mine !== turn.current) return;
       if (res.calls) setCalls(res.calls);
       if (res.items) setItems(res.items);
       const text = res.questions ? res.questions.map((q, i) => `${i + 1}. ${q}`).join("\n") : res.subject ? `Subject: ${res.subject}\n\n${res.text || ""}` : res.text || "";
       if (text) setLog((l) => [...l, { role: "assistant", text }]);
       setDraft("");
     } catch (e) {
-      toast((e as Error).message || "Med Control couldn't answer.");
-    } finally { setBusy(false); }
+      if (mine === turn.current) toast((e as Error).message || "Med Control couldn't answer.");
+    } finally { if (mine === turn.current) setBusy(false); }
   }
 
   if (!open) return null;
@@ -50,9 +71,13 @@ export function MedControl({ open, onClose, context, hints, onOpen }: {
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-blue">Med Control</p>
           <h2 className="text-lg font-semibold tracking-tight">PVRS assistant</h2>
-          <p className="text-xs text-muted">{context.applicantName ? context.applicantName : "Pipeline"} · {calls ? `${calls.n} / ${calls.limit} today` : "…"} · {calls?.provider === "groq" ? "Groq free tier" : calls?.provider || "checking"}</p>
+          <p className="text-xs text-muted">{context.applicantName ? context.applicantName : "Pipeline"} · {calls ? `${calls.n} / ${calls.limit} today` : "…"} · {calls?.provider === "anthropic" ? "Claude" : calls?.provider === "groq" ? "Groq" : calls?.provider || "checking"}</p>
+          <p className="mt-1 text-xs text-muted">Chats aren't saved and clear when you close this.</p>
         </div>
-        <button type="button" className="rounded-full px-3 py-1 text-sm hairline" onClick={onClose}>Close</button>
+        <div className="flex shrink-0 gap-2">
+          <button type="button" className="rounded-full px-3 py-1 text-sm hairline" onClick={wipe}>Clear</button>
+          <button type="button" className="rounded-full px-3 py-1 text-sm hairline" onClick={onClose}>Close</button>
+        </div>
       </header>
       <div className="flex gap-2 overflow-x-auto px-4 py-3">
         <button type="button" className="shrink-0 rounded-full bg-[#f5f5f7] px-3 py-1.5 text-xs font-medium" onClick={() => ask("briefing", {}, "What needs my attention today?")}>Today</button>
@@ -76,7 +101,7 @@ export function MedControl({ open, onClose, context, hints, onOpen }: {
             })}
           </div>
         ))}
-        {!log.length ? <p className="text-sm text-muted">Ask about the roster, or start with what needs you today. Drafts stay here until you send them yourself.</p> : null}
+        {!log.length ? <p className="text-sm text-muted">Ask about the roster, or start with what needs you today.</p> : null}
       </div>
       <form className="border-t border-black/5 p-3" onSubmit={(e) => { e.preventDefault(); if (draft.trim()) void ask("chat", {}, draft.trim()); }}>
         <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} placeholder="Ask Med Control…" aria-label="Message Med Control" className="w-full rounded-2xl bg-[#f5f5f7] p-3 text-sm hairline" />

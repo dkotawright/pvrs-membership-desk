@@ -1,14 +1,14 @@
 // Med Control: the desk's AI assistant. One callable function.
-//   briefing     - what needs attention today                                          [Groq fast model]
-//   chat         - questions about the roster, agendas, email drafts                   [Groq fast model]
-//   brief        - one-page applicant & board brief, saved on the private record       [Groq deep model]
-//   questions    - interview questions tailored to this applicant                      [Groq deep model]
-//   reply        - draft answer to the applicant's latest portal message               [Groq fast model]
-//   draft_email  - welcome, reference nudge, interview, no-show, check-in (review first) [Groq fast model]
+//   briefing     - what needs attention today                                          [Claude Haiku]
+//   chat         - questions about the roster, agendas, email drafts                   [Claude Haiku]
+//   brief        - one-page applicant & board brief, saved on the private record       [Claude Sonnet]
+//   questions    - interview questions tailored to this applicant                      [Claude Sonnet]
+//   reply        - draft answer to the applicant's latest portal message               [Claude Haiku]
+//   draft_email  - welcome, reference nudge, interview, no-show, check-in (review first) [Claude Haiku]
 //   usage        - today's call count, no model call
-// Groq's free tier is the default (GROQ_API_KEY). Claude (ANTHROPIC_API_KEY) is optional.
-// Secrets are bound only when named in MEDCONTROL_SECRETS at deploy time, so a Groq-only
-// deploy does not fail because the Claude secret is missing. See docs/med-control.md.
+// Claude (ANTHROPIC_API_KEY) is the provider whenever that key is present. No desk setting picks it.
+// Groq (GROQ_API_KEY) answers a call only when Claude fails or is rate limited, or when the Claude key is absent.
+// Secrets are bound only when named in MEDCONTROL_SECRETS at deploy time. See docs/med-control.md.
 // Owner and Full access only, capped per day. Records are filtered here before any model sees them.
 // Never sent: license numbers, date/place of birth, addresses, phones, emails, conviction
 // explanations, uploaded files, reference contacts, or confidential vault items.
@@ -158,15 +158,26 @@ Rules you always follow:
 - If the records don't contain the answer, say so plainly. Don't guess dates, names or results.
 - Write in plain, friendly, professional English. Use applicants' names exactly as written in the records. Keep answers short: a sentence or a short list.`;
 
+function hasClaude(){ return !!process.env.ANTHROPIC_API_KEY; }
+function hasGroq(){ return !!process.env.GROQ_API_KEY; }
 function providerName(){
-  if (process.env.GROQ_API_KEY) return "groq";
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (hasClaude()) return "anthropic";
+  if (hasGroq()) return "groq";
   return "none";
+}
+// A refusal is a decision, not an outage. A garbled answer is a failure Groq may retry.
+function canFallback(e){
+  if (!hasGroq()) return false;
+  if (e instanceof HttpsError) return e.code === "internal";
+  return true;
+}
+function noteFallback(e){
+  logger.warn("Claude failed, trying Groq", { status: e && e.status });
 }
 const textOf = r => (r.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
 function apiError(e){
   if (e instanceof HttpsError) return e;
-  logger.error("Med Control API error", { status: e && e.status, message: e && e.message });
+  logger.error("Med Control API error", { status: e && e.status });
   if (e instanceof Anthropic.AuthenticationError || (e && e.status === 401)) return new HttpsError("failed-precondition", "Med Control's API key isn't working. Check docs/med-control.md.");
   if (e instanceof Anthropic.RateLimitError || (e && e.status === 429)) return new HttpsError("resource-exhausted", "Med Control is busy. Try again in a minute.");
   if (e instanceof Anthropic.APIError || (e && e.status >= 500)) return new HttpsError("unavailable", "Med Control couldn't answer right now. Try again.");
@@ -193,11 +204,11 @@ async function groqOnce(model, messages, maxTokens, json){
   if (res.status === 400 && maxTokens) {
     const retry = { ...body }; delete retry.max_tokens; retry.max_completion_tokens = maxTokens;
     const again = await fetch(GROQ_URL, { method: "POST", headers: { Authorization: "Bearer " + process.env.GROQ_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify(retry) });
-    if (!again.ok) { const err = new Error(await again.text()); err.status = again.status; throw err; }
+    if (!again.ok) { const err = new Error("Med Control request failed"); err.status = again.status; throw err; }
     const data = await again.json();
     return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
   }
-  if (!res.ok) { const err = new Error(await res.text()); err.status = res.status; throw err; }
+  if (!res.ok) { const err = new Error("Med Control request failed"); err.status = res.status; throw err; }
   const data = await res.json();
   return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
 }
@@ -221,7 +232,7 @@ async function squadVoice(){
       if (typeof s.data().aiTone === "string" && s.data().aiTone.trim()) tone = clip(s.data().aiTone, 800);
       if (typeof s.data().signature === "string" && s.data().signature.trim()) signature = clip(s.data().signature, 500);
     }
-  } catch (e) { logger.warn("Med Control couldn't read settings", e && e.message); }
+  } catch (e) { logger.warn("Med Control couldn't read settings", { status: e && e.status }); }
   return { tone, signature };
 }
 async function rosterOf(hintsIn){
@@ -260,13 +271,23 @@ function contextLine(data){
   const view = clip(c.view, 40), name = clip(c.applicantName, 80), id = /^[A-Za-z0-9_-]{1,64}$/.test(c.applicantId || "") ? c.applicantId : "";
   return `The coordinator currently has this open: view ${view || "pipeline"}${name ? ", applicant " + name : ""}${id ? " (id " + id + ")" : ""}.`;
 }
+function notSetUp(){
+  return new HttpsError("failed-precondition", "Med Control isn't set up yet. Add a Claude key. See docs/med-control.md.");
+}
 async function say(deep, system, messages, maxTokens, json){
-  if (providerName() === "none") throw new HttpsError("failed-precondition", "Med Control isn't set up yet. Add a free Groq key. See docs/med-control.md.");
-  if (providerName() === "groq") return groq(deep, [{ role: "system", content: system }, ...messages], maxTokens, json);
-  const model = deep ? BRIEF_MODEL : CHAT_MODEL;
-  const r = await anthropic().messages.create({ model, max_tokens: maxTokens, system, messages });
-  checkStop(r);
-  return { text: textOf(r), model: r.model || model, usage: r.usage };
+  if (!hasClaude() && !hasGroq()) throw notSetUp();
+  if (hasClaude()) {
+    try {
+      const model = deep ? BRIEF_MODEL : CHAT_MODEL;
+      const r = await anthropic().messages.create({ model, max_tokens: maxTokens, system, messages });
+      checkStop(r);
+      return { text: textOf(r), model: r.model || model, usage: r.usage };
+    } catch (e) {
+      if (!canFallback(e)) throw e;
+      noteFallback(e);
+    }
+  }
+  return groq(deep, [{ role: "system", content: system }, ...messages], maxTokens, json);
 }
 async function chat(data, voice){
   const msgs = Array.isArray(data.messages) ? data.messages.slice(-20) : [];
@@ -278,16 +299,22 @@ async function chat(data, voice){
   const today = new Date().toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "long", year: "numeric", month: "long", day: "numeric" });
   const system = SQUAD + "\n" + voice.tone + "\n" + contextLine(data) + "\nWhen you mention an applicant, use their full name and the id from the record as [[Full Name|id]]. When asked for an email, write a Subject line first. People review every draft before it is sent.";
   const record = { role: "user", content: `Today is ${today}.\n<record>\n${JSON.stringify(roster)}\n</record>\nUse the record above with the conversation that follows.` };
-  if (providerName() === "anthropic") {
-    const r = await anthropic().messages.create({
-      model: CHAT_MODEL, max_tokens: 4000,
-      system: [{ type: "text", text: system }, { type: "text", text: record.content, cache_control: { type: "ephemeral" } }],
-      messages: history,
-    });
-    checkStop(r);
-    return { text: textOf(r), model: r.model || CHAT_MODEL, usage: r.usage };
+  if (hasClaude()) {
+    try {
+      const r = await anthropic().messages.create({
+        model: CHAT_MODEL, max_tokens: 4000,
+        system: [{ type: "text", text: system }, { type: "text", text: record.content, cache_control: { type: "ephemeral" } }],
+        messages: history,
+      });
+      checkStop(r);
+      return { text: textOf(r), model: r.model || CHAT_MODEL, usage: r.usage };
+    } catch (e) {
+      if (!canFallback(e)) throw e;
+      noteFallback(e);
+    }
   }
-  const out = await say(false, system, [record, ...history], 4000, false);
+  if (!hasGroq()) throw notSetUp();
+  const out = await groq(false, [{ role: "system", content: system }, record, ...history], 4000, false);
   return { text: out.text, model: out.model };
 }
 async function briefing(data, voice){
@@ -327,19 +354,26 @@ async function brief(data, who){
   const rec = safeApplicant(data.id, shared, priv, true);
   const user = `<record>\n${JSON.stringify(rec)}\n</record>\nWrite the brief as JSON.`;
   let out, model;
-  if (providerName() === "anthropic") {
-    const r = await anthropic().beta.messages.create({
-      model: BRIEF_MODEL, max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"], fallbacks: "default",
-      output_config: { effort: "medium", format: { type: "json_schema", schema: BRIEF_SCHEMA } },
-      system: SQUAD + "\n" + BRIEF_RULES,
-      messages: [{ role: "user", content: user }],
-    });
-    checkStop(r);
-    try { out = JSON.parse(textOf(r)); } catch { throw new HttpsError("internal", "Med Control's brief came back garbled. Try again."); }
-    model = r.model || BRIEF_MODEL;
-  } else {
-    const r = await say(true, SQUAD + "\n" + BRIEF_RULES, [{ role: "user", content: user }], 4000, true);
+  if (hasClaude()) {
+    try {
+      const r = await anthropic().beta.messages.create({
+        model: BRIEF_MODEL, max_tokens: 16000,
+        betas: ["server-side-fallback-2026-07-01"], fallbacks: "default",
+        output_config: { effort: "medium", format: { type: "json_schema", schema: BRIEF_SCHEMA } },
+        system: SQUAD + "\n" + BRIEF_RULES,
+        messages: [{ role: "user", content: user }],
+      });
+      checkStop(r);
+      try { out = JSON.parse(textOf(r)); } catch { throw new HttpsError("internal", "Med Control's brief came back garbled. Try again."); }
+      model = r.model || BRIEF_MODEL;
+    } catch (e) {
+      if (!canFallback(e)) throw e;
+      noteFallback(e);
+    }
+  }
+  if (!out) {
+    if (!hasGroq()) throw notSetUp();
+    const r = await groq(true, [{ role: "system", content: SQUAD + "\n" + BRIEF_RULES }, { role: "user", content: user }], 4000, true);
     out = parseJson(r.text); model = r.model;
   }
   const b = shapeBrief(out, who, model);
@@ -391,7 +425,7 @@ async function usageFor(email){
   const day = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
   let n = 0;
   try { const cur = await db.doc(`aiUsage/${email}_${day}`).get(); n = cur.exists ? cur.data().n || 0 : 0; } catch { n = 0; }
-  return { n, limit: DAILY_LIMIT, provider: providerName(), fastModel: GROQ_FAST, deepModel: GROQ_DEEP };
+  return { n, limit: DAILY_LIMIT, provider: providerName(), chatModel: CHAT_MODEL, briefModel: BRIEF_MODEL, fastModel: GROQ_FAST, deepModel: GROQ_DEEP };
 }
 
 const JOBS = ["chat", "brief", "reply", "briefing", "questions", "draft_email", "usage"];
@@ -403,7 +437,7 @@ exports.medControl = onCall({ secrets: SECRETS, maxInstances: 3, timeoutSeconds:
   const n = await countCall(who.email);
   const voice = await squadVoice();
   try {
-    const calls = { n, limit: DAILY_LIMIT, provider: providerName(), fastModel: GROQ_FAST, deepModel: GROQ_DEEP };
+    const calls = { n, limit: DAILY_LIMIT, provider: providerName(), chatModel: CHAT_MODEL, briefModel: BRIEF_MODEL, fastModel: GROQ_FAST, deepModel: GROQ_DEEP };
     if (data.job === "chat") return { ...await chat(data, voice), calls };
     if (data.job === "briefing") return { ...await briefing(data, voice), calls };
     if (data.job === "brief") return { ...await brief(data, who), calls };
