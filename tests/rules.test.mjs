@@ -353,6 +353,29 @@ await t("full access uploads a staff record", uploadBytes(ref(st("full@pvrs.org"
 await t("an admin can't", uploadBytes(ref(st("admin@pvrs.org"), "records/a1/g.pdf"), pdf, meta), false);
 await t("full access opens channel files", getBytes(ref(st("full@pvrs.org"), "chat/ch1/1.pdf")), true);
 
+console.log("Assistant (Nov 20): the owner's view, edit and upload rights; no deletes, settings or team");
+await env.withSecurityRulesDisabled(async c => { const d = c.firestore();
+  await setDoc(doc(d, "staff/asst@pvrs.org"), { role: "assistant", name: "Ava Assist" });
+  await setDoc(doc(d, "applicants/a9"), { name: "Nine" }); await setDoc(doc(d, "applicants/a9/private/main"), { notes: "x" });
+  await setDoc(doc(d, "portal/a9"), { email: "nine@example.com", signUntil: 0 });
+  await setDoc(doc(d, "portal/a9/forms/conf"), { key: "conf", title: "Confidentiality", name: "Nine", signedAt: 1 });
+  await setDoc(doc(d, "accessRequests/new@pvrs.org"), { email: "new@pvrs.org", name: "New", requestedAt: 1, status: "pending" }); });
+const asst = fsOf("asst@pvrs.org");
+await t("the Assistant edits a private record", updateDoc(doc(asst, "applicants/a9/private/main"), { notes: "edited" }), true);
+await t("adds an applicant", setDoc(doc(asst, "applicants/a10"), { name: "Ten" }), true);
+await t("reads online applications", getDocs(collection(asst, "submissions")), true);
+await t("opens secure documents (Dkota's choice)", getDocs(collection(asst, "vault")), true);
+await t("opens signing on a new member's page", updateDoc(doc(asst, "portal/a9"), { signUntil: now() + 3 * 3600e3 }), true);
+await t("countersigns a signed form", updateDoc(doc(asst, "portal/a9/forms/conf"), { witness: { name: "Ava", at: now() } }), true);
+await t("uploads a staff record", uploadBytes(ref(st("asst@pvrs.org"), "records/a9/r.pdf"), pdf, meta), true);
+await t("can't delete an applicant", deleteDoc(doc(asst, "applicants/a9")), false);
+await t("can't delete a private record", deleteDoc(doc(asst, "applicants/a9/private/main")), false);
+await t("can't clear a signed form", deleteDoc(doc(asst, "portal/a9/forms/conf")), false);
+await t("can't change settings", setDoc(doc(asst, "settings/main"), { signature: "x" }, { merge: true }), false);
+await t("can't promote herself", setDoc(doc(asst, "staff/asst@pvrs.org"), { role: "full" }), false);
+await t("can't add team members", setDoc(doc(asst, "staff/x@pvrs.org"), { role: "member" }), false);
+await t("can't approve access requests", updateDoc(doc(asst, "accessRequests/new@pvrs.org"), { status: "approved" }), false);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await env.cleanup();
 process.exit(fail ? 1 : 0);

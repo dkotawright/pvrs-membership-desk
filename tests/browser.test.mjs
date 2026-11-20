@@ -1879,6 +1879,32 @@ try {
     if (h < 60 || !(await page.locator("#reqList").getByText("Casey New").isVisible()) || !(await page.locator('#reqList [data-approve="casey@pvrs.org"]').isVisible())) fail("phone request box: " + h + "px"); else ok("on a phone, Team shows a request's name with Approve and Deny");
     await ctx.close();
   }
+  // ---- Assistant (Nov 20): the owner's desk without Settings, Team or delete buttons
+  {
+    const AVA = { email: "ava@pvrs.org", displayName: "Ava Assist" };
+    const { ctx, page } = await open(browser, { user: AVA, seed: [["staff/ava@pvrs.org", { role: "assistant", name: "Ava Assist" }]] }); await wait(page, 900);
+    const st = await page.evaluate(() => ({ conn: document.querySelector("#conn")?.textContent, set: getComputedStyle(document.querySelector("#settingsBtn")).display !== "none" && !document.querySelector("#settingsBtn").hidden, team: getComputedStyle(document.querySelector("#teamBtn")).display !== "none" && !document.querySelector("#teamBtn").hidden, add: !document.querySelector("#newBtn").hidden }));
+    if (st.conn !== "Assistant" || st.set || st.team || !st.add) fail("assistant desk: " + JSON.stringify(st)); else ok("the Assistant gets the desk with New applicant but no Settings or Team");
+    await pickApplicant(page, "Marcus Bell");
+    if (await page.locator('[data-act="delete"]').isVisible().catch(() => false)) fail("assistant sees Delete"); else ok("the Assistant sees no Delete button on a file");
+    await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 300);
+    const f = page.locator('[data-k="onb.cprExpires"]'); const day = localDay(Date.now() + 20 * 864e5);
+    await f.fill(day); await f.blur(); await wait(page, 400);
+    if ((await priv(page, "a2"))?.onb?.cprExpires !== day) fail("assistant can't edit"); else ok("the Assistant edits files like the owner");
+    await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {});
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 200); await page.locator("#palQ").fill("settings"); await wait(page, 200);
+    const palOpen = await page.locator("#palList").isVisible().catch(() => false);
+    if (!palOpen || await page.locator("#palList").getByText("Settings", { exact: true }).count()) fail("Settings in the Assistant's ⌘K (open: " + palOpen + ")"); else ok("Settings isn't in the Assistant's search");
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await open(browser, { seed: [["staff/ava@pvrs.org", { role: "member", name: "Ava Assist" }]] }); await wait(page, 700);
+    await page.evaluate(() => document.querySelector("#teamBtn").click()); await wait(page, 300);
+    if (!(await page.locator('[data-rolesel="ava@pvrs.org"] option[value="assistant"]').count()) || !/Can't delete anything/.test(await page.locator("#modal").textContent())) fail("no Assistant role in Team"); else ok("Team offers the Assistant role and explains it");
+    await page.locator('[data-rolesel="ava@pvrs.org"]').selectOption("assistant"); await wait(page, 400);
+    if ((await page.evaluate(() => window.__mock.docs.get("staff/ava@pvrs.org").role)) !== "assistant") fail("assistant role not saved"); else ok("the owner can make someone the Assistant");
+    await ctx.close();
+  }
   // ---- the flyer's QR link pre-picks "Flyer or poster" on the application
   {
     const { ctx, page } = await open(browser, { url: "/apply?src=flyer", user: null }); await wait(page, 600);
