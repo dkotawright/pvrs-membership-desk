@@ -3083,3 +3083,9 @@ html[data-anim="off"] #bgscene *,html[data-anim="off"] .lookbg *,html[data-anim=
 .lookbg .lbg svg{position:absolute;left:0;right:0;bottom:0;width:100%;height:100%}
 /* let the background show through the public pages and the portal (the home page had a solid ground) */
 html[data-bg] .gate,html[data-bg] .portal{background:transparent}
+/* With a scene on, cards are solid so the drawing never shows through them (Dkota: people looked "inside" the boxes) */
+html[data-scene]{--card:var(--pane)}
+html[data-scene] .side{background:var(--pane)}
+html[data-scene] .roster,html[data-scene] .ovroster .roster{background:var(--pane)}
+.sc .arm{transform-box:fill-box;transform-origin:center bottom;animation:scWave .55s ease-in-out infinite alternate}
+@keyframes scWave{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}

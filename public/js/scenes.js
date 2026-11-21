@@ -15,11 +15,15 @@ const amb = (x, y, s = 1, cls = "") => `<g transform="translate(${x} ${y}) scale
   <rect x="16" y="2" width="30" height="13" rx="4" class="lr" stroke="${INK}" stroke-width="3"/><rect x="124" y="2" width="30" height="13" rx="4" class="lb" stroke="${INK}" stroke-width="3"/>
   ${[52, 208].map(cx => `<g transform="translate(${cx} 110)"><g class="wheel"><circle r="22" fill="${INK}"/><circle r="9" fill="#D6D3D1"/><rect x="-2.5" y="-20" width="5" height="11" fill="#D6D3D1"/></g></g>`).join("")}
 </g></g>`;
-// A cartoon EMT, about 50 × 120: navy uniform with hi-vis stripes.
-const emt = (x, y, s = 1, cls = "", skin = "#F2C9A0") => `<g transform="translate(${x} ${y}) scale(${s})"><g class="emt ${cls}">
-  <rect x="8" y="78" width="13" height="42" rx="6" fill="#1E293B"/><rect x="27" y="78" width="13" height="42" rx="6" fill="#1E293B"/>
+// A cartoon EMT, about 60 × 120: navy uniform, hi-vis stripe, arms. pose: "stand" | "carry" (hands out front) | "wave".
+const emt = (x, y, s = 1, cls = "", skin = "#F2C9A0", pose = "stand", flip = false) => `<g transform="translate(${x} ${y}) scale(${flip ? -s : s} ${s})"><g class="emt ${cls}">
+  <rect x="9" y="80" width="13" height="40" rx="6" fill="#1E293B" stroke="${INK}" stroke-width="3"/><rect x="27" y="80" width="13" height="40" rx="6" fill="#1E293B" stroke="${INK}" stroke-width="3"/>
+  <rect x="-3" y="34" width="12" height="38" rx="6" fill="#1E3A8A" stroke="${INK}" stroke-width="3" transform="rotate(${pose === "carry" ? -8 : 6} 3 36)"/>
+  ${pose === "wave" ? `<g class="arm"><rect x="40" y="-4" width="12" height="40" rx="6" fill="#1E3A8A" stroke="${INK}" stroke-width="3"/><circle cx="46" cy="-6" r="7" fill="${skin}" stroke="${INK}" stroke-width="3"/></g>`
+    : pose === "carry" ? `<rect x="36" y="44" width="34" height="12" rx="6" fill="#1E3A8A" stroke="${INK}" stroke-width="3"/><circle cx="70" cy="50" r="7" fill="${skin}" stroke="${INK}" stroke-width="3"/>`
+    : `<rect x="39" y="34" width="12" height="38" rx="6" fill="#1E3A8A" stroke="${INK}" stroke-width="3" transform="rotate(-6 45 36)"/>`}
   <rect x="2" y="30" width="44" height="56" rx="16" fill="#1E3A8A" stroke="${INK}" stroke-width="4"/>
-  <rect x="2" y="56" width="44" height="7" fill="#FACC15"/>
+  <rect x="4" y="58" width="40" height="7" fill="#FACC15"/>
   <circle cx="24" cy="16" r="16" fill="${skin}" stroke="${INK}" stroke-width="4"/><path d="M8 12a16 16 0 0 1 32 0z" fill="${INK}"/>
 </g></g>`;
 const cone = (x, y) => `<g transform="translate(${x} ${y})"><path d="M-14 0 L0 -40 L14 0z" fill="#F97316" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/><path d="M-9 -14h18l-2.5 -8h-13z" fill="#fff"/><rect x="-20" y="-3" width="40" height="7" rx="3" fill="${INK}"/></g>`;
@@ -45,10 +49,11 @@ export const SCENES = [
         <path d="M200 46 l10 10 -8 8 10 8" fill="none" stroke="${INK}" stroke-width="4"/>
         ${[40, 182].map(cx => `<circle cx="${cx}" cy="80" r="20" fill="${INK}"/><circle cx="${cx}" cy="80" r="8" fill="#D6D3D1"/>`).join("")}</g></g>
       <g class="smoke">${[0, 1, 2].map(i => `<circle class="puff p${i}" cx="1190" cy="250" r="${16 + i * 5}" fill="#E7E5E4" stroke="${INK}" stroke-width="3"/>`).join("")}</g>
-      ${cone(900, 352)}${cone(1290, 352)}${cone(1360, 352)}
-      ${amb(470, 210, 1, "parked")}
-      <g transform="translate(770 300)"><rect x="0" y="0" width="130" height="16" rx="6" fill="#E7E5E4" stroke="${INK}" stroke-width="4"/><rect x="6" y="-12" width="54" height="14" rx="6" fill="#fff" stroke="${INK}" stroke-width="3"/>${[18, 112].map(x => `<circle cx="${x}" cy="30" r="9" fill="${INK}"/><line x1="${x}" y1="16" x2="${x}" y2="24" stroke="${INK}" stroke-width="4"/>`).join("")}</g>
-      ${emt(760, 196, 1, "bob")}${emt(870, 196, 1, "bob2", "#8D5524")}${emt(1235, 200, .95, "wave", "#C68642")}` },
+      ${cone(930, 352)}${cone(1350, 352)}${cone(1430, 352)}
+      ${amb(330, 210, 1, "parked")}
+      <g transform="translate(680 286)"><rect x="0" y="0" width="150" height="14" rx="6" fill="#E7E5E4" stroke="${INK}" stroke-width="4"/><rect x="10" y="-14" width="70" height="16" rx="7" fill="#fff" stroke="${INK}" stroke-width="3"/>
+        ${[20, 130].map(x => `<line x1="${x}" y1="14" x2="${x}" y2="34" stroke="${INK}" stroke-width="4"/><circle cx="${x}" cy="40" r="8" fill="${INK}"/>`).join("")}</g>
+      ${emt(612, 202, 1, "bob", "#F2C9A0", "carry")}${emt(898, 202, 1, "bob2", "#8D5524", "carry", true)}${emt(1270, 202, .95, "", "#C68642", "wave")}` },
   { k: "station", name: "The station", sub: "Home base, flag in the breeze",
     svg: `${cloud(160, 40, .9, "drift")}${cloud(900, 20, .7, "drift2")}${grass}
       <g stroke="${INK}" stroke-width="5" stroke-linejoin="round"><rect x="520" y="120" width="560" height="200" fill="#FCA5A5"/><path d="M500 124 L800 40 L1100 124z" fill="#B91C1C"/>
@@ -57,7 +62,7 @@ export const SCENES = [
         <rect x="690" y="132" width="220" height="30" rx="6" fill="#fff"/></g>
       <text x="800" y="155" text-anchor="middle" font-family="system-ui,sans-serif" font-weight="900" font-size="22" fill="#B91C1C">RESCUE SQUAD</text>
       <line x1="1200" y1="320" x2="1200" y2="80" stroke="${INK}" stroke-width="6"/><g class="flag"><path d="M1203 84 h90 v56 h-90z" fill="#fff" stroke="${INK}" stroke-width="4"/>${[0, 1, 2, 3].map(i => `<rect x="1203" y="${84 + i * 14}" width="90" height="7" fill="#DC2626"/>`).join("")}<rect x="1203" y="84" width="38" height="30" fill="#1D4ED8"/></g>
-      ${tree(400, 318, 1.1)}${tree(1360, 318, .9)}${amb(240, 212, .9, "idle")}${emt(1110, 196, 1, "wave")}` },
+      ${tree(400, 318, 1.1)}${tree(1360, 318, .9)}${amb(240, 212, .9, "idle")}${emt(1110, 202, 1, "", "#F2C9A0", "wave")}` },
   { k: "medevac", name: "Medevac", sub: "A helicopter on its way",
     svg: `${cloud(120, 60, 1, "drift")}${cloud(700, 30, .8, "drift2")}${cloud(1250, 80, .9, "drift")}
       <path d="M0 330 Q200 250 420 310 T860 300 T1300 290 T1600 300 V420 H0z" fill="#86EFAC" stroke="${INK}" stroke-width="5"/>
