@@ -2861,3 +2861,50 @@ button.wc-ev{cursor:pointer}button.wc-ev:hover{transform:translateY(-1px)}
 .applybody textarea,.applybody input,.applybody select{max-width:100%;box-sizing:border-box}
 fieldset.afs{min-width:0}
 .waitcard .wseg{margin:0 10px 8px}
+
+/* ---- Nov 20 extras: flags, tags, board-ready, follow-ups, saved views, deadlines ---- */
+.xf label[hidden]{display:none}
+.flags{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.flag,.tagchip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;line-height:1;padding:4px 8px;border-radius:999px;white-space:nowrap}
+.flag{background:color-mix(in srgb,#E11D48 12%,var(--pane));color:color-mix(in srgb,#BE123C 92%,var(--fg))}
+.flag.f-exp,.flag.f-stall{background:color-mix(in srgb,var(--s-int) 15%,var(--pane));color:color-mix(in srgb,var(--s-int) 92%,var(--fg))}
+.flag.f-fu{background:var(--fg);color:var(--bg)}
+.tagchip{background:var(--fill);color:var(--fg2);font-weight:600}
+.tagchip.big{font-size:13px;padding:6px 10px}
+.tagchip button{appearance:none;border:0;background:none;font:inherit;font-size:15px;line-height:1;color:var(--fg3);cursor:pointer;padding:0 0 0 2px}
+.tagchip button:hover{color:var(--fg)}
+.tagrow{display:flex;flex-wrap:wrap;gap:6px;padding:6px 2px 8px}
+#tagBox .row input[type=text],.fuadd input[type=text]{flex:1;min-width:0;font:inherit;background:var(--fill);border:0;border-radius:12px;padding:8px 12px;min-height:36px;color:var(--fg)}
+.fuadd input[type=date]{font:inherit;background:var(--fill);border:0;border-radius:12px;padding:7px 10px;min-height:36px;color:var(--fg)}
+.fuadd{gap:8px;flex-wrap:wrap}
+.furow.due .lbl{font-weight:700}
+.furow.due small{color:#BE123C}
+.furow.done .lbl{color:var(--fg3);text-decoration:line-through}
+.furow .btn{flex:none}
+.brd-sum{font-weight:700;padding:8px 2px 6px}
+.brd-sum.no{color:color-mix(in srgb,#BE123C 92%,var(--fg))}
+.brd-sum.yes{color:color-mix(in srgb,var(--s-onb) 92%,var(--fg))}
+.brd-list{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 8px}
+.brd{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:6px 10px;border-radius:12px;background:var(--fill)}
+.brd i{font-style:normal;font-weight:800}
+.brd.ok i{color:var(--s-onb)}.brd.no i{color:#E11D48}
+.brd.no{background:color-mix(in srgb,#E11D48 9%,var(--pane))}
+.xfviews{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex-basis:100%}
+.vchip{display:inline-flex;border-radius:999px;background:var(--fill);overflow:hidden}
+.vchip button{appearance:none;border:0;background:none;font:inherit;font-size:12.5px;font-weight:600;color:var(--fg);padding:6px 4px 6px 12px;cursor:pointer}
+.vchip button+button{padding:6px 10px 6px 4px;color:var(--fg3)}
+.vchip button:hover{color:var(--accent)}
+.odl .ot{flex:1}
+.odl-bar{display:block;height:5px;border-radius:5px;background:var(--fill2);margin-top:5px;overflow:hidden}
+.odl-bar i{display:block;height:100%;background:var(--s-onb);border-radius:5px}
+.odl .when{display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right}
+.odl.late .when b{color:#BE123C}.odl.soon .when b{color:var(--s-int)}
+.lane .lmore+.lmore{margin-top:-4px}
+#nsCount{margin:0 0 6px}
+.mono{font-family:var(--mono);font-size:11.5px}
+#tagBox input,.fuadd input{text-align:left}
+@media (min-width:861px){
+  .dhead .drow{flex-wrap:wrap;row-gap:10px}
+  .dhead .dname{flex:1 1 240px;min-width:220px}
+  .dhead .hacts{flex-wrap:wrap;justify-content:flex-end;flex:0 1 auto}
+}

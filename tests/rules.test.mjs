@@ -346,6 +346,14 @@ await t("full access reads online applications", getDocs(collection(full, "submi
 await t("full access manages the team", setDoc(doc(full, "staff/new@pvrs.org"), { role: "member", name: "New" }), true);
 await t("but can't touch the owner's own entry", setDoc(doc(full, "staff/dkota@pvrs.org"), { role: "member" }), false);
 await t("full access opens secure documents (Dkota's choice)", getDocs(collection(full, "vault")), true);
+// calendar feed switch (Nov 20): owner only
+await t("calendar feed: the owner makes a link", setDoc(doc(owner, "calFeed/main"), { token: "abc", on: true, at: now(), by: "dkota@pvrs.org" }), true);
+await t("calendar feed: the owner reads it", getDoc(doc(owner, "calFeed/main")), true);
+await t("calendar feed: an admin can't read the link", getDoc(doc(admin, "calFeed/main")), false);
+await t("calendar feed: an applicant can't read the link", getDoc(doc(applicant, "calFeed/main")), false);
+await t("calendar feed: an admin can't change it", setDoc(doc(admin, "calFeed/main"), { token: "x", on: true }), false);
+await t("calendar feed: nobody deletes it", deleteDoc(doc(owner, "calFeed/main")), false);
+await t("calendar feed: no other documents", setDoc(doc(owner, "calFeed/other"), { token: "x" }), false);
 await t("full access changes settings", setDoc(doc(full, "settings/main"), { signature: "Fran" }, { merge: true }), true);
 await t("an admin still can't change settings", setDoc(doc(admin, "settings/main"), { signature: "x" }, { merge: true }), false);
 await t("an admin can't give themselves full access", setDoc(doc(admin, "staff/admin@pvrs.org"), { role: "full" }), false);

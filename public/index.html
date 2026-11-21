@@ -248,8 +248,10 @@
           <label><span>Stage</span><select id="xfStage"></select></label>
           <label><span>Type</span><select id="xfType"></select></label>
           <label><span>Location</span><select id="xfLoc"><option value="">Anywhere</option><option value="Potsdam">Potsdam</option><option value="other">Other</option></select></label>
+          <label hidden><span>Tag</span><select id="xfTag"></select></label>
           <label class="xfchk"><input type="checkbox" id="xfStale"> <span>No movement in 14+ days</span></label>
           <button class="btn small" type="button" id="xfClear" hidden>Clear filters</button>
+          <div class="xfviews" id="xfViews" aria-label="Saved views"></div>
         </div>
       </div>
       <div class="list" id="list"></div>

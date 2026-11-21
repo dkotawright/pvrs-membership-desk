@@ -88,3 +88,24 @@ same security rules, same roles and sign-in, same write logic. No migrations, no
 
 ## Fixed along the way
 - [x] Reference form ran off the right edge on phones (old bug, also on the live site).
+
+## Extras (Dkota: "I want it all, but no money use")
+View only:
+- [x] Warning flags on cards and list rows (refs late, expiring, no interviewer, stalled, not board-ready, follow-up due)
+- [x] One-page file summary to print (header "Summary", key P, ⌘K "Print summary")
+- [x] Saved list views (Filters → Save this view; this browser only)
+- [x] Board-ready check (Board tab)
+- [x] Orientation deadlines (⌘K, Onboard lane "Deadlines")
+- [x] Where members come from (Reports)
+- [x] Keys: B book, R request documents, P summary, T timeline, F follow-up
+- [x] No-show count (Interview tab, from the change history)
+
+New saved fields (approved): 
+- [x] Follow-up reminders (`follow.*` in the private record; Notes tab, header "Remind me", To do)
+- [x] Tags (`tags.*` in the private record; Notes tab, list filter, ⌘K)
+
+Free server pieces:
+- [x] Morning push: follow-ups due (you), documents still needed on Mondays (applicants)
+- [x] Calendar feed, initials only (Settings → Calendar feed; see docs/calendar-feed.md)
+
+Skipped: duty schedule (waiting on shifts), Med Control weekly summary and text messages (cost money).

@@ -2005,6 +2005,83 @@ try {
     if (await dataNow() !== before2) fail("read-only additions changed stored data"); else ok("dock, calendar, timeline, Waiting on, filters and appearance saved nothing");
     await ctx.close();
   }
+  // ---- Nov 20 extras: flags, tags, follow-ups, board-ready, summary, saved views, deadlines, reports, no-shows, calendar feed, keys
+  {
+    const D = 864e5, iso = d => localDay(Date.now() + d * D);
+    const { ctx, page } = await open(browser, { seed: [
+      ["applicants/f1", { name: "Flora Flagged", email: "flora@example.com", phone: "(315) 555-0177", type: "Associate", location: "Potsdam", app: { received: iso(-30), complete: "yes" }, sched: { noShow: iso(-5) }, updatedAt: Date.now() - D, updatedBy: "dkota@pvrs.org" }],
+      ["applicants/f1/private/main", { mvr: { completed: iso(-20) }, dl: { date: iso(-20), valid: "yes", expires: iso(10) }, appr: { committee: "yes" }, notes: "SECRET NOTE TEXT",
+        refs: { r1: { name: "Late Larry", email: "l@example.com", contacted: iso(-10) }, r2: { name: "R Two", returned: iso(-3) }, r3: { name: "R Three", returned: iso(-3) } },
+        follow: { f1: { text: "Call the chief about Flora", due: iso(-1), at: Date.now() - 3 * D, by: "dkota@pvrs.org", done: "" } }, tags: { emt_student: "EMT student" }, secUpdatedAt: Date.now() - D }]] });
+    await wait(page, 1200);
+    const row = () => page.evaluate(() => [...document.querySelectorAll(".arow,.lcard")].filter(r => /Flora Flagged/.test(r.textContent)).map(r => r.textContent.replace(/\s+/g, " ")).join(" | "));
+    const fr = await row();
+    if (!/Refs late/.test(fr) || !/Expiring/.test(fr) || !/Not board-ready/.test(fr) || !/Follow up/.test(fr) || !/EMT student/.test(fr)) fail("flags/tags on cards: " + fr.slice(0, 400)); else ok("cards and list rows show warning flags (refs late, expiring, not board-ready, follow-up) and tags");
+    if (/Georgia Thurmond[^|]*Refs late/.test(await row())) fail("flag on the wrong person");
+    // To do: the due follow-up, and Done from there
+    const todo = await page.locator(".ovcard.todo").textContent();
+    if (!/Follow up: Call the chief about Flora/.test(todo)) fail("follow-up not in To do: " + todo.slice(0, 300)); else ok("a due follow-up shows in To do");
+    await page.locator('.ovcard.todo [data-todoact="fu_f1"]').click(); await wait(page, 600);
+    if ((await priv(page, "f1")).follow?.f1?.done !== localDay(Date.now())) fail("To do Done didn't mark the follow-up"); else ok("Done in To do marks the follow-up done");
+    // tag filter + saved view
+    await page.locator("#xfBtn").click(); await wait(page, 200);
+    await page.locator("#xfTag").selectOption("EMT student"); await wait(page, 300);
+    const tagged = await page.evaluate(() => [...document.querySelectorAll("#list .arow .nm")].map(x => x.textContent).join("|"));
+    if (tagged !== "Flora Flagged") fail("tag filter: " + tagged); else ok("list filter by tag");
+    page.once("dialog", d => d.accept("EMT students"));
+    await page.locator("#xfSave").click(); await wait(page, 300);
+    await page.locator("#xfClear").click(); await wait(page, 300);
+    await page.locator('#xfViews [data-view="0"]').click(); await wait(page, 400);
+    const again = await page.evaluate(() => [...document.querySelectorAll("#list .arow .nm")].map(x => x.textContent).join("|"));
+    if (again !== "Flora Flagged" || !/EMT students/.test(await page.locator("#xfViews").textContent())) fail("saved view: " + again); else ok("saved views bring back a set of filters with one click (this browser only)");
+    await page.locator("#xfClear").click(); await wait(page, 200);
+    // open the file
+    await pickApplicant(page, "Flora Flagged");
+    await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
+    const br = await page.locator("#brdReady").textContent();
+    if (!/2 things still missing before the board/.test(br) || !/Interview held/.test(br) || await page.locator("#brdReady .brd.no").count() !== 2) fail("board-ready: " + br); else ok("Board tab shows the board-ready check and what's missing");
+    await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
+    if (!/Missed 1 interview so far/.test(await page.locator("#nsCount").textContent()) || await page.locator("#nsCount").isHidden()) fail("no-show count"); else ok("Interview tab shows how many interviews they've missed");
+    // keyboard: T goes to the timeline (Notes)
+    await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {}); await page.keyboard.press("t"); await wait(page, 300);
+    if (await page.locator('.tabdock [data-tab="notes"]').getAttribute("aria-selected") !== "true") fail("T didn't open the timeline"); else ok("keyboard T opens the file's timeline");
+    // tags and follow-ups on the Notes tab
+    await page.locator("#tagIn").fill("Needs ride"); await page.locator("#tagIn").press("Enter"); await wait(page, 1200);
+    let pv = await priv(page, "f1");
+    if (pv.tags?.needs_ride !== "Needs ride") fail("tag not saved: " + JSON.stringify(pv.tags)); else ok("adding a tag saves it on the private record");
+    await page.locator('[data-tagrm="needs_ride"]').click(); await wait(page, 1200);
+    pv = await priv(page, "f1");
+    if (pv.tags?.needs_ride !== "" || pv.tags?.emt_student !== "EMT student") fail("tag remove: " + JSON.stringify(pv.tags)); else ok("removing a tag blanks it (nothing deleted)");
+    await page.locator("#fuText").fill("Check on CPR card"); await page.locator("#fuDate").fill(iso(3)); await page.locator("#fuAdd").click(); await wait(page, 1200);
+    pv = await priv(page, "f1");
+    const nf = Object.values(pv.follow || {}).find(f => f.text === "Check on CPR card");
+    if (!nf || nf.due !== iso(3) || nf.by !== "dkota@pvrs.org") fail("follow-up add: " + JSON.stringify(pv.follow)); else ok("adding a follow-up saves text, date and who");
+    // print summary: P key; leaves out notes
+    await page.evaluate(() => { window.print = () => { window.__printed = document.getElementById("print")?.innerText || ""; }; });
+    await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {}); await page.keyboard.press("p"); await wait(page, 400);
+    const pr = await page.evaluate(() => window.__printed || "");
+    if (!/Applicant summary/.test(pr) || !/Flora Flagged/.test(pr) || !/Late Larry/.test(pr) || /SECRET NOTE/.test(pr)) fail("summary print: " + pr.slice(0, 300)); else ok("one-page summary prints (P) and leaves out notes");
+    await page.locator("#overviewBtn").click(); await wait(page, 500);
+    // reports: where members come from
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 200);
+    await page.locator("#palQ").fill("reports"); await page.keyboard.press("Enter"); await wait(page, 400);
+    if (!/Where members come from/.test(await page.locator("#modal").textContent())) fail("reports source table missing"); else ok("Reports shows which sources turn into active members");
+    await page.locator("#modal [data-x]").click(); await wait(page, 200);
+    // orientation deadlines
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 200);
+    await page.locator("#palQ").fill("orientation deadlines"); await page.keyboard.press("Enter"); await wait(page, 400);
+    if (!/Orientation deadlines/.test(await page.locator("#modal").textContent())) fail("deadlines window"); else ok("Orientation deadlines opens from ⌘K");
+    await page.locator("#modal [data-x]").click(); await wait(page, 200);
+    // calendar feed switch in Settings
+    await page.locator("#settingsBtn").click(); await wait(page, 600);
+    await page.locator("#sCalOn").click(); await wait(page, 600);
+    const cf = await page.evaluate(() => window.__mock.docs.get("calFeed/main"));
+    if (!cf || !cf.on || !/^[0-9a-f]{48}$/.test(cf.token || "") || !/cal-feed\?k=/.test(await page.locator("#sCal").textContent())) fail("calendar feed on: " + JSON.stringify(cf)); else ok("Settings makes a private calendar link");
+    await page.locator("#sCalOff").click(); await wait(page, 600);
+    const cf2 = await page.evaluate(() => window.__mock.docs.get("calFeed/main"));
+    if (cf2.on || cf2.token) fail("calendar feed off: " + JSON.stringify(cf2)); else ok("Settings turns the calendar link off");
+    await ctx.close();
+  }
   // phones: the command bar stays out of the way (the bottom menu is there), filters still reachable
   {
     const { ctx, page } = await open(browser, { w: 390, h: 844 });

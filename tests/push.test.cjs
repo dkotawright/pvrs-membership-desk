@@ -124,6 +124,23 @@ const last = () => sent[sent.length - 1];
     slots: [{ start: NOW + D, bookedBy: "x1" }, { start: NOW + D, bookedBy: "x4" }] });
   check(mc.interviewers.get("cory@pvrs.org").length === 2 && mc.interviewers.get("iv@pvrs.org").length === 1, "morning coordinator hears every interview: " + JSON.stringify([...mc.interviewers]));
   check(buildMorning({ now: NOW, apps: [], slots: [] }).owner === null, "nothing to say means no morning alert");
+  // follow-up reminders (Nov 20) and the Monday "documents still needed" nudge
+  const fu = buildMorning({ now: NOW, slots: [], apps: [{ id: "f1", name: "F", updatedAt: NOW, follow: { a: { text: "Call", due: "2026-11-04" }, b: { text: "Late", due: "2026-11-01" }, c: { text: "Later", due: "2026-11-30" }, d: { text: "Done", due: "2026-11-01", done: "2026-11-02" }, e: { text: "Gone", due: "2026-11-01", removed: true } } }],
+    portals: [{ id: "f1", docs: [{ label: "CPR card", received: false }] }] });
+  check(fu.owner && fu.owner.body === "2 follow-ups due", "follow-ups due in the morning summary: " + JSON.stringify(fu.owner));
+  check(!fu.applicants.length, "no documents nudge except on Mondays");
+  const MON = Date.parse("2026-11-09T12:30:00Z");
+  const dn = buildMorning({ now: MON, slots: [], apps: [{ id: "d1", name: "Needs Docs", updatedAt: MON }, { id: "d2", name: "Declined", status: "declined", updatedAt: MON }, { id: "d3", name: "All In", updatedAt: MON }, { id: "d4", name: "In Orientation", updatedAt: MON }],
+    portals: [{ id: "d1", docs: [{ label: "CPR card", received: false }, { label: "License", received: true }] }, { id: "d2", docs: [{ label: "CPR card" }] }, { id: "d3", docs: [{ label: "CPR card", received: true }] }, { id: "d4", orientation: { total: 3, done: 1 }, docs: [{ label: "X" }] }] });
+  check(dn.applicants.length === 1 && dn.applicants[0].id === "d1" && dn.applicants[0].body === "1 document still needed for your PVRS application. You can upload it in your portal.", "Monday documents nudge (never declined, never in orientation): " + JSON.stringify(dn.applicants));
+  // calendar feed text: initials only
+  const { buildFeed, initialsOf } = require(path.join(FN, "cal.js"));
+  const ics = buildFeed({ now: NOW, names: new Map([["a1", "Georgia Thurmond"], ["o1", "Sam Q Ready"]]),
+    slots: [{ id: "s1", start: NOW + D, duration: 30, location: "Station, bay 2", bookedBy: "a1" }, { id: "s2", start: NOW + D, bookedBy: null }, { id: "s3", start: NOW - 60 * D, bookedBy: "a1" }],
+    oslots: [{ id: "o1", start: NOW + 2 * D, duration: 60, bookedBy: "o1" }] });
+  check(/SUMMARY:Interview: G\.T\./.test(ics) && /SUMMARY:Orientation: S\.Q\.R\./.test(ics) && /LOCATION:Station\\, bay 2/.test(ics), "feed has initials, kind and place: " + ics);
+  check(!/Georgia|Thurmond|Ready/.test(ics) && (ics.match(/BEGIN:VEVENT/g) || []).length === 2, "feed never carries names, open times or old times");
+  check(initialsOf("") === "?" && initialsOf("ana") === "A.", "initials of odd names");
   // orientation
   await P.portalChanged(upd({ steps: [] }, { steps: [], orientation: { total: 3, done: 0 } }, { id: "a1" }));
   check(last().notification.title === "Orientation is open" && last().tokens.join() === "appTok", "orientation open alert");
