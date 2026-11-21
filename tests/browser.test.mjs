@@ -1966,6 +1966,13 @@ try {
     await page.locator('[data-lbg="ecg"]').click(); await wait(page, 100);
     const bgv = await page.evaluate(() => [document.documentElement.getAttribute("data-bg"), getComputedStyle(document.querySelector("#bgfx")).display, getComputedStyle(document.querySelector("#bgfx")).maskImage || getComputedStyle(document.querySelector("#bgfx")).webkitMaskImage]);
     if (bgv[0] !== "ecg" || bgv[1] !== "block" || !/svg/.test(bgv[2])) fail("background: " + bgv.join(" | ").slice(0, 200)); else ok("an EMS background pattern shows behind the desk");
+    await page.locator('[data-lbg="onscene"]').click(); await wait(page, 300);
+    const sc = await page.evaluate(() => { const w = document.querySelector("#bgscene .sc-onscene .wheel"); return [document.documentElement.getAttribute("data-scene"), !!document.querySelector("#bgscene svg.sc-onscene"), getComputedStyle(document.querySelector("#bgscene")).display, document.querySelectorAll("#bgscene .emt").length]; });
+    if (sc[0] !== "onscene" || !sc[1] || sc[2] !== "block" || sc[3] < 3) fail("scene: " + sc); else ok("an animated EMS scene (roadside call) shows along the bottom");
+    await page.locator('[data-lanim="off"]').click(); await wait(page, 200);
+    const an = await page.evaluate(() => [document.documentElement.getAttribute("data-anim"), localStorage.getItem("pvrsAnim"), getComputedStyle(document.querySelector("#bgscene .lr")).animationName]);
+    if (an[0] !== "off" || an[1] !== "off" || an[2] !== "none") fail("animations off: " + an); else ok("Animations: Off stops the scene moving (saved on this device)");
+    await page.locator('[data-lanim="on"]').click(); await wait(page, 100);
     await page.locator("#modal [data-x]").click(); await wait(page, 200);
     await page.locator("#themeBtn").click(); await wait(page, 200); await page.locator('[data-lmode="dark"]').click(); await page.locator('[data-lacc=""]').click(); await page.locator('[data-lbg="none"]').click(); await page.locator("#modal [data-x]").click(); await wait(page, 100);
     if (await dataNow() !== before) fail("dock, command bar or appearance changed stored data"); else ok("dock, command bar and appearance switch save nothing to the database");
@@ -2100,7 +2107,7 @@ try {
       await snap(page, "90-member-records");
       const bg1 = await page.evaluate(() => document.documentElement.getAttribute("data-bg"));
       await page.reload(); await wait(page, 900); const bg2 = await page.evaluate(() => document.documentElement.getAttribute("data-bg"));
-      if (!bg1 || !bg2 || bg1 === bg2) fail(`portal background didn't change between visits: ${bg1} → ${bg2}`); else ok("the portal shows a different EMS background each visit");
+      if (!bg1 || !bg2 || bg1 === bg2 || !(await page.evaluate(() => !!document.querySelector("#bgscene svg.sc")))) fail(`portal background didn't change between visits: ${bg1} → ${bg2}`); else ok("the portal shows a different animated EMS scene each visit");
       // log hours
       await page.locator(".cmeform summary").click(); await wait(page, 150);
       await page.locator("#cmeHours").fill("2.5"); await page.locator("#cmeTopic").fill("Stroke assessment"); await page.locator("#cmeCat").selectOption("additional"); await page.locator("[data-cmeadd]").click(); await wait(page, 600);
