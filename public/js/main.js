@@ -2,7 +2,7 @@ import { auth, db, onAuthStateChanged, setDoc, deleteDoc, onSnapshot, signOut, G
   createUserWithEmailAndPassword, sendEmailVerification, updateProfile,
   isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, sendPasswordResetEmail, doc, getDoc, getDocs, collection, query, where, limit,
   getMultiFactorResolver, TotpMultiFactorGenerator } from "./fb.js";
-import { $, esc, lower, toast, openModal, closeModal } from "./shared.js";
+import { $, esc, lower, toast, openModal, closeModal, applyBg } from "./shared.js";
 import { OWNER_EMAIL, CONTACT_EMAIL, PAPERWORK_EMAIL } from "./config.js";
 import { startDesk } from "./desk.js";
 import { startPortal } from "./portal.js";
@@ -16,6 +16,9 @@ const VIEWS = ["loading","home","apply","signin","confirm","verify","noaccess","
 const PUBLIC = ["home","apply","signin","confirm"];
 const show = id => {
   VIEWS.forEach(v => { $("#" + v).hidden = v !== id; });
+  // Backgrounds: the portal and the public pages get a different EMS pattern each visit unless this device picked one;
+  // the desk and the paperwork page stay plain unless picked.
+  if (id !== "loading") applyBg(id === "app" || id === "vault" ? "none" : "auto");
   $("#pubnav").hidden = !PUBLIC.includes(id);
   $("#navApply").classList.toggle("on", id === "apply"); $("#navSignin").classList.toggle("on", id === "signin");
   if (id === "signin") paintWelcome();

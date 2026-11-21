@@ -1,7 +1,7 @@
 // Applicant portal: status, document uploads, interview booking.
 import { app, db, storage, doc, collection, onSnapshot, writeBatch, addDoc, updateDoc, setDoc, deleteDoc, query, where, ref, uploadBytes, getDownloadURL } from "./fb.js";
 import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download, isConfidential, nextTheme, THEME_LABEL,
-  CME_DEFAULT, CME_DRILL, addMonths, daysUntil, memState, cmePeriod, cmeTotals } from "./shared.js";
+  CME_DEFAULT, CME_DRILL, addMonths, daysUntil, memState, cmePeriod, cmeTotals, openAppearance } from "./shared.js";
 import { CONTACT_EMAIL, VAPID_KEY } from "./config.js";
 import { showTour, maybeTour } from "./tour.js";
 import { openModal, closeModal } from "./shared.js";
@@ -196,7 +196,7 @@ export function portalHTML({ back = false, pd, files = [], slots = [], msgs = []
 
   return `<div class="wrap">
     <section class="phead" style="--stage-c:var(--s-${lane})"><div class="pbar"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
-      ${preview ? `<span class="badge wait">Preview</span>` : `<span class="pbar-acts">${back ? `<a class="btn small primary" href="/">‹ Back to the desk</a>` : ""}<button class="btn small" type="button" data-tour>How this works</button><button class="btn small themebtn" type="button" data-themecycle title="Appearance: light, dark or follow this device" aria-label="Appearance"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor"/></svg></button><button class="btn small" type="button" data-signout>Sign out</button></span>`}</div>
+      ${preview ? `<span class="badge wait">Preview</span>` : `<span class="pbar-acts">${back ? `<a class="btn small primary" href="/">‹ Back to the desk</a>` : ""}<button class="btn small" type="button" data-tour>How this works</button><button class="btn small themebtn" type="button" data-themecycle title="Appearance: colours, background, light or dark" aria-label="Appearance"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor"/></svg></button><button class="btn small" type="button" data-signout>Sign out</button></span>`}</div>
       <div class="pgreet"><div class="eyebrow">${mem ? "Squad member" : nm ? "New member" : "Applicant portal"}</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
       <div class="info">${mem ? "Your records: cards, trainings and CME in one place." : nm ? "Welcome to the squad. Here's your orientation." : esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div></section>
 
@@ -494,7 +494,7 @@ export function startPortal(id, email, { backToDesk = false } = {}){
     const fsn = t.closest("[data-formsign]"); if (fsn) return openSign(fsn.dataset.formsign);
     const fvw = t.closest("[data-formview]"); if (fvw) return viewForm(fvw.dataset.formview);
     if (t.closest("[data-tour]")) return showTour(tourRole(), tourOpts());
-    if (t.closest("[data-themecycle]")) return toast("Appearance: " + THEME_LABEL[nextTheme()] + " (this device)");
+    if (t.closest("[data-themecycle]")) return openAppearance("auto");
     const gt = t.closest("[data-goto]"); if (gt) { const el = document.getElementById(gt.dataset.goto) || document.getElementById(gt.dataset.goto === "appCard" ? "orientCard" : "");
       if (el) { el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion:reduce)").matches ? "auto" : "smooth", block: "start" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
       root.querySelectorAll(".pnav [data-goto]").forEach(b => b.classList.toggle("on", b === gt)); return; }
