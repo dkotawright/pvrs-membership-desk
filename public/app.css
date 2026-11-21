@@ -2908,3 +2908,56 @@ fieldset.afs{min-width:0}
   .dhead .dname{flex:1 1 240px;min-width:220px}
   .dhead .hacts{flex-wrap:wrap;justify-content:flex-end;flex:0 1 auto}
 }
+
+/* ---- Member records (Nov 21): portal page + desk section + compliance board ---- */
+.memlist{display:flex;flex-direction:column;gap:8px}
+.memrow{display:flex;align-items:center;gap:12px;background:var(--fill);border-radius:16px;padding:10px 12px;min-height:52px}
+.portal .memrow .btn{flex:none}
+.mr-dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--fg3)}
+.st-ok .mr-dot{background:#16A34A}.st-warn .mr-dot{background:#D97706}.st-bad .mr-dot{background:#E11D48}.st-wait .mr-dot{background:#2563EB}.st-miss .mr-dot{background:var(--fill2);box-shadow:inset 0 0 0 2px var(--fg3)}
+.mr-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.mr-t small{color:var(--fg2)}
+.st-bad .mr-t small{color:color-mix(in srgb,#BE123C 90%,var(--fg));font-weight:600}
+.st-warn .mr-t small{color:color-mix(in srgb,var(--s-int) 90%,var(--fg));font-weight:600}
+.cmebars{display:flex;flex-direction:column;gap:10px;margin:4px 0}
+.cmebar{display:flex;flex-direction:column;gap:5px}
+.cb-l{display:flex;justify-content:space-between;font-weight:600;font-size:14px}
+.cb-l small{color:var(--fg2);font-weight:500}
+.cb-t{height:8px;border-radius:8px;background:var(--fill2);overflow:hidden}
+.cb-t i{display:block;height:100%;border-radius:8px;background:linear-gradient(90deg,#E11D48,#F97316)}
+.cmebar.done .cb-t i{background:#16A34A}
+.cmeform summary{cursor:pointer;font-weight:700;padding:8px 0;list-style:none}
+.cmeform summary::before{content:"+ ";color:var(--accent)}
+.cmeform[open] summary::before{content:"– "}
+.cmegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:6px 0 10px}
+.cmegrid label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:600;color:var(--fg2);min-width:0}
+.cmegrid .wide{grid-column:1/-1}
+.cmegrid input,.cmegrid select{font:inherit;font-size:16px;color:var(--fg);background:var(--fill);border:0;border-radius:12px;padding:10px 12px;min-height:44px;min-width:0;width:100%;box-sizing:border-box}
+.cmelist{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.cmerow{display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--sep)}
+.cmerow>span:first-child{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cmerow small{color:var(--fg2)}
+.cme-h{font-weight:800;font-variant-numeric:tabular-nums}
+.olib{display:flex;flex-direction:column;gap:6px}
+.olib .doc{appearance:none;border:0;font:inherit;text-align:left;width:100%;display:flex;align-items:center;justify-content:space-between;cursor:pointer;color:var(--fg)}
+.mchip{display:inline-flex;align-items:center;font-size:11.5px;font-weight:700;padding:4px 9px;border-radius:999px;white-space:nowrap;flex:none}
+.mchip.ok{background:color-mix(in srgb,#16A34A 14%,var(--pane));color:color-mix(in srgb,#15803D 90%,var(--fg))}
+.mchip.warn{background:color-mix(in srgb,var(--s-int) 15%,var(--pane));color:color-mix(in srgb,var(--s-int) 92%,var(--fg))}
+.mchip.bad{background:color-mix(in srgb,#E11D48 13%,var(--pane));color:color-mix(in srgb,#BE123C 92%,var(--fg))}
+.mchip.miss{background:var(--fill);color:var(--fg2)}
+#memWrap .memgroup{margin-bottom:14px}
+#memWrap .row{flex-wrap:wrap;gap:8px}
+#memWrap .memrow{background:transparent;border-radius:0;padding:0 2px;min-height:46px}
+.mempend{display:flex;flex-direction:column;font-size:12.5px;min-width:0}
+.mempend small{color:var(--fg2)}
+input.memdate{font:inherit;font-size:13px;background:var(--fill);border:0;border-radius:10px;padding:6px 8px;color:var(--fg);min-height:34px}
+.cwrap{overflow:auto;max-height:65vh}
+.cgrid{border-collapse:separate;border-spacing:3px;font-size:12.5px;min-width:100%}
+.cgrid th{text-align:left;font-weight:700;padding:6px 8px;white-space:nowrap}
+.cgrid thead th{font-size:11.5px;color:var(--fg2);font-weight:600;white-space:normal;max-width:110px;vertical-align:bottom}
+.cgrid td.cc{text-align:center;font-weight:800;border-radius:8px;padding:6px 8px;white-space:nowrap}
+.cc.ok{background:color-mix(in srgb,#16A34A 16%,var(--pane));color:#15803D}
+.cc.soon{background:color-mix(in srgb,#D97706 18%,var(--pane));color:#B45309}
+.cc.expired{background:color-mix(in srgb,#E11D48 15%,var(--pane));color:#BE123C}
+.cc.missing{background:var(--fill);color:var(--fg3)}
+@media (max-width:520px){ .cmegrid{grid-template-columns:1fr} }

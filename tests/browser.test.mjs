@@ -2074,6 +2074,86 @@ try {
     await page.locator("#modal [data-x]").click(); await wait(page, 200);
     await ctx.close();
   }
+  // ---- Member records (Nov 21): active members keep cards, trainings, CME and contact info current
+  {
+    const D = 864e5, iso = d => localDay(Date.now() + d * D);
+    const memPortal = { email: "mia@example.com", name: "Mia Member", firstName: "Mia", type: "Regular", steps: [], docs: [],
+      member: { items: [{ key: "cpr_bls_card", label: "CPR / BLS card", every: 0, expires: iso(10), approvedAt: 0 }, { key: "ems_certification_card", label: "EMS certification card", every: 0, expires: iso(400), approvedAt: 0 },
+        { key: "hipaa_training", label: "HIPAA training", every: 12, expires: "", approvedAt: 0 }], cme: { years: 3, cats: [{ key: "core", label: "Core / refresher", hours: 20 }, { key: "mandatory", label: "Mandatory topics", hours: 5 }, { key: "additional", label: "Additional", hours: 20 }] }, certExpires: iso(400) } };
+    // the member's own page
+    { const { ctx, page } = await open(browser, { user: { email: "mia@example.com", displayName: "Mia Member" }, seed: [["portal/m1", memPortal], ["portalEmails/mia@example.com", { id: "m1" }],
+        ["portal/m1/cmeLog/c0", { date: iso(-30), hours: 4, topic: "Airway refresher", cat: "core", provider: "PVRS", at: Date.now() - 30 * D, by: "mia@example.com" }]] });
+      await wait(page, 800);
+      const mc = (await page.locator("#memCard").textContent()).replace(/\s+/g, " ");
+      if (!/Squad member/.test(await page.locator(".phead").textContent()) || !/CPR \/ BLS card/.test(mc) || !/Expires .*\(10 days\)/.test(mc) || !/HIPAA training/.test(mc) || !/Not on file yet/.test(mc)) fail("records page: " + mc.slice(0, 400)); else ok("an active member's page lists what to keep current with expiry status");
+      if (await page.locator("#appCard").count() || await page.locator("#ivCard").count()) fail("application cards still on a member's page"); else ok("the member page drops the application cards");
+      const cm = (await page.locator("#cmeCard").textContent()).replace(/\s+/g, " ");
+      if (!/4 of 45 hours/.test(cm) || !/Core \/ refresher ?4 of 20 h/.test(cm)) fail("cme card: " + cm.slice(0, 300)); else ok("CME card totals the hours toward recertification by category");
+      await snap(page, "90-member-records");
+      // log hours
+      await page.locator(".cmeform summary").click(); await wait(page, 150);
+      await page.locator("#cmeHours").fill("2.5"); await page.locator("#cmeTopic").fill("Stroke assessment"); await page.locator("#cmeCat").selectOption("additional"); await page.locator("[data-cmeadd]").click(); await wait(page, 600);
+      const logs = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/m1/cmeLog/")).map(([, v]) => v));
+      const nl = logs.find(x => x.topic === "Stroke assessment");
+      if (!nl || nl.hours !== 2.5 || nl.cat !== "additional" || nl.by !== "mia@example.com") fail("cme log: " + JSON.stringify(logs)); else ok("a member logs CME hours");
+      if (!/6.5 of 45 hours/.test(await page.locator("#cmeCard").textContent())) fail("cme total not updated"); else ok("the CME total updates");
+      // upload a renewed card with its new date
+      await page.evaluate(() => { const i = document.querySelector('input[type="file"]'); i.click = () => {}; });
+      await page.locator('[data-memup="cpr_bls_card"]').click(); await wait(page, 200);
+      await page.locator("#memDate").fill(iso(700)); await page.locator("#memPick").click(); await wait(page, 200);
+      await page.locator('input[type="file"]').setInputFiles({ name: "cpr-new.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 2200);
+      const up = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/m1/files/")).map(([, v]) => v));
+      if (!up.some(f => f.docKey === "mem:cpr_bls_card" && f.expires === localDay(Date.now() + 700 * 864e5) && /^uploads\/m1\//.test(f.path))) fail("member upload: " + JSON.stringify(up)); else ok("a renewed card uploads with its new expiration date");
+      if (!/waiting for review/.test(await page.locator("#memCard").textContent())) fail("upload not shown as waiting"); else ok("an upload waits for review before it counts");
+      // yearly training: the finish date becomes a year later
+      await page.locator('[data-memup="hipaa_training"]').click(); await wait(page, 200);
+      await page.locator("#memDate").fill(iso(-1)); await page.locator("#memPick").click(); await wait(page, 200);
+      await page.locator('input[type="file"]').setInputFiles({ name: "hipaa.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4") }); await wait(page, 2200);
+      const hp = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/m1/files/")).map(([, v]) => v).find(f => f.docKey === "mem:hipaa_training"));
+      const yr = new Date(Date.now() - 864e5); yr.setFullYear(yr.getFullYear() + 1);
+      if (!hp || hp.done !== localDay(Date.now() - 864e5) || hp.expires.slice(0, 7) !== localDay(yr.getTime()).slice(0, 7)) fail("yearly training: " + JSON.stringify(hp)); else ok("a yearly training is good for a year from the day they finished");
+      // contact update
+      await page.locator("#pfPhone").fill("(315) 555-0999"); await page.locator("#pfEcName").fill("Pat Member"); await page.locator("[data-pfsend]").click(); await wait(page, 600);
+      const pu = await page.evaluate(() => [...window.__mock.docs.entries()].filter(([k]) => k.startsWith("portal/m1/profileUpdates/")).map(([, v]) => v));
+      if (!pu.length || pu[0].phone !== "(315) 555-0999" || pu[0].ecName !== "Pat Member") fail("profile update: " + JSON.stringify(pu)); else ok("a member sends a contact-info update");
+      await ctx.close(); }
+    // the desk: the member's file
+    { const { ctx, page } = await open(browser, { seed: [
+        ["applicants/m1", { name: "Mia Member", email: "mia@example.com", phone: "(315) 555-0111", type: "Regular", location: "Potsdam", app: { received: iso(-300), complete: "yes" }, updatedAt: Date.now() - D, updatedBy: "dkota@pvrs.org" }],
+        ["applicants/m1/private/main", { board: { result: "approved", date: iso(-250) }, onb: { orientStarted: iso(-200), memberSince: iso(-150), cprExpires: iso(10), emtExpires: iso(400) }, portal: { invited: iso(-290) }, secUpdatedAt: Date.now() - D }],
+        ["portal/m1", memPortal], ["portalEmails/mia@example.com", { id: "m1" }],
+        ["portal/m1/files/u1", { docKey: "mem:cpr_bls_card", label: "CPR / BLS card", name: "cpr-new.pdf", path: "uploads/m1/cpr-new.pdf", size: 9, contentType: "application/pdf", uploadedAt: Date.now() - 3600e3, uploadedBy: "mia@example.com", expires: iso(700) }],
+        ["portal/m1/cmeLog/c1", { date: iso(-20), hours: 3, topic: "Trauma lab", cat: "core", provider: "", at: Date.now() - 20 * D, by: "mia@example.com" }],
+        ["portal/m1/profileUpdates/p1", { phone: "(315) 555-0999", address: "1 Main St, Potsdam", ecName: "Pat Member", ecPhone: "(315) 555-0100", ecRel: "Spouse", at: Date.now() - 3600e3, by: "mia@example.com" }]] });
+      await wait(page, 1200);
+      if (await page.locator('.ovcard.todo [data-cmd="todoall"]').count()) { await page.locator('.ovcard.todo [data-cmd="todoall"]').click(); await wait(page, 300); }
+      const td = await page.locator(".ovcard.todo").textContent();
+      if ((td.match(/CPR \/ BLS card expires in 10 days/g) || []).length !== 1 || !/Check Mia's new CPR \/ BLS card/.test(td)) fail("member To do: " + td.slice(0, 400)); else ok("To do warns about a member's expiring card and a new upload to check");
+      await pickApplicant(page, "Mia Member");
+      await page.locator('.tabdock [data-tab="onb"]').click(); await wait(page, 600);
+      const mw = (await page.locator("#memWrap").textContent()).replace(/\s+/g, " ");
+      if (!/Member records/.test(mw) || !/cpr-new\.pdf/.test(mw) || !/3 of 45 hours/.test(mw) || !/Update sent/.test(mw)) fail("desk member section: " + mw.slice(0, 400)); else ok("the file shows member records, the pending upload, CME and the contact update");
+      await snap(page, "91-member-desk");
+      await page.locator('[data-memok^="cpr_bls_card|"]').click(); await wait(page, 1500);
+      let pv = await priv(page, "m1");
+      const fu = await page.evaluate(() => window.__mock.docs.get("portal/m1/files/u1"));
+      if (pv.mem?.cpr_bls_card?.expires !== iso(700) || pv.onb?.cprExpires !== iso(700) || !fu.reviewedAt) fail("approve: " + JSON.stringify({ mem: pv.mem, cpr: pv.onb?.cprExpires, rv: fu.reviewedAt })); else ok("approving the upload sets the new date (and the old CPR field) and marks it checked");
+      await page.locator('[data-cmever="c1"]').click(); await wait(page, 500);
+      if (!(await page.evaluate(() => window.__mock.docs.get("portal/m1/cmeLog/c1"))).verified) fail("cme verify"); else ok("the squad can verify a CME entry");
+      await page.locator('[data-pfapply="p1"]').click(); await wait(page, 1500);
+      pv = await priv(page, "m1"); const sh = await page.evaluate(() => window.__mock.docs.get("applicants/m1"));
+      if (sh.phone !== "(315) 555-0999" || pv.profile?.address !== "1 Main St, Potsdam" || pv.profile?.ecRel !== "Spouse" || !(await page.evaluate(() => window.__mock.docs.get("portal/m1/profileUpdates/p1"))).appliedAt) fail("apply profile: " + JSON.stringify({ phone: sh.phone, profile: pv.profile })); else ok("Apply to file copies the new contact info onto their file");
+      await wait(page, 2000);
+      const pm = await page.evaluate(() => window.__mock.docs.get("portal/m1").member);
+      if (!pm || pm.items.find(x => x.key === "cpr_bls_card")?.expires !== iso(700)) fail("portal member payload: " + JSON.stringify(pm)); else ok("the member's page gets the approved date");
+      await page.locator("#overviewBtn").click(); await wait(page, 400);
+      await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 200);
+      await page.locator("#palQ").fill("compliance"); await page.keyboard.press("Enter"); await wait(page, 800);
+      const cb = (await page.locator("#modal").textContent()).replace(/\s+/g, " ");
+      if (!/Compliance board/.test(cb) || !/Mia Member/.test(cb) || !/3\/45/.test(cb)) fail("compliance board: " + cb.slice(0, 300)); else ok("the compliance board shows each member's items and CME hours");
+      await snap(page, "92-compliance");
+      await ctx.close(); }
+  }
   // phones: the command bar stays out of the way (the bottom menu is there), filters still reachable
   {
     const { ctx, page } = await open(browser, { w: 390, h: 844 });

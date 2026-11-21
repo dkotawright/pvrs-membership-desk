@@ -1,6 +1,7 @@
 // Applicant portal: status, document uploads, interview booking.
 import { app, db, storage, doc, collection, onSnapshot, writeBatch, addDoc, updateDoc, setDoc, deleteDoc, query, where, ref, uploadBytes, getDownloadURL } from "./fb.js";
-import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download, isConfidential, nextTheme, THEME_LABEL } from "./shared.js";
+import { $, esc, toast, timelineHTML, slotDay, slotTime, slotLong, icsFile, download, isConfidential, nextTheme, THEME_LABEL,
+  CME_DEFAULT, CME_DRILL, addMonths, daysUntil, memState, cmePeriod, cmeTotals } from "./shared.js";
 import { CONTACT_EMAIL, VAPID_KEY } from "./config.js";
 import { showTour, maybeTour } from "./tour.js";
 import { openModal, closeModal } from "./shared.js";
@@ -109,8 +110,55 @@ function moveHTML({ pd, files, slots, oslots, nm, dis, now, forms = [], lane = "
     : `<section class="card glass movecard calm" id="moveCard" aria-label="Nothing needed"><div class="mv-eye">All set for now</div>
       <div class="mv-head">Nothing needed from you right now</div><p class="info" style="margin:0">We'll let you know here, and by email, as soon as there's a next step.</p></section>`;
 }
-export function portalHTML({ back = false, pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "", oslots = [], opick = null, obusy = false, lib = [], checkinDone = false, forms = [] }){
-  const now = Date.now(), nm = !!pd.orientation;   // nm: moved to orientation, so only the orientation dashboard shows
+// ---- My records (Nov 21): an active member's page. Cards and IDs to keep current, CME toward recertification,
+// trainings, and contact info. Uploads wait for the squad's review before they count.
+const fmtD = iso => iso ? new Date(iso + "T12:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+const memPending = (it, files) => files.filter(f => f.docKey === "mem:" + it.key && !f.reviewedAt && (f.uploadedAt || 0) > (it.approvedAt || 0)).sort((x, y) => (y.uploadedAt || 0) - (x.uploadedAt || 0))[0] || null;
+function memStatus(it, files, now){
+  const pend = memPending(it, files);
+  if (pend) return { cls: "wait", text: `Sent ${new Date(pend.uploadedAt).toLocaleDateString()}: waiting for review` };
+  const st = memState(it.expires, now), n = daysUntil(it.expires, now);
+  return st === "missing" ? { cls: "miss", text: "Not on file yet" } : st === "expired" ? { cls: "bad", text: `Expired ${fmtD(it.expires)}` }
+    : st === "soon" ? { cls: "warn", text: n === 0 ? "Expires today" : `Expires ${fmtD(it.expires)} (${n} day${n === 1 ? "" : "s"})` } : { cls: "ok", text: `Current until ${fmtD(it.expires)}` };
+}
+function memberHTML(m, { files, cme = [], pupd = [], lib = [], dis, draft = {}, now = Date.now() }){
+  const items = m.items || [], cfg = m.cme || CME_DEFAULT, period = cmePeriod(m.certExpires || "", cfg.years || 3, now), tot = cmeTotals(cme, cfg, period);
+  const due = items.filter(it => !memPending(it, files) && ["missing", "expired", "soon"].includes(memState(it.expires, now))).length;
+  const rows = items.map(it => { const st = memStatus(it, files, now);
+    return `<div class="memrow st-${st.cls}"><span class="mr-dot" aria-hidden="true"></span><span class="mr-t"><b>${esc(it.label)}</b><small>${esc(st.text)}${it.every ? ` · redo every ${it.every === 12 ? "year" : it.every + " months"}` : ""}</small></span>
+      <button class="btn small${["missing", "expired", "soon"].includes(memState(it.expires, now)) && st.cls !== "wait" ? " primary" : ""}" type="button" data-memup="${esc(it.key)}" ${dis}>${it.expires || st.cls === "wait" ? "Upload new" : "Upload"}</button></div>`; }).join("");
+  const cats = [...(cfg.cats || []), CME_DRILL];
+  const list = [...cme].sort((x, y) => String(y.date).localeCompare(String(x.date)));
+  const pend = pupd.filter(u => !u.appliedAt).sort((x, y) => (y.at || 0) - (x.at || 0))[0];
+  const d = k => esc(draft[k] || "");
+  return `<section class="card glass memcard" id="memCard"><div class="ptop"><h2>Keep these current</h2>${due ? `<span class="badge wait">${due} need${due === 1 ? "s" : ""} attention</span>` : `<span class="badge ok">All current</span>`}</div>
+      <p class="info" style="margin:0">Upload a new copy whenever you renew. The squad checks it, then it counts. We'll remind you 30 days before anything expires.</p>
+      <div class="memlist">${rows || `<p class="info">Nothing to keep track of yet.</p>`}</div></section>
+    <section class="card glass" id="cmeCard"><div class="ptop"><h2>CME and recertification</h2><span class="badge ${tot.total >= tot.need ? "ok" : "wait"}">${+tot.total.toFixed(2)} of ${tot.need} hours</span></div>
+      <p class="info" style="margin:0">${period.known ? `Your EMS certification expires <b>${esc(fmtD(period.to))}</b>. Hours from ${esc(fmtD(period.from))} on count toward it.` : `Upload your EMS certification card above so we can count hours toward its expiration date. Until then this shows the last ${cfg.years || 3} years.`}</p>
+      <div class="cmebars">${tot.cats.map(c => `<div class="cmebar${c.done ? " done" : ""}"><span class="cb-l">${esc(c.label)}<small>${+c.got.toFixed(2)} of ${c.hours} h</small></span><span class="cb-t" aria-hidden="true"><i style="width:${Math.min(100, c.hours ? c.got / c.hours * 100 : 0)}%"></i></span></div>`).join("")}
+        ${tot.drill ? `<p class="info" style="margin:4px 0 0">Plus ${+tot.drill.toFixed(2)} h of squad drills and training (not CME).</p>` : ""}</div>
+      <details class="cmeform"${list.length ? "" : " open"}><summary>Log hours</summary>
+        <div class="cmegrid"><label>Date<input type="date" id="cmeDate" value="${d("date") || new Date(now).toISOString().slice(0, 10)}" ${dis}></label>
+          <label>Hours<input type="number" id="cmeHours" min="0.25" max="24" step="0.25" value="${d("hours")}" placeholder="1.5" ${dis}></label>
+          <label class="wide">Topic<input type="text" id="cmeTopic" maxlength="200" value="${d("topic")}" placeholder="e.g. Airway management" ${dis}></label>
+          <label>Category<select id="cmeCat" ${dis}>${cats.map(c => `<option value="${esc(c.key)}"${draft.cat === c.key ? " selected" : ""}>${esc(c.label)}</option>`).join("")}</select></label>
+          <label>Course or instructor<input type="text" id="cmeProv" maxlength="200" value="${d("provider")}" placeholder="Optional" ${dis}></label></div>
+        <div class="acts" style="display:flex;justify-content:flex-end;gap:8px"><button class="btn primary" type="button" data-cmeadd ${dis}>Save hours</button></div>
+        <p class="info" style="margin:4px 0 0">Keep your certificates: attach one to an entry below, or send it under Documents. Core hours need a NYS CIC's sign-off on the state form; this log is your own record and the squad's.</p></details>
+      ${list.length ? `<div class="cmelist">${list.map(e => `<div class="cmerow"><span><b>${esc(e.topic)}</b><small>${esc(fmtD(e.date))} · ${esc((cats.find(c => c.key === e.cat) || { label: e.cat }).label)}${e.provider ? " · " + esc(e.provider) : ""}${files.some(f => f.docKey === "cme:" + e.id) ? " · certificate attached" : ""}</small></span><span class="cme-h">${+(+e.hours).toFixed(2)} h</span>${e.verified ? `<span class="badge ok">Verified</span>` : `<button class="btn small" type="button" data-cmefile="${esc(e.id)}" ${dis}>Attach</button>`}</div>`).join("")}</div>` : ""}</section>
+    ${lib.length ? `<section class="card glass" id="trainCard"><h2>Trainings and handouts</h2><div class="olib">${lib.map(x => `<button class="doc" type="button" data-olib="${esc(x.id)}" ${dis}><span class="dt">${esc(x.name)}</span><span class="badge">Open</span></button>`).join("")}</div></section>` : ""}
+    <section class="card glass" id="profCard"><h2>My contact info</h2>
+      ${pend ? `<p class="info" style="margin:0"><b>Sent ${esc(new Date(pend.at).toLocaleDateString())}.</b> The squad will update your file.</p>` : `<p class="info" style="margin:0">Moved or got a new number? Tell us here. Leave a box empty if it hasn't changed.</p>`}
+      <div class="cmegrid"><label>Phone<input type="tel" id="pfPhone" maxlength="40" value="${d("phone")}" ${dis}></label>
+        <label class="wide">Mailing address<input type="text" id="pfAddr" maxlength="300" value="${d("address")}" ${dis}></label>
+        <label>Emergency contact<input type="text" id="pfEcName" maxlength="200" value="${d("ecName")}" placeholder="Name" ${dis}></label>
+        <label>Their phone<input type="tel" id="pfEcPhone" maxlength="40" value="${d("ecPhone")}" ${dis}></label>
+        <label>Relationship<input type="text" id="pfEcRel" maxlength="100" value="${d("ecRel")}" ${dis}></label></div>
+      <div class="acts" style="display:flex;justify-content:flex-end"><button class="btn" type="button" data-pfsend ${dis}>Send update</button></div></section>`;
+}
+export function portalHTML({ back = false, pd, files = [], slots = [], msgs = [], preview = false, pick = null, busy = false, refUps = [], refForm = null, refDraft = {}, refSending = false, push = "", oslots = [], opick = null, obusy = false, lib = [], checkinDone = false, forms = [], cme = [], pupd = [], mlib = [], mdraft = {} }){
+  const now = Date.now(), mem = !!pd.member, nm = !!pd.orientation || mem;   // nm: moved to orientation, so only the orientation dashboard shows
   // The header takes the colour of the lane they're in (same four lanes as the desk's board).
   const stepNow = (pd.steps || []).findIndex(x => x.state === "now"), stepsDone = (pd.steps || []).length && (pd.steps || []).every(x => x.state === "done");
   const lane = nm || stepsDone ? "onb" : stepNow <= 2 ? "screen" : stepNow === 3 ? "int" : stepNow === 4 ? "appr" : "onb";
@@ -149,15 +197,15 @@ export function portalHTML({ back = false, pd, files = [], slots = [], msgs = []
   return `<div class="wrap">
     <section class="phead" style="--stage-c:var(--s-${lane})"><div class="pbar"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
       ${preview ? `<span class="badge wait">Preview</span>` : `<span class="pbar-acts">${back ? `<a class="btn small primary" href="/">‹ Back to the desk</a>` : ""}<button class="btn small" type="button" data-tour>How this works</button><button class="btn small themebtn" type="button" data-themecycle title="Appearance: light, dark or follow this device" aria-label="Appearance"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor"/></svg></button><button class="btn small" type="button" data-signout>Sign out</button></span>`}</div>
-      <div class="pgreet"><div class="eyebrow">${nm ? "New member" : "Applicant portal"}</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
-      <div class="info">${nm ? "Welcome to the squad. Here's your orientation." : esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div></section>
+      <div class="pgreet"><div class="eyebrow">${mem ? "Squad member" : nm ? "New member" : "Applicant portal"}</div><div class="hello">Hi ${esc(pd.firstName || "there")}</div>
+      <div class="info">${mem ? "Your records: cards, trainings and CME in one place." : nm ? "Welcome to the squad. Here's your orientation." : esc(pd.type ? pd.type + " membership application" : "Membership application")}</div></div></section>
 
-${moveHTML({ pd, files, slots, oslots, nm, dis, now, forms, lane, pick, busy })}
-${nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checkinDone, dis, forms }) : `${ivSoonHTML(iv, ivDone, now, dis)}
+${mem ? memberHTML(pd.member, { files, cme, pupd, lib: mlib, dis, draft: mdraft, now }) : moveHTML({ pd, files, slots, oslots, nm, dis, now, forms, lane, pick, busy })}
+${mem ? "" : nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checkinDone, dis, forms }) : `${ivSoonHTML(iv, ivDone, now, dis)}
     <section class="card glass" id="appCard"><h2>Your application</h2>${trackerHTML(pd.steps || [])}${timelineHTML(pd.steps || [])}</section>`}
 
     <section class="card glass" id="msgCard"><div class="ptop"><h2>Messages</h2>${msgs.some(m => m.from === "staff" && !m.seenAt) ? `<span class="badge wait">New reply</span>` : ""}</div>
-      <p class="info" style="margin:0">${nm ? "Questions about orientation?" : "Questions about your application?"} Send them here. We'll reply in this space, usually within a few days.</p>
+      <p class="info" style="margin:0">${mem ? "Questions for the membership coordinator?" : nm ? "Questions about orientation?" : "Questions about your application?"} Send them here. We'll reply in this space, usually within a few days.</p>
       ${pushHTML(push)}<div class="thread" id="thread">${threadHTML(msgs, "applicant")}</div>
       <div class="composer"><textarea id="msgText" rows="2" maxlength="2000" placeholder="Type your question…" aria-label="Your message" ${dis}></textarea>
         <button class="btn primary" type="button" data-send ${dis}>Send</button></div></section>
@@ -181,7 +229,7 @@ ${nm ? orientHTML(pd.orientation, { pd, files, oslots, opick, obusy, lib, checki
       <li>Members complete orientation (including required medical documentation and online education), self-schedule at least 4 duty crew shifts a month, and attend the monthly membership meeting on the 2nd Tuesday unless excused in advance.</li>
       <li>Monthly training is offered and all members are encouraged to take part.</li></ul>
       <p style="margin:10px 0 0">Questions? Email <b>${esc(CONTACT_EMAIL)}</b>.</p></div></section>`}
-    ${preview ? "" : `<nav class="pnav" aria-label="Jump to"><button type="button" data-goto="appCard" class="on">${nm ? "Orientation" : "My application"}</button><button type="button" data-goto="docCard">Documents</button><button type="button" data-goto="msgCard">Messages${msgs.some(m => m.from === "staff" && !m.seenAt) ? `<span class="ping" aria-hidden="true"><i></i><i></i></span>` : ""}</button></nav>`}
+    ${preview ? "" : `<nav class="pnav" aria-label="Jump to"><button type="button" data-goto="${mem ? "memCard" : "appCard"}" class="on">${mem ? "My records" : nm ? "Orientation" : "My application"}</button>${mem ? `<button type="button" data-goto="cmeCard">CME</button>` : ""}<button type="button" data-goto="docCard">Documents</button><button type="button" data-goto="msgCard">Messages${msgs.some(m => m.from === "staff" && !m.seenAt) ? `<span class="ping" aria-hidden="true"><i></i><i></i></span>` : ""}</button></nav>`}
   </div>`;
 }
 // "How to prepare" under the interview card (until the interview is done). Topics follow the committee's question list.
@@ -254,7 +302,7 @@ function slotPicker(days, pick, dis, busy){
 }
 
 export function startPortal(id, email, { backToDesk = false } = {}){
-  const P = { oslots: [], opick: null, obusy: false, lib: [], checkins: [], orientOn: false, crate: 0, pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false, refUps: [], refForm: null, refDraft: {}, refSending: false, forms: [] };
+  const P = { cme: [], pupd: [], mlib: [], mdraft: {}, memOn: false, memKey: "", memDate: "", oslots: [], opick: null, obusy: false, lib: [], checkins: [], orientOn: false, crate: 0, pd: null, files: [], slots: [], msgs: [], draft: "", pick: null, busy: false, changing: false, sending: false, refUps: [], refForm: null, refDraft: {}, refSending: false, forms: [] };
   const seen = new Set();
   const root = $("#portal");
   const render = () => {
@@ -264,7 +312,7 @@ export function startPortal(id, email, { backToDesk = false } = {}){
     const ta = $("#msgText"), focused = !!ta && document.activeElement === ta, caret = ta ? ta.selectionStart : 0, scroll = root.scrollTop;
     const rf = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.rf ? document.activeElement : null, rfCaret = rf ? rf.selectionStart : 0;
     if (ta) P.draft = ta.value;
-    root.innerHTML = portalHTML({ back: backToDesk, pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending, push: P.push, oslots: P.oslots, opick: P.opick, obusy: P.obusy, lib: P.lib, forms: P.forms, checkinDone: !!P.pd.checkin && P.checkins.includes(P.pd.checkin) });
+    root.innerHTML = portalHTML({ back: backToDesk, pd, files: P.files, slots: P.slots, msgs: P.msgs, pick: P.pick, busy: P.busy, refUps: P.refUps, refForm: P.refForm, refDraft: P.refDraft, refSending: P.refSending, push: P.push, oslots: P.oslots, opick: P.opick, obusy: P.obusy, lib: P.lib, cme: P.cme, pupd: P.pupd, mlib: P.mlib, mdraft: P.mdraft, forms: P.forms, checkinDone: !!P.pd.checkin && P.checkins.includes(P.pd.checkin) });
     if (rf) { const back = root.querySelector(`[data-rf="${rf.dataset.rf}"]`); if (back) { back.focus({ preventScroll: true }); try { back.setSelectionRange(rfCaret, rfCaret); } catch {} } }
     const t2 = $("#msgText"); if (t2) { t2.value = P.draft; if (focused) { t2.focus({ preventScroll: true }); t2.setSelectionRange(caret, caret); } }
     const th = $("#thread"); if (th) th.scrollTop = th.scrollHeight;
@@ -299,6 +347,21 @@ export function startPortal(id, email, { backToDesk = false } = {}){
     onSnapshot(query(collection(db, "library"), where("newMembers", "==", true)), s => { P.lib = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
     onSnapshot(collection(db, "portal", id, "forms"), s => { P.forms = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
     onSnapshot(collection(db, "portal", id, "checkins"), s => { P.checkins = s.docs.map(d => d.id); render(); }, () => {}); };
+  const startMember = () => { if (P.memOn) return; P.memOn = true;
+    onSnapshot(collection(db, "portal", id, "cmeLog"), s => { P.cme = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
+    onSnapshot(collection(db, "portal", id, "profileUpdates"), s => { P.pupd = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
+    onSnapshot(query(collection(db, "library"), where("activeMembers", "==", true)), s => { P.mlib = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {}); };
+  // Before a member item upload: the new expiration date (cards) or the date they finished (yearly trainings).
+  const askMemDate = key => { const it = ((P.pd.member || {}).items || []).find(x => x.key === key); if (!it) return;
+    const M = openModal(`<h3>${esc(it.label)}</h3><label class="fm-f"><span>${it.every ? "Date you finished it" : "Expiration date on the new one"}</span><input type="date" id="memDate"></label>
+      <p class="info">${it.every ? `Good for ${it.every === 12 ? "a year" : it.every + " months"} from that date.` : "Then pick the photo or PDF of the front and back."}</p>
+      <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="memPick">Choose file</button></div>`);
+    M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (!e.target.closest("#memPick")) return;
+      const v = M.querySelector("#memDate").value; if (!v) return toast(it.every ? "Pick the date you finished it." : "Pick the expiration date.");
+      P.memKey = key; P.memDate = v; uploadKey = "mem:" + key; closeModal(); picker.click(); }; };
+  const keepDraft = () => { const v = i => { const el = $("#" + i); return el ? el.value : undefined; };
+    const m = { date: v("cmeDate"), hours: v("cmeHours"), topic: v("cmeTopic"), cat: v("cmeCat"), provider: v("cmeProv"), phone: v("pfPhone"), address: v("pfAddr"), ecName: v("pfEcName"), ecPhone: v("pfEcPhone"), ecRel: v("pfEcRel") };
+    for (const k in m) if (m[k] !== undefined) P.mdraft[k] = m[k]; };
   let signT;
   // Sign one form: wording, any questions, typed name and a finger signature. Saved as the signed document.
   const openSign = key => { const f = formByKey(key); if (!f) return;
@@ -331,8 +394,8 @@ export function startPortal(id, email, { backToDesk = false } = {}){
   const viewForm = key => { const f = formByKey(key), d = P.forms.find(x => x.id === key); if (!f || !d || d.confidential) return;
     const M = openModal(`${formDocHTML(f, d)}<div class="acts"><button class="btn" type="button" data-x>Close</button><button class="btn primary" type="button" id="fmPrint">Print or save as PDF</button></div>`, true);
     M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("#fmPrint")) { closeModal(); printDoc(formDocHTML(f, d)); } }; };
-  const tourRole = () => P.pd?.orientation ? "newmember" : "applicant", tourOpts = () => ({ name: P.pd?.firstName || "", email });
-  onSnapshot(doc(db, "portal", id), s => { const firstLoad = !P.pd; P.pd = s.exists() ? s.data() : { steps: [] }; if (P.pd.orientation) startOrient(); render();
+  const tourRole = () => P.pd?.member ? "records" : P.pd?.orientation ? "newmember" : "applicant", tourOpts = () => ({ name: P.pd?.firstName || "", email });
+  onSnapshot(doc(db, "portal", id), s => { const firstLoad = !P.pd; P.pd = s.exists() ? s.data() : { steps: [] }; if (P.pd.orientation) startOrient(); if (P.pd.member) startMember(); render();
     clearTimeout(signT); const ms = (P.pd.signUntil || 0) - Date.now(); if (ms > 0 && ms < 864e5) signT = setTimeout(render, ms + 500);   // lock the forms again when signing closes
     if (firstLoad && s.exists()) maybeTour(tourRole(), tourOpts()); }, () => toast("Couldn't load your application. Reload the page."));
   onSnapshot(collection(db, "portal", id, "messages"), s => { P.msgs = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x,y) => (x.at||0) - (y.at||0)); render(); }, () => {});
@@ -346,7 +409,7 @@ export function startPortal(id, email, { backToDesk = false } = {}){
     catch (err) { console.error(err); toast(`Couldn't send. Try again, or email ${CONTACT_EMAIL}.`); }
     finally { P.sending = false; }
   };
-  root.addEventListener("input", e => { if (e.target.id === "msgText") P.draft = e.target.value; if (e.target.dataset.rf) P.refDraft[e.target.dataset.rf] = e.target.value; });
+  root.addEventListener("input", e => { if (/^(cme|pf)/.test(e.target.id || "")) keepDraft(); if (e.target.id === "msgText") P.draft = e.target.value; if (e.target.dataset.rf) P.refDraft[e.target.dataset.rf] = e.target.value; });
   onSnapshot(collection(db, "portal", id, "refUpdates"), s => { P.refUps = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
   const sendRef = async () => {
     const d = P.refDraft, slot = P.refForm; if (slot == null || P.refSending) return;
@@ -375,7 +438,10 @@ export function startPortal(id, email, { backToDesk = false } = {}){
   picker.addEventListener("change", async () => {
     const list = [...picker.files]; picker.value = ""; if (!list.length) return;
     const docEntry = (P.pd.docs || []).find(d => d.key === uploadKey), orItem = (P.pd.orientation?.items || []).find(i => "onb:" + i.key === uploadKey);
-    const label = docEntry ? docEntry.label : orItem ? orItem.label : uploadKey === CONF_KEY ? "Secure document" : "Other";
+    const memItem = uploadKey.startsWith("mem:") ? ((P.pd.member || {}).items || []).find(i => "mem:" + i.key === uploadKey) : null;
+    const cmeEntry = uploadKey.startsWith("cme:") ? P.cme.find(x => "cme:" + x.id === uploadKey) : null;
+    const label = docEntry ? docEntry.label : orItem ? orItem.label : memItem ? memItem.label : cmeEntry ? `CME certificate: ${cmeEntry.topic}`.slice(0, 200) : uploadKey === CONF_KEY ? "Secure document" : "Other";
+    const memExtra = memItem && P.memKey === memItem.key && P.memDate ? (memItem.every ? { done: P.memDate, expires: addMonths(P.memDate, memItem.every) } : { expires: P.memDate }) : {};
     const conf = uploadKey === CONF_KEY || isConfidential(label), docKey = uploadKey === CONF_KEY ? "" : uploadKey;
     const sent = new Set();
     for (const f of list) {
@@ -395,12 +461,14 @@ export function startPortal(id, email, { backToDesk = false } = {}){
         } else {
           const path = `uploads/${id}/${safe}`;
           await uploadBytes(ref(storage, path), f, { contentType: type });
-          await addDoc(collection(db, "portal", id, "files"), { docKey: uploadKey, label, name: f.name, path, size: f.size, contentType: type, uploadedAt: Date.now(), uploadedBy: email });
+          await addDoc(collection(db, "portal", id, "files"), { docKey: uploadKey, label, name: f.name, path, size: f.size, contentType: type, uploadedAt: Date.now(), uploadedBy: email, ...memExtra });
           toast(`Uploaded ${f.name}`);
         }
         sent.add(docKey);
       } catch (e) { console.error(e); toast(`Couldn't upload ${f.name}. ${uploadWhy(e)}, or email it to ${CONTACT_EMAIL}.`); noteFail(f, label, String(e?.code || "error"), String(e?.message || e || "")); }
     }
+    P.memKey = ""; P.memDate = "";
+    if (memItem && sent.size) { toast("Thanks! The squad will check it, then it counts."); return; }
     // Thank them and say what's still outstanding, so nobody wonders whether they're done.
     if (sent.size) { const has = k => sent.has(k) || P.files.some(f => f.docKey === k);
       const left = [...(P.pd.docs || []).filter(d => !d.received && !has(d.key)).map(d => d.label), ...((P.pd.orientation || {}).items || []).filter(i => !i.date && (i.cert || i.req) && !PAPER_RE.test(i.label) && !(formForItem(i.label) && !formForItem(i.label).optional) && !has("onb:" + i.key)).map(i => i.label)];
@@ -417,7 +485,7 @@ export function startPortal(id, email, { backToDesk = false } = {}){
       try { const b = writeBatch(db); b.update(doc(db, "orientSlots", o.slotId), { bookedBy: null }); b.update(doc(db, "portal", id), { orient: null }); await b.commit(); toast("Time released. Pick a new one when you're ready."); }
       catch (err) { console.error(err); toast(`Couldn't change it. Email ${CONTACT_EMAIL}.`); } return; }
     if (t.closest("[data-oics]")) { const o = P.pd.orient; if (o) download("PVRS-orientation.ics", icsFile([{ uid: "or-" + o.slotId, start: o.start, duration: o.duration || 60, title: "PVRS orientation", location: o.location || "", description: "One-on-one orientation with the Potsdam Volunteer Rescue Squad." }]), "text/calendar"); return; }
-    const ol = t.closest("[data-olib]"); if (ol) { const d = P.lib.find(x => x.id === ol.dataset.olib); if (!d) return; const w = window.open("", "_blank");
+    const ol = t.closest("[data-olib]"); if (ol) { const d = [...P.lib, ...P.mlib].find(x => x.id === ol.dataset.olib); if (!d) return; const w = window.open("", "_blank");
       try { const url = await getDownloadURL(ref(storage, d.path)); if (w) w.location = url; else location.href = url; } catch { if (w) w.close(); toast("Couldn't open that document."); } return; }
     const cr = t.closest("[data-crate]"); if (cr) { P.crate = +cr.dataset.crate; root.querySelectorAll("[data-crate]").forEach(b => b.setAttribute("aria-pressed", String(b === cr))); return; }
     if (t.closest("[data-csend]")) { if (!P.crate) return toast("Pick a number from 1 to 5 first.");
@@ -447,6 +515,20 @@ export function startPortal(id, email, { backToDesk = false } = {}){
       return;
     }
     const up = t.closest("[data-upload]"); if (up) { uploadKey = up.dataset.upload; picker.click(); return; }
+    const mu = t.closest("[data-memup]"); if (mu) return askMemDate(mu.dataset.memup);
+    const cf = t.closest("[data-cmefile]"); if (cf) { uploadKey = "cme:" + cf.dataset.cmefile; picker.click(); return; }
+    if (t.closest("[data-cmeadd]")) { keepDraft(); const m = P.mdraft, hours = Math.round(+m.hours * 100) / 100, cats = [...(((P.pd.member || {}).cme || CME_DEFAULT).cats || []), CME_DRILL];
+      if (!m.date) return toast("Pick the date."); if (!(hours > 0 && hours <= 24)) return toast("Hours: a number from 0.25 to 24.");
+      if (!String(m.topic || "").trim()) { $("#cmeTopic")?.focus(); return toast("What was the topic?"); }
+      const b = t.closest("[data-cmeadd]"); b.disabled = true;
+      try { await addDoc(collection(db, "portal", id, "cmeLog"), { date: m.date, hours, topic: String(m.topic).trim().slice(0, 200), cat: cats.some(c => c.key === m.cat) ? m.cat : cats[0].key, provider: String(m.provider || "").trim().slice(0, 200), at: Date.now(), by: email });
+        P.mdraft = { ...P.mdraft, hours: "", topic: "", provider: "" }; toast(`Saved ${hours} hour${hours === 1 ? "" : "s"}.`); render(); }
+      catch (err) { console.error(err); b.disabled = false; toast("Couldn't save that. Try again."); } return; }
+    if (t.closest("[data-pfsend]")) { keepDraft(); const m = P.mdraft, c = k => String(m[k] || "").trim();
+      if (!["phone", "address", "ecName", "ecPhone", "ecRel"].some(k => c(k))) return toast("Fill in what changed first.");
+      try { await addDoc(collection(db, "portal", id, "profileUpdates"), { phone: c("phone").slice(0, 40), address: c("address").slice(0, 300), ecName: c("ecName").slice(0, 200), ecPhone: c("ecPhone").slice(0, 40), ecRel: c("ecRel").slice(0, 100), at: Date.now(), by: email });
+        for (const k of ["phone", "address", "ecName", "ecPhone", "ecRel"]) P.mdraft[k] = ""; toast("Sent. The squad will update your file."); render(); }
+      catch (err) { console.error(err); toast("Couldn't send that. Try again."); } return; }
     const sl = t.closest("[data-slot]"); if (sl) { P.pick = sl.dataset.slot; render(); return; }
     if (t.closest("[data-unpick]")) { P.pick = null; render(); return; }
     if (t.closest("[data-change]")) { P.changing = true; P.pick = null; render(); return; }

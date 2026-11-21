@@ -261,6 +261,10 @@ service cloud.firestore {
       }
     }
     // Lets the Desk load every private record in one query
+    // Compliance board: everyone's CME hours at once (admins).
+    match /{path=**}/cmeLog/{entryId} {
+      allow read: if isAdmin();
+    }
     match /{path=**}/private/{doc} {
       allow read: if isAdmin();
     }
@@ -360,6 +364,36 @@ service cloud.firestore {
         allow update: if isEditor() && onlyChanged(['witness']);
         allow delete: if isOwner();
       }
+      // Member records (Nov 21). CME and training hours a member logs for their own recertification; the squad may
+      // mark an entry verified. Contact-info updates a member sends; the squad applies them to the file.
+      match /cmeLog/{entryId} {
+        allow read: if isAdmin() || ownsPortal(id);
+        allow create: if ownsPortal(id)
+          && request.resource.data.keys().hasOnly(['date', 'hours', 'topic', 'cat', 'provider', 'at', 'by'])
+          && request.resource.data.by == myEmail()
+          && request.resource.data.date is string && request.resource.data.date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+          && request.resource.data.hours is number && request.resource.data.hours > 0 && request.resource.data.hours <= 24
+          && request.resource.data.topic is string && request.resource.data.topic.size() > 0 && request.resource.data.topic.size() <= 200
+          && request.resource.data.cat is string && request.resource.data.cat.size() <= 40
+          && request.resource.data.provider is string && request.resource.data.provider.size() <= 200
+          && request.resource.data.at is int && request.resource.data.at > nowMs() - 300000 && request.resource.data.at < nowMs() + 300000;
+        allow update: if isEditor() && onlyChanged(['verified', 'verifiedBy']);
+        allow delete: if isOwner();
+      }
+      match /profileUpdates/{updateId} {
+        allow read: if isAdmin() || ownsPortal(id);
+        allow create: if ownsPortal(id)
+          && request.resource.data.keys().hasOnly(['phone', 'address', 'ecName', 'ecPhone', 'ecRel', 'at', 'by'])
+          && request.resource.data.by == myEmail()
+          && request.resource.data.phone is string && request.resource.data.phone.size() <= 40
+          && request.resource.data.address is string && request.resource.data.address.size() <= 300
+          && request.resource.data.ecName is string && request.resource.data.ecName.size() <= 200
+          && request.resource.data.ecPhone is string && request.resource.data.ecPhone.size() <= 40
+          && request.resource.data.ecRel is string && request.resource.data.ecRel.size() <= 100
+          && request.resource.data.at is int && request.resource.data.at > nowMs() - 300000 && request.resource.data.at < nowMs() + 300000;
+        allow update: if isEditor() && onlyChanged(['appliedAt', 'appliedBy']);
+        allow delete: if isOwner();
+      }
       match /checkins/{n} {
         allow read: if isAdmin() || ownsPortal(id);
         allow create: if ownsPortal(id) && n in ['30', '90']
@@ -406,6 +440,12 @@ service cloud.firestore {
           && request.resource.data.size is int && request.resource.data.size <= 25 * 1024 * 1024
           && ((request.resource.data.keys().hasOnly(['docKey','label','name','path','size','contentType','uploadedAt','uploadedBy'])
                && request.resource.data.path.matches('uploads/' + id + '/.*'))
+              // a member's renewed card or training (Nov 21): may carry the new expiration date and the date they finished
+              || (request.resource.data.keys().hasOnly(['docKey','label','name','path','size','contentType','uploadedAt','uploadedBy','expires','done'])
+               && request.resource.data.docKey is string && request.resource.data.docKey.matches('mem:[a-z0-9_]{1,40}')
+               && request.resource.data.path.matches('uploads/' + id + '/.*')
+               && request.resource.data.get('expires', '') is string && request.resource.data.get('expires', '').matches('([0-9]{4}-[0-9]{2}-[0-9]{2})?')
+               && request.resource.data.get('done', '') is string && request.resource.data.get('done', '').matches('([0-9]{4}-[0-9]{2}-[0-9]{2})?'))
               || confidentialStub());
         allow update: if isEditor();
         allow delete: if isOwner();
@@ -513,7 +553,8 @@ service cloud.firestore {
     match /library/{docId} {
       allow read: if isEditor() || (verified() && exists(staffPath()) && get(staffPath()).data.role in resource.data.roles)
         || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'coordinator' && 'admin' in resource.data.roles)
-        || (isInvitedApplicant() && resource.data.newMembers == true);
+        || (isInvitedApplicant() && resource.data.newMembers == true)
+        || (isInvitedApplicant() && resource.data.activeMembers == true);
       allow create, update: if isEditor();
       allow delete: if isOwner();
     }
