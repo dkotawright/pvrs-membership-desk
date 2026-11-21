@@ -3161,3 +3161,37 @@ html[data-scene] .roster,html[data-scene] .ovroster .roster{background:var(--pan
   .setpage.picked .setnav{display:none}
   .setlist{display:inline-flex;margin-bottom:10px}
 }
+
+/* ======================================================================
+   PHONE GLASS (Nov 21, Dkota: "make mobile just as nice and fun… a transparent glass background so we can see the animated
+   backgrounds"). With a scene on, phone panels are frosted glass: see-through, heavily blurred, so the scene reads as soft
+   colour and motion behind them and the text stays crisp. Desktop keeps solid cards (people looked "inside" the boxes there).
+   ====================================================================== */
+:root{--glassc:rgba(255,255,255,.56);--glassb:rgba(255,255,255,.55);--glassblur:blur(18px) saturate(1.6)}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--glassc:rgba(28,25,23,.55);--glassb:rgba(255,255,255,.10)} }
+:root[data-theme="dark"]{--glassc:rgba(28,25,23,.55);--glassb:rgba(255,255,255,.10)}
+@media (max-width:860px){
+  html[data-scene] #bgscene{height:clamp(190px,36vh,340px);opacity:.95}
+  html[data-scene]{--card:var(--glassc)}
+  html[data-scene] .main,html[data-scene] .roster,html[data-scene] .roster .top,html[data-scene] .detail,html[data-scene] .dbody,html[data-scene] .list{background:transparent!important;box-shadow:none}
+  html[data-scene] .roster .top{-webkit-backdrop-filter:none;backdrop-filter:none}
+  html[data-scene] .arow,html[data-scene] .detail .group,html[data-scene] .ovcard,html[data-scene] .lane,html[data-scene] .setnav,html[data-scene] .setbody .sheet.embedded,
+  html[data-scene] .portal .card:not(.movecard),html[data-scene] .portal .card.movecard.calm,html[data-scene] .gate .sheet,html[data-scene] .applycard,html[data-scene] .dhead,html[data-scene] .ovroster .roster,
+  html[data-scene] .search,html[data-scene] .xf select,html[data-scene] .chip{
+    background:var(--glassc)!important;-webkit-backdrop-filter:var(--glassblur);backdrop-filter:var(--glassblur);
+    border:1px solid var(--glassb);box-shadow:0 10px 30px -18px rgba(28,25,23,.45)}
+  html[data-scene] .arow{border-radius:20px;margin:6px 10px;padding:12px}
+  html[data-scene] .arow[aria-current="true"]{box-shadow:inset 0 0 0 2px var(--fg)}
+  html[data-scene] .lcard{background:color-mix(in srgb,var(--pane) 78%,transparent)}
+  html[data-scene] .detail .row input[type=text],html[data-scene] .detail .row input[type=tel],html[data-scene] .detail .row input[type=email],html[data-scene] .detail .row input[type=date],html[data-scene] .detail .row select,html[data-scene] .detail textarea,
+  html[data-scene] .portal .doc,html[data-scene] .memrow,html[data-scene] .cmegrid input,html[data-scene] .cmegrid select,html[data-scene] .portal .composer textarea,html[data-scene] .seg{background:color-mix(in srgb,var(--pane) 55%,transparent)!important}
+  html[data-scene] .mnav,html[data-scene] .pnav,html[data-scene] .tabdock{background:color-mix(in srgb,var(--focus-a) 72%,transparent)!important;-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);border:1px solid rgba(255,255,255,.12)}
+  html[data-scene] .phead .plate{background:rgba(255,255,255,.85)}
+  html[data-scene] .chip[aria-pressed="true"]{background:var(--fg)!important;color:var(--bg)}
+  /* a little life: cards float up as the page opens */
+  html[data-scene] .portal .card,html[data-scene] .arow,html[data-scene] .detail .group{animation:glassIn .45s cubic-bezier(.2,.8,.2,1) both}
+  html[data-scene] .arow:nth-child(2){animation-delay:.04s}html[data-scene] .arow:nth-child(3){animation-delay:.08s}html[data-scene] .arow:nth-child(4){animation-delay:.12s}
+}
+@keyframes glassIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){ html[data-scene] .portal .card,html[data-scene] .arow,html[data-scene] .detail .group{animation:none} }
+html[data-anim="off"] .portal .card,html[data-anim="off"] .arow,html[data-anim="off"] .detail .group{animation:none}

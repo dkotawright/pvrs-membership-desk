@@ -18,7 +18,7 @@ const show = id => {
   VIEWS.forEach(v => { $("#" + v).hidden = v !== id; });
   // Backgrounds: the portal and the public pages get a different EMS pattern each visit unless this device picked one;
   // the desk and the paperwork page stay plain unless picked.
-  if (id !== "loading") applyBg(id === "app" || id === "vault" ? "none" : "auto");
+  if (id !== "loading") applyBg(id === "vault" ? "none" : id === "app" ? "desk" : "auto");
   $("#pubnav").hidden = !PUBLIC.includes(id);
   $("#navApply").classList.toggle("on", id === "apply"); $("#navSignin").classList.toggle("on", id === "signin");
   if (id === "signin") paintWelcome();

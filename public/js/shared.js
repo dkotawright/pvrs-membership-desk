@@ -276,7 +276,10 @@ export const getBg = () => lsGet("pvrsBg");
 export function setAccent(k){ lsSet("pvrsAccent", k); if (k) document.documentElement.setAttribute("data-accent", k); else document.documentElement.removeAttribute("data-accent"); }
 // The background for this page view. `fallback` applies when this device hasn't chosen one: the portal and the public
 // pages change every visit (Dkota), the desk stays plain.
+// "desk": plain on a computer, a different animated scene each visit on a phone (Nov 21, Dkota: mobile "just as nice and fun").
+const resolveFb = fb => fb === "desk" ? (matchMedia("(max-width:860px)").matches ? "auto" : "none") : fb;
 export function applyBg(fallback = "none"){
+  fallback = resolveFb(fallback);
   const pick = getBg() || fallback, html = document.documentElement;
   if (lsGet("pvrsAnim") === "off") html.setAttribute("data-anim", "off"); else html.removeAttribute("data-anim");
   let k = pick;
@@ -291,6 +294,7 @@ export function applyBg(fallback = "none"){
   return k;
 }
 export function openAppearance(fallbackBg = "none"){
+  fallbackBg = resolveFb(fallbackBg);
   const mode = getTheme(), acc = getAccent(), bg = getBg() || fallbackBg;
   const M = openModal(`<div class="look"><h3>Appearance</h3><p class="help" style="margin:0">Pick a look. It's saved on this device only, so everyone can choose their own.</p>
     <h4>Light or dark</h4><div class="lookseg" role="group" aria-label="Light or dark">${["light", "dark", "system"].map(t => `<button type="button" data-lmode="${t}" aria-pressed="${mode === t}">${THEME_LABEL[t]}</button>`).join("")}</div>
