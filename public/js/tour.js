@@ -43,6 +43,11 @@ const TOURS = {
     ["References", "You can see which of your references we've heard from. A quick reminder from you helps the slow ones along."],
     ["Documents", "If we need something from you it appears under <b>Documents</b> with an Upload button. A PDF or a clear photo is fine. Use <b>Secure document upload</b> for medical or Social Security paperwork."],
     ["Questions?", "Send us a message under <b>Messages</b> and we'll reply there. Turn on alerts in that box to hear when we answer or your application moves forward."] ] },
+  records: { title: "Your records", steps: [
+    ["Your records page", "This is where you keep your cards, IDs and yearly trainings current, and track your CME for recertification."],
+    ["Keep these current", "When you renew something, tap <b>Upload new</b>, give the new date, and send a photo or PDF. It counts once the squad checks it. We remind you 30 days before anything expires."],
+    ["CME and recertification", "Log each class or drill under <b>Log hours</b>. The bars show how close you are to what NYS asks for before your EMS card expires. Attach certificates so you have them when it's time to recertify."],
+    ["Contact info", "Moved or changed numbers? Send it under <b>My contact info</b> and we'll update your file."] ] },
   newmember: { title: "Your orientation", steps: [
     ["Welcome to the squad", "This is your orientation dashboard. Everything on the checklist is required before you can be issued equipment or run calls."],
     ["Your checklist", "Most items have an <b>Upload</b> button, and you can send files any time. Send a PDF, a clear photo or a Word file; items we've asked for are marked <b>Requested</b>. Once we've looked at it, the item is checked off."],

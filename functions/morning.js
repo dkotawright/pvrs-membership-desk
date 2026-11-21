@@ -51,7 +51,13 @@ function buildMorning({ apps, slots, now, portals = [], coordinators = [] }){
   if (monday) for (const p of portals) { const a = byId.get(p.id); if (!a || isClosed(a) || p.orientation) continue;
     const need = (p.docs || []).filter(d => d && d.label && !d.received).length;
     if (need) applicants.push({ id: p.id, title: "Documents still needed", body: `${plural(need, "document")} still needed for your PVRS application. You can upload ${need === 1 ? "it" : "them"} in your portal.` }); }
-  const parts = [follows && `${plural(follows, "follow-up")} due`, ivToday && `${plural(ivToday, "interview")} today`, ivTomorrow && `${plural(ivTomorrow, "interview")} tomorrow`,
+  // Active members' cards and trainings (Nov 21): the member hears 30 days before and on the day; the owner gets a count.
+  let memDue = 0;
+  for (const p of portals) { const a = byId.get(p.id); if (!a || isClosed(a) || !p.member) continue;
+    for (const it of p.member.items || []) { if (!it.expires) continue; const n = daysFrom(it.expires, now);
+      if (n <= 30) memDue++;
+      if (n === 30 || n === 0) applicants.push({ id: p.id, title: n ? `${it.label} expires in 30 days` : `${it.label} expires today`, body: `Upload your new one on your PVRS records page${n ? " when you renew" : ""}.` }); } }
+  const parts = [follows && `${plural(follows, "follow-up")} due`, memDue && `${plural(memDue, "member renewal")} due`, ivToday && `${plural(ivToday, "interview")} today`, ivTomorrow && `${plural(ivTomorrow, "interview")} tomorrow`,
     orToday && `${plural(orToday, "orientation")} today`, orTomorrow && `${plural(orTomorrow, "orientation")} tomorrow`, orBehind && `${orBehind} behind on orientation`,
     refsLate && `${plural(refsLate, "reference")} overdue`, expiring && `${plural(expiring, "card")} expiring`, stalled && `${plural(stalled, "file")} with no movement`].filter(Boolean);
   return { owner: parts.length ? { title: "Good morning. Today on the desk", body: parts.join(" · ") } : null, interviewers, applicants };

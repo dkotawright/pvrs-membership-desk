@@ -254,14 +254,14 @@ async function startFor(user){
     if (email === lower(OWNER_EMAIL)) { homeView = "app"; show("app"); return startDesk({ email, role: "admin", owner: true, name: user.displayName || "" }); }
     const staff = await getDoc(doc(db, "staff", email));
     // A squad member who still has an orientation page can open it from the desk ("My paperwork" → /?paperwork=1).
-    let mine = null;
-    if (staff.exists()) { try { const mp = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1))); if (!mp.empty && mp.docs[0].data().orientation) mine = mp.docs[0].id; } catch {} }
+    let mine = null, mineKind = "paperwork";
+    if (staff.exists()) { try { const mp = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1))); if (!mp.empty && (mp.docs[0].data().orientation || mp.docs[0].data().member)) { mine = mp.docs[0].id; mineKind = mp.docs[0].data().member ? "records" : "paperwork"; } } catch {} }
     if (staff.exists() && mine && new URLSearchParams(location.search).has("paperwork")) { homeView = "portal"; show("portal"); return startPortal(mine, email, { backToDesk: true }); }
     // Full access (staff role "full"): the owner's desk, exactly. The rules give them the owner's rights too.
     // Assistant (staff role "assistant"): the owner's desk without deletes, Settings or Team (rules enforce it too).
-    if (staff.exists() && staff.data().role === "assistant") { homeView = "app"; show("app"); return startDesk({ paperwork: !!mine, email, role: "admin", owner: true, assistant: true, name: staff.data().name || user.displayName || "" }); }
-    if (staff.exists() && staff.data().role === "full") { homeView = "app"; show("app"); return startDesk({ paperwork: !!mine, email, role: "admin", owner: true, full: true, name: staff.data().name || user.displayName || "" }); }
-    if (staff.exists()) { homeView = "app"; show("app"); return startDesk({ paperwork: !!mine, email, role: ["admin", "coordinator", "interviewer"].includes(staff.data().role) ? staff.data().role : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
+    if (staff.exists() && staff.data().role === "assistant") { homeView = "app"; show("app"); return startDesk({ paperwork: mine ? mineKind : false, email, role: "admin", owner: true, assistant: true, name: staff.data().name || user.displayName || "" }); }
+    if (staff.exists() && staff.data().role === "full") { homeView = "app"; show("app"); return startDesk({ paperwork: mine ? mineKind : false, email, role: "admin", owner: true, full: true, name: staff.data().name || user.displayName || "" }); }
+    if (staff.exists()) { homeView = "app"; show("app"); return startDesk({ paperwork: mine ? mineKind : false, email, role: ["admin", "coordinator", "interviewer"].includes(staff.data().role) ? staff.data().role : "member", owner: false, name: staff.data().name || user.displayName || "" }); }
     const p = await getDocs(query(collection(db, "portal"), where("email", "==", email), limit(1)));
     if (!p.empty) { homeView = "portal"; show("portal"); return startPortal(p.docs[0].id, email); }
     const req = await getDoc(doc(db, "accessRequests", email));

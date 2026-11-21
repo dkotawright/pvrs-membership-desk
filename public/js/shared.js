@@ -85,7 +85,7 @@ export const TYPE_INFO = {
   "Non-Resident":"24 hours · must already be an EMT · not required at meetings, must attend 50% of trainings · cannot vote or hold office"
 };
 // Fields under these roots live in applicants/{id}/private/main (admins only).
-export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","notes","status","docs","portal","pagesign","onb","notDupes","otherForms","follow","tags"]);   // follow + tags: Nov 20 (follow-up reminders, labels)
+export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","notes","status","docs","portal","pagesign","onb","notDupes","otherForms","follow","tags","mem","profile"]);   // mem + profile: Nov 21 (member records)   // follow + tags: Nov 20 (follow-up reminders, labels)
 export const DOC_ITEMS = ["Copy of driver's license (front and back)","EMT certification card","CPR card","Medical documentation for orientation","Social Security card","Missing pages of the application","Reference contact information"];
 // Medical and Social Security paperwork is confidential: it goes to the paperwork account only (see PAPERWORK_EMAIL).
 export const isConfidential = label => /medical|immuni[sz]|vaccin|physical|tuberc|\bTB\b|\bPPD\b|hepatitis|hep\s?b\b|titer|health|social security|\bSSN\b|beneficiar/i.test(label || "");
@@ -213,3 +213,33 @@ export function setTheme(t){
   return t;
 }
 export const nextTheme = () => setTheme({ system: "light", light: "dark", dark: "system" }[getTheme()]);
+
+// ---- Member records (Nov 21): what an active member keeps current, and NYS CME for recertification ----
+// Settings → Member records lists them one per line. "Label | 12" = a training they redo every 12 months (they give the
+// date they finished it); a line without a number = a card or ID with its own expiration date.
+export const DEFAULT_MEMBER_ITEMS = ["CPR / BLS card", "EMS certification card", "Driver's license", "Photo ID",
+  "Bloodborne pathogens training | 12", "Sexual harassment prevention training | 12", "HIPAA training | 12"];
+export const itemKey = label => String(label).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);
+export const memberItemsFrom = lines => (lines && lines.length ? lines : DEFAULT_MEMBER_ITEMS).map(l => { const [label, m] = String(l).split("|").map(x => x.trim());
+  return label ? { key: itemKey(label), label, every: +m > 0 ? Math.min(120, Math.round(+m)) : 0 } : null; }).filter(Boolean);
+// NYS DOH Bureau of EMS CME Recertification Program, EMT level, as found Nov 2026: 45 hours per certification period
+// (20 core/refresher + 5 mandatory + 20 additional). Editable in Settings because DOH changes it; check the current manual.
+export const CME_DEFAULT = { years: 3, cats: [{ key: "core", label: "Core / refresher", hours: 20 }, { key: "mandatory", label: "Mandatory topics", hours: 5 }, { key: "additional", label: "Additional", hours: 20 }] };
+export const CME_DRILL = { key: "drill", label: "Squad drill / training (not CME)" };
+export const addMonths = (iso, m) => { if (!iso || !m) return ""; const d = new Date(iso + "T12:00"); d.setMonth(d.getMonth() + m); return d.toISOString().slice(0, 10); };
+export const daysUntil = (iso, now = Date.now()) => { if (!iso) return null; const t = new Date(now); t.setHours(12, 0, 0, 0); return Math.round((new Date(iso + "T12:00") - t) / 864e5); };
+// "missing" | "expired" | "soon" (30 days or less) | "ok"
+export const memState = (expires, now = Date.now()) => { const n = daysUntil(expires, now); return n === null ? "missing" : n < 0 ? "expired" : n <= 30 ? "soon" : "ok"; };
+// The certification period CME counts toward: the EMS card's expiration and the years before it (or the last N years).
+export function cmePeriod(certExpires, years = 3, now = Date.now()){
+  const to = certExpires || new Date(now).toISOString().slice(0, 10);
+  const d = new Date(to + "T12:00"); d.setFullYear(d.getFullYear() - years);
+  return { from: d.toISOString().slice(0, 10), to, known: !!certExpires };
+}
+export function cmeTotals(entries, cme = CME_DEFAULT, period){
+  const inP = e => e && e.date && (!period || (e.date >= period.from && e.date <= period.to));
+  const by = {}; let total = 0, drill = 0;
+  for (const e of entries || []) { if (!inP(e)) continue; const h = +e.hours || 0; if (e.cat === CME_DRILL.key) { drill += h; continue; } by[e.cat] = (by[e.cat] || 0) + h; total += h; }
+  const need = (cme.cats || []).reduce((s, c) => s + (+c.hours || 0), 0);
+  return { by, total, drill, need, cats: (cme.cats || []).map(c => ({ ...c, got: by[c.key] || 0, done: (by[c.key] || 0) >= (+c.hours || 0) })) };
+}

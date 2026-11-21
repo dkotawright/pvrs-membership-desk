@@ -346,6 +346,27 @@ await t("full access reads online applications", getDocs(collection(full, "submi
 await t("full access manages the team", setDoc(doc(full, "staff/new@pvrs.org"), { role: "member", name: "New" }), true);
 await t("but can't touch the owner's own entry", setDoc(doc(full, "staff/dkota@pvrs.org"), { role: "member" }), false);
 await t("full access opens secure documents (Dkota's choice)", getDocs(collection(full, "vault")), true);
+// member records (Nov 21)
+const cmeE = (x = {}) => ({ date: "2026-11-01", hours: 2.5, topic: "Airway", cat: "core", provider: "", at: now(), by: "app@example.com", ...x });
+await t("member logs CME hours", setDoc(doc(applicant, "portal/a1/cmeLog/c1"), cmeE()), true);
+await t("CME: hours over 24 refused", setDoc(doc(applicant, "portal/a1/cmeLog/c2"), cmeE({ hours: 30 })), false);
+await t("CME: extra fields refused", setDoc(doc(applicant, "portal/a1/cmeLog/c3"), cmeE({ verified: 1 })), false);
+await t("CME: can't log as someone else", setDoc(doc(applicant, "portal/a1/cmeLog/c4"), cmeE({ by: "x@example.com" })), false);
+await t("CME: a stranger can't log on their page", setDoc(doc(stranger, "portal/a1/cmeLog/c5"), cmeE({ by: "stranger@example.com" })), false);
+await t("CME: the member can't verify their own", updateDoc(doc(applicant, "portal/a1/cmeLog/c1"), { verified: now() }), false);
+await t("CME: the owner verifies", updateDoc(doc(owner, "portal/a1/cmeLog/c1"), { verified: now(), verifiedBy: "dkota@pvrs.org" }), true);
+await t("CME: an admin reads everyone's (compliance board)", getDocs(collectionGroup(admin, "cmeLog")), true);
+await t("CME: a member (staff) can't read everyone's", getDocs(collectionGroup(member, "cmeLog")), false);
+const pfU = (x = {}) => ({ phone: "315", address: "1 Main", ecName: "Pat", ecPhone: "315", ecRel: "Spouse", at: now(), by: "app@example.com", ...x });
+await t("member sends a contact update", setDoc(doc(applicant, "portal/a1/profileUpdates/p1"), pfU()), true);
+await t("contact update: extra fields refused", setDoc(doc(applicant, "portal/a1/profileUpdates/p2"), pfU({ email: "x" })), false);
+await t("contact update: the member can't mark it applied", updateDoc(doc(applicant, "portal/a1/profileUpdates/p1"), { appliedAt: now() }), false);
+await t("contact update: the owner marks it applied", updateDoc(doc(owner, "portal/a1/profileUpdates/p1"), { appliedAt: now(), appliedBy: "dkota@pvrs.org" }), true);
+const memF = (x = {}) => ({ docKey: "mem:cpr_bls_card", label: "CPR / BLS card", name: "cpr.pdf", path: "uploads/a1/cpr.pdf", size: 10, contentType: "application/pdf", uploadedAt: now(), uploadedBy: "app@example.com", expires: "2028-01-01", ...x });
+await t("member uploads a renewed card with its date", setDoc(doc(applicant, "portal/a1/files/mf1"), memF()), true);
+await t("renewed card: a date only on mem: uploads", setDoc(doc(applicant, "portal/a1/files/mf2"), memF({ docKey: "d1" })), false);
+await t("renewed card: the date must be a date", setDoc(doc(applicant, "portal/a1/files/mf3"), memF({ expires: "soon" })), false);
+await t("renewed card: can't mark it reviewed", setDoc(doc(applicant, "portal/a1/files/mf4"), memF({ reviewedAt: 1 })), false);
 await t("full access changes settings", setDoc(doc(full, "settings/main"), { signature: "Fran" }, { merge: true }), true);
 await t("an admin still can't change settings", setDoc(doc(admin, "settings/main"), { signature: "x" }, { merge: true }), false);
 await t("an admin can't give themselves full access", setDoc(doc(admin, "staff/admin@pvrs.org"), { role: "full" }), false);

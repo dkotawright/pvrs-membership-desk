@@ -5,7 +5,7 @@ import { app, auth, db, storage, doc, collection, collectionGroup, getDoc, setDo
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
   progress, statusOf, PHASES, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD,
-  getTheme, setTheme, nextTheme, THEME_LABEL } from "./shared.js";
+  getTheme, setTheme, nextTheme, THEME_LABEL, memberItemsFrom, CME_DEFAULT, CME_DRILL, addMonths, daysUntil, memState, cmePeriod, cmeTotals, itemKey } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
 import { showTour, maybeTour } from "./tour.js";
 import { FORMS, formByKey, formForItem, formDocHTML, printDoc } from "./forms.js";
@@ -160,7 +160,7 @@ function tabHTML(tab){
     ${group("Board notes",[F.area("board.notes","Discussion or conditions","Anything the board attached to the approval")])}
     ${group("Board packet",[`<div class="row"><span class="lbl">Print this applicant's page<small>Checks, interview summary, committee decision and a blank vote record</small></span><button class="btn small" type="button" data-act="packet">Print</button></div>`])}
   </div>`;
-  if (tab === "onb") return `<div class="cols">
+  if (tab === "onb") return `<div id="memWrap"></div><div class="cols">
     ${group("Background check · Sterling Volunteers",[F.note("Run after the board approves the applicant. Sterling Volunteers runs the full background check."),F.date("bg.sterReq","Date requested"),F.date("bg.sterDone","Date completed"),
       F.seg("bg.sterResult","Result",[["clear","Clear","good"],["review","Needs review","bad"]],true),F.init("bg.sterInit")])}
     ${group("Notifications",[F.date("notify.applicant","Applicant notified"),F.init("notify.applicantInit")])}
@@ -489,6 +489,15 @@ function todoItems(){
     }
   }
   out.push(...orientToDo());
+  // Active members' cards and trainings: expired, or 30 days or less left (Nov 21)
+  for (const a of S.apps.values()) { if (!isMember(a)) continue;
+    for (const it of memberItems()) { if (memFallback(it.label)) continue;   // CPR, EMS card and license already have their own To do warning
+      const e = memExpires(a, it), st = memState(e); if (st !== "expired" && st !== "soon") continue; const n = daysUntil(e);
+      out.push({ id: a._id, a, pri: st === "expired" ? 1 : 2, text: `${first(a.name) || a.name}'s ${it.label} ${st === "expired" ? "has expired" : n === 0 ? "expires today" : `expires in ${n} day${n === 1 ? "" : "s"}`}`, sub: fmtDate(e), tab: "onb", age: st === "expired" ? -n : 0 }); } }
+  // New member uploads waiting for review
+  { const seenUp = new Set(); for (const f of S.feedFiles || []) { if (!String(f.docKey || "").startsWith("mem:") || f.reviewedAt) continue; const a = S.apps.get(f.appId); if (!a || !isMember(a) || seenUp.has(f.appId + f.docKey)) continue;
+      const key = f.docKey.slice(4), it = memberItems().find(x => x.key === key); if (!it || (f.uploadedAt || 0) <= (+get(a, `mem.${key}.approvedAt`) || 0)) continue; seenUp.add(f.appId + f.docKey);
+      out.push({ id: a._id, a, pri: 1, text: `Check ${first(a.name) || a.name}'s new ${it.label}`, sub: f.expires ? `new date ${fmtDate(f.expires)}` : "uploaded", tab: "onb", age: 0 }); } }
   if (S.canEdit) for (const a of S.apps.values()) for (const f of followsDue(a))
     out.push({ id: a._id, a, pri: 1, text: `Follow up: ${f.text}`, sub: f.due < today() ? `was due ${fmtDate(f.due)}` : "due today", tab: "notes", act: "fu_" + f.key, btn: "Done", age: daysSince(f.due) || 0 });
   return out.sort((x, y) => x.pri - y.pri || y.age - x.age);
@@ -571,7 +580,7 @@ function boardHTML(rows, c, notSched, inOrientation){
     return `<section class="lane${k === "act" ? " lane-act" : ""}" style="--stage-c:${stageVar(lane)}" aria-label="${label}">
       <button class="stg lhead" type="button" data-filter="${k}"><span class="k">${label}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ""}<span class="v">${n}</span></button>
       ${list.length ? `<div class="lane-list">${list.map(card).join("")}</div>` : `<div class="lempty">${k === "orient" ? "Approve at the board and the file moves here on its own." : k === "act" ? "Squad members show up here once they finish onboarding." : "All clear in this lane."}</div>`}
-      ${k === "orient" && S.canEdit ? `<button class="lmore" type="button" data-oadd>Add someone</button>` : ""}${k === "orient" && list.length ? `<button class="lmore" type="button" data-cmd="deadlines">Deadlines</button>` : ""}</section>`; }).join("")}</div>`;
+      ${k === "orient" && S.canEdit ? `<button class="lmore" type="button" data-oadd>Add someone</button>` : ""}${k === "orient" && list.length ? `<button class="lmore" type="button" data-cmd="deadlines">Deadlines</button>` : ""}${k === "act" && list.length ? `<button class="lmore" type="button" data-cmd="compliance">Compliance</button>` : ""}</section>`; }).join("")}</div>`;
 }
 
 /* ---------- year at a glance (overview) ---------- */
@@ -907,7 +916,7 @@ function syncDetail(){
     const cal = a._booked ? `<button class="btn small" type="button" data-act="ics" title="Add to Calendar">${ICON.cal}<span class="tl">Calendar</span></button>` : "";
     $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `${S.sched && a._booked.start < Date.now() && !get(a, "sched.completed") ? `<button class="btn small" type="button" data-act="noshow" title="They didn't come: reopen booking and write to them">No-show</button>` : ""}<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
-  renderImpressions(); renderDocs(a); renderHistory(); renderTimeline(a); renderBoardReady(a); renderTags(a); renderFollows(a); renderNoShows(a); syncRefs(a); updateMsgBadges(); renderInterviewers(a); renderDupeNote(a); renderOrientTab(a);
+  renderImpressions(); renderDocs(a); renderHistory(); renderTimeline(a); renderMember(a); renderBoardReady(a); renderTags(a); renderFollows(a); renderNoShows(a); syncRefs(a); updateMsgBadges(); renderInterviewers(a); renderDupeNote(a); renderOrientTab(a);
   if (S.tab === "msgs" && !$("#dThread")?.childElementCount) renderMessages();
   syncSignoff(a);
   const dlr = $("#dlFromApp"); if (dlr) { const n = get(a, "form.person.dlNumber"); dlr.hidden = !n; if (n) { $("#dlNum").textContent = n; $("#dlFromAppNote").textContent = `Issued in ${get(a, "form.person.dlState") || "—"} · admins only`; } }
@@ -1405,9 +1414,9 @@ function portalPayload(a){
     refs: refList(a).map(r => ({ slot: r.i, name: r.name, received: r.received, ...(r.replace ? { replace: true } : {}) })),
     refReplace: refList(a).filter(r => r.replace).map(r => r.i),
     bookingOpen: get(a,"portal.bookingOpen") === "yes" && !isDeclined(a),
-    orientation: orientPayload(a), checkin: checkinDue(a), signUntil: orientOpen(a) ? +get(a, "onb.signUntil") || 0 : 0 };
+    orientation: orientPayload(a), checkin: checkinDue(a), signUntil: orientOpen(a) ? +get(a, "onb.signUntil") || 0 : 0, member: isMember(a) ? memberPayload(a) : null };
 }
-const portalKey = p => JSON.stringify([p.bring || "", p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.refReplace || [], p.bookingOpen, p.orientation || null, p.checkin || null, p.signUntil || 0]);
+const portalKey = p => JSON.stringify([p.bring || "", p.email, p.name, p.firstName, p.type, p.steps, p.docs, p.refs || [], p.refReplace || [], p.bookingOpen, p.orientation || null, p.checkin || null, p.signUntil || 0, p.member || null]);
 const portalTimers = {};
 function schedulePortal(id, delay = 1500){ if (!S.canEdit) return; clearTimeout(portalTimers[id]); portalTimers[id] = setTimeout(() => syncPortal(id), delay); }
 async function syncPortal(id, force = false){
@@ -1766,14 +1775,93 @@ async function removeRecord(rid){
   }
   catch (e) { console.error(e); toast("Couldn't remove that record."); }
 }
+/* ---------- member records (Nov 21): what active members keep current, CME, contact updates ---------- */
+const memberItems = () => memberItemsFrom(S.settings.memberItems);
+const cmeCfg = () => { const c = S.settings.cme; return c && Array.isArray(c.cats) && c.cats.length ? { years: +c.years > 0 ? +c.years : 3, cats: c.cats } : CME_DEFAULT; };
+const isMember = a => !isClosedFile(a) && (view(a).stage === "act" || !!get(a, "onb.memberSince"));
+// The older expiration fields fill in until the first renewal is approved here.
+const MEM_FALLBACK = [[/cpr|bls/i, "onb.cprExpires"], [/ems|emt|certification card/i, "onb.emtExpires"], [/driver/i, "dl.expires"]];
+const memFallback = label => (MEM_FALLBACK.find(([re]) => re.test(label)) || [])[1] || "";
+const memExpires = (a, it) => get(a, `mem.${it.key}.expires`) || (memFallback(it.label) ? get(a, memFallback(it.label)) || "" : "");
+const certExpires = a => { const it = memberItems().find(x => /ems|emt/i.test(x.label)); return (it && memExpires(a, it)) || get(a, "onb.emtExpires") || ""; };
+const memberPayload = a => ({ items: memberItems().map(it => ({ key: it.key, label: it.label, every: it.every, expires: memExpires(a, it), approvedAt: +get(a, `mem.${it.key}.approvedAt`) || 0 })),
+  cme: cmeCfg(), certExpires: certExpires(a) });
+let memUnsubs = [];
+function watchMember(id){
+  memUnsubs.forEach(u => u()); memUnsubs = []; S.cme = []; S.pupd = [];
+  const a = id && S.apps.get(id); if (!a || !S.admin || !isMember(a)) return;
+  memUnsubs.push(onSnapshot(collection(db, "portal", id, "cmeLog"), s => { S.cme = s.docs.map(d => ({ id: d.id, ...d.data() })); if (S.sel === id) renderMember(S.apps.get(id)); }, () => {}));
+  memUnsubs.push(onSnapshot(collection(db, "portal", id, "profileUpdates"), s => { S.pupd = s.docs.map(d => ({ id: d.id, ...d.data() })); if (S.sel === id) renderMember(S.apps.get(id)); }, () => {}));
+}
+const memPendingFile = (a, it) => (S.files || []).filter(f => f.docKey === "mem:" + it.key && !f.reviewedAt && (f.uploadedAt || 0) > (+get(a, `mem.${it.key}.approvedAt`) || 0))[0] || null;
+const memChip = (st, exp) => { const n = daysUntil(exp); return st === "missing" ? `<span class="mchip miss">Not on file</span>` : st === "expired" ? `<span class="mchip bad">Expired ${esc(fmtDate(exp))}</span>`
+  : st === "soon" ? `<span class="mchip warn">${n === 0 ? "Expires today" : `${n} day${n === 1 ? "" : "s"} left`}</span>` : `<span class="mchip ok">Until ${esc(fmtDate(exp))}</span>`; };
+function renderMember(a){
+  const el = $("#memWrap"); if (!el || !a) return;
+  if (!isMember(a) || !S.admin) { el.innerHTML = ""; return; }
+  const items = memberItems(), cfg = cmeCfg(), period = cmePeriod(certExpires(a), cfg.years), tot = cmeTotals(S.cme, cfg, period);
+  const pend = (S.pupd || []).filter(u => !u.appliedAt).sort((x, y) => (y.at || 0) - (x.at || 0));
+  const cats = [...cfg.cats, CME_DRILL], catLabel = k => (cats.find(c => c.key === k) || { label: k }).label;
+  el.innerHTML = `<section class="group memgroup"><h3><span>Member records</span><small style="font-weight:500;color:var(--fg3)">What they keep current. Uploads count once you approve them.</small></h3><div class="ios">
+    ${items.map(it => { const exp = memExpires(a, it), st = memState(exp), f = memPendingFile(a, it);
+      return `<div class="row memrow"><span class="lbl">${esc(it.label)}<small>${it.every ? `Every ${it.every === 12 ? "year" : it.every + " months"}${get(a, `mem.${it.key}.done`) ? ` · last done ${esc(fmtDate(get(a, `mem.${it.key}.done`)))}` : ""}` : "Card or ID"}</small></span>${memChip(st, exp)}
+        ${f ? `<span class="mempend"><button class="filelink" type="button" data-file="${esc(f.id)}">${esc(f.name)}</button><small>${f.expires ? `new date ${esc(fmtDate(f.expires))}` : "no date given"}</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-memok="${esc(it.key)}|${esc(f.id)}">Approve</button>` : ""}` : ""}
+        ${S.canEdit ? `<input type="date" class="memdate" data-k="mem.${esc(it.key)}.expires" value="${esc(get(a, `mem.${it.key}.expires`) || "")}" aria-label="${esc(it.label)} expires" title="Set or correct the expiration date">` : ""}</div>`; }).join("")}</div></section>
+  <section class="group memgroup"><h3><span>CME and recertification</span><small style="font-weight:500;color:var(--fg3)">${period.known ? `EMS card expires ${esc(fmtDate(period.to))} · counting from ${esc(fmtDate(period.from))}` : `No EMS card date yet · last ${cfg.years} years`}</small></h3><div class="ios">
+    <div class="row"><span class="lbl"><b>${+tot.total.toFixed(2)} of ${tot.need} hours</b>${tot.drill ? `<small>plus ${+tot.drill.toFixed(2)} h squad drills (not CME)</small>` : ""}</span>${tot.cats.map(c => `<span class="mchip ${c.done ? "ok" : "warn"}">${esc(c.label)} ${+c.got.toFixed(2)}/${c.hours}</span>`).join("")}</div>
+    ${[...(S.cme || [])].sort((x, y) => String(y.date).localeCompare(String(x.date))).slice(0, 40).map(e => { const cf = (S.files || []).find(f => f.docKey === "cme:" + e.id);
+      return `<div class="row"><span class="lbl">${esc(e.topic)}<small>${esc(fmtDate(e.date))} · ${esc(catLabel(e.cat))}${e.provider ? " · " + esc(e.provider) : ""}${cf ? ` · <button class="filelink" type="button" data-file="${esc(cf.id)}">certificate</button>` : ""}</small></span><b>${+(+e.hours).toFixed(2)} h</b>
+        ${S.canEdit ? `<button class="btn small${e.verified ? "" : " primary"}" type="button" data-cmever="${esc(e.id)}">${e.verified ? "Verified ✓" : "Verify"}</button>` : e.verified ? `<span class="mchip ok">Verified</span>` : ""}</div>`; }).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">No hours logged yet. They log them on their records page.</span></div>`}</div></section>
+  ${pend.length || get(a, "profile") ? `<section class="group memgroup"><h3><span>Contact info</span></h3><div class="ios">
+    ${pend.map(u => `<div class="row pfrow"><span class="lbl">Update sent ${esc(new Date(u.at).toLocaleDateString())}<small>${[u.phone && "Phone " + u.phone, u.address && "Address " + u.address, (u.ecName || u.ecPhone) && `Emergency contact ${[u.ecName, u.ecPhone, u.ecRel].filter(Boolean).join(", ")}`].filter(Boolean).map(esc).join(" · ")}</small></span>${S.canEdit ? `<button class="btn small primary" type="button" data-pfapply="${esc(u.id)}">Apply to file</button>` : ""}</div>`).join("")}
+    ${get(a, "profile") ? `<div class="row"><span class="lbl">On file<small>${[get(a, "profile.address") && "Address " + get(a, "profile.address"), get(a, "profile.ecName") && `Emergency contact ${[get(a, "profile.ecName"), get(a, "profile.ecPhone"), get(a, "profile.ecRel")].filter(Boolean).join(", ")}`].filter(Boolean).map(esc).join(" · ") || "—"}</small></span></div>` : ""}</div></section>` : ""}`;
+  el.querySelectorAll("input.memdate").forEach(i => { i.disabled = !S.canEdit; });
+}
+async function approveMem(key, fid){
+  const a = S.apps.get(S.sel), it = memberItems().find(x => x.key === key), f = (S.files || []).find(x => x.id === fid); if (!a || !it || !f) return;
+  const exp = f.expires || (it.every && f.done ? addMonths(f.done, it.every) : "");
+  if (!exp) return toast("That upload has no date. Type the expiration date in the box on that line, then approve.");
+  edit(S.sel, `mem.${key}`, { expires: exp, done: f.done || "", approvedAt: Date.now(), by: S.me, file: fid });
+  const fb = memFallback(it.label); if (fb) edit(S.sel, fb, exp);   // keeps the older expiration warnings in step
+  try { await updateDoc(doc(db, "portal", S.sel, "files", fid), { reviewedAt: Date.now() }); } catch (e) { console.error(e); }
+  toast(`${it.label}: good until ${fmtDate(exp)}`); schedulePortal(S.sel, 300);
+}
+async function applyProfile(uid){
+  const u = (S.pupd || []).find(x => x.id === uid), id = S.sel; if (!u || !id) return;
+  if (u.phone) edit(id, "phone", u.phone);
+  if (u.address) edit(id, "profile.address", u.address);
+  if (u.ecName) edit(id, "profile.ecName", u.ecName); if (u.ecPhone) edit(id, "profile.ecPhone", u.ecPhone); if (u.ecRel) edit(id, "profile.ecRel", u.ecRel);
+  try { await updateDoc(doc(db, "portal", id, "profileUpdates", uid), { appliedAt: Date.now(), appliedBy: S.me }); toast("Updated their file"); } catch (e) { console.error(e); toast("Couldn't mark it applied."); }
+}
+// Compliance board: every active member × each item, plus CME hours. Read only; printable.
+async function openCompliance(){
+  if (!S.admin) return;
+  const items = memberItems(), cfg = cmeCfg();
+  const mem = [...S.apps.values()].filter(isMember).sort((x, y) => (x.name || "").localeCompare(y.name || ""));
+  let cme = [];
+  try { const snap = await getDocs(collectionGroup(db, "cmeLog")); cme = snap.docs.map(d => ({ appId: d.ref.parent.parent.id, ...d.data() })); } catch (e) { console.error(e); }
+  const cell = (st, exp) => `<td class="cc ${st}" title="${esc(exp ? fmtDate(exp) : "Not on file")}">${st === "ok" ? "✓" : st === "soon" ? `${daysUntil(exp)}d` : st === "expired" ? "✗" : "—"}</td>`;
+  const table = `<table class="cgrid"><thead><tr><th>Member</th>${items.map(it => `<th>${esc(it.label)}</th>`).join("")}<th>CME hours</th></tr></thead><tbody>
+    ${mem.map(a => { const t = cmeTotals(cme.filter(e => e.appId === a._id), cfg, cmePeriod(certExpires(a), cfg.years));
+      return `<tr><th><button class="filelink" type="button" data-cmpopen="${esc(a._id)}">${esc(a.name || "Member")}</button></th>${items.map(it => { const e = memExpires(a, it); return cell(memState(e), e); }).join("")}<td class="cc ${t.total >= t.need ? "ok" : "soon"}">${+t.total.toFixed(1)}/${t.need}</td></tr>`; }).join("")}</tbody></table>`;
+  const bad = mem.filter(a => items.some(it => ["expired", "missing"].includes(memState(memExpires(a, it))))).length;
+  const M = openModal(`<h3>Compliance board</h3><p class="help">${mem.length} active member${mem.length === 1 ? "" : "s"}${bad ? ` · ${bad} with something expired or missing` : " · everyone current"}. ✓ current · number = days left · ✗ expired · — not on file.</p>
+    <div class="cwrap">${mem.length ? table : `<div class="oempty">No active members on the desk yet.</div>`}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Close</button><button class="btn" type="button" id="cmpPrint">Print</button></div>`, true);
+  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal();
+    const o = e.target.closest("[data-cmpopen]"); if (o) { closeModal(); setTimeout(() => { select(o.dataset.cmpopen); if (S.tab !== "onb") switchTab("onb"); }, 60); return; }
+    if (e.target.closest("#cmpPrint")) printHTML(`<section class="pk"><header><img src="/img/logo.png" alt=""><div><div class="pk-k">Member compliance</div><h1>${esc(new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" }))}</h1></div></header>${table.replace(/<button[^>]*>([^<]*)<\/button>/g, "$1")}<footer>Potsdam Volunteer Rescue Squad · Confidential</footer></section>`); };
+}
+
 function watchFiles(id){
   if (filesUnsub) { filesUnsub(); filesUnsub = null; }
   S.files = [];
   if (!S.admin || !id) return;
   filesUnsub = onSnapshot(collection(db, "portal", id, "files"), s => {
     S.files = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((x,y) => (y.uploadedAt||0) - (x.uploadedAt||0));
-    if (S.sel === id) { const a = S.apps.get(id); if (a) renderDocs(a); }
+    if (S.sel === id) { const a = S.apps.get(id); if (a) { renderDocs(a); renderMember(a); } }
   }, () => {});
+  watchMember(id);
 }
 
 /* ---------- portal invite = welcome ---------- */
@@ -1914,6 +2002,9 @@ function openSettings(){
     <div class="group"><h3><span>Onboard lists</span></h3><div class="ios"><label class="row stack"><span class="lbl">Paperwork and documents: one item per line<small>Shown on the Onboard tab and, once you move them to orientation, on the new member's dashboard. Add a link with a bar: <b>HIPAA training | https://…</b> Renaming an item starts it fresh.</small></span><textarea id="sOnb" rows="8">${esc(onbRaw().join("\n"))}</textarea></label>
       <label class="row stack"><span class="lbl">Equipment and access: one item per line<small>What you issue and set up for a new member (uniform, doors, apps). Only you and admins see this list.</small></span><textarea id="sIssue" rows="6">${esc(issueItems().map(x => x[1]).join("\n"))}</textarea></label>
       <label class="row stack"><span class="lbl">Finish orientation within (days)<small>Counts from the day you move them to orientation. Leave blank for no deadline.</small></span><input type="number" id="sOrientDays" min="1" max="365" class="inlinefield" value="${esc(s.orientDays || "")}"></label>
+      <label class="row stack"><span class="lbl">Member records: what active members keep current, one per line<small>A card or ID with its own expiration date: just the name. A training they redo: add the months, e.g. <b>HIPAA training | 12</b>. Renaming an item starts it fresh.</small></span><textarea id="sMemItems" rows="7">${esc((s.memberItems && s.memberItems.length ? s.memberItems : memberItems().map(x => x.label + (x.every ? " | " + x.every : ""))).join("\n"))}</textarea></label>
+      <label class="row stack"><span class="lbl">CME for recertification: category | hours, one per line<small>Pre-filled from the NYS DOH CME Recertification Program for EMTs as found Nov 2026 (45 hours: 20 core/refresher, 5 mandatory, 20 additional). Check the current DOH manual and change it here if needed.</small></span><textarea id="sCme" rows="4">${esc(cmeCfg().cats.map(c => `${c.label} | ${c.hours}`).join("\n"))}</textarea></label>
+      <label class="row stack"><span class="lbl">Certification period (years)<small>How far back from the EMS card's expiration hours count</small></span><input type="number" id="sCmeYears" min="1" max="10" class="inlinefield" value="${esc(cmeCfg().years)}"></label>
       <label class="row stack"><span class="lbl">Trainer sign-off list<small>One per line. Used when you first assign a trainer to a new member.</small></span><textarea id="sSkills" rows="5">${esc(skillItems().map(x => x[1]).join("\n"))}</textarea></label>
       <label class="row stack"><span class="lbl">Chief's email<small>For the duty-crew handoff</small></span><input type="email" id="sChief" class="inlinefield" value="${esc(s.chiefEmail || "")}"></label>
       <label class="row stack"><span class="lbl">Tech chair's email<small>For the email-account handoff</small></span><input type="email" id="sTech" class="inlinefield" value="${esc(s.techEmail || "")}"></label></div></div>
@@ -1954,7 +2045,9 @@ function openSettings(){
         onbItems: [...new Set($("#sOnb").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
         issueItems: [...new Set($("#sIssue").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
         skillItems: [...new Set($("#sSkills").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 40),
-        orientDays: +$("#sOrientDays").value > 0 ? Math.min(365, +$("#sOrientDays").value) : null, chiefEmail: $("#sChief").value.trim(), techEmail: $("#sTech").value.trim(),
+        orientDays: +$("#sOrientDays").value > 0 ? Math.min(365, +$("#sOrientDays").value) : null,
+        memberItems: [...new Set($("#sMemItems").value.split("\n").map(x => x.trim()).filter(Boolean))].slice(0, 30),
+        cme: { years: Math.min(10, Math.max(1, +$("#sCmeYears").value || 3)), cats: $("#sCme").value.split("\n").map(l => { const [label, h] = l.split("|").map(x => x.trim()); return label && +h >= 0 ? { key: CME_DEFAULT.cats.find(c => c.label === label)?.key || itemKey(label), label: label.slice(0, 80), hours: Math.round(+h * 100) / 100 } : null; }).filter(Boolean).slice(0, 10) }, chiefEmail: $("#sChief").value.trim(), techEmail: $("#sTech").value.trim(),
         replies: [...document.querySelectorAll("#qrList .qredit")].map(r => ({ title: r.querySelector(".qrTitle").value.trim(), text: r.querySelector(".qrText").value.trim() })).filter(r => r.title && r.text).slice(0, 20) };
       try { await setDoc(doc(db, "settings", "main"), next, { merge: true }); closeModal(); toast("Settings saved"); } catch { toast("Couldn't save settings."); }
     }
@@ -2153,6 +2246,7 @@ function openPalette(){
     { label: S.canEdit ? "Interview times" : "My interview times", show: canHostSlots(), words: "interview times slots schedule calendar", run: go(openSlots) },
     { label: "Week calendar", show: !$("#calBtn").hidden, words: "week calendar interview orientation times schedule this week", run: go(openWeekCal) },
     { label: "Waiting on", show: S.admin && S.role !== "interviewer", words: "waiting on references applicant you blocked stuck owes", run: go(openWaiting) },
+    { label: "Compliance board", show: S.admin, words: "compliance board members cards cpr expired expiring cme recertification hours current", run: go(openCompliance) },
     { label: "Orientation deadlines", show: S.admin, words: "orientation deadlines due late overdue new members progress", run: go(openOrientDeadlines) },
     { label: "Filter the list", show: !S.member, words: "filter filters type location stalled no movement stage", run: go(openFilters) },
     { label: "Orientation board", show: S.admin || S.owner, words: "orientation new members board checklist", run: go(openOrientBoard) },
@@ -2166,7 +2260,7 @@ function openPalette(){
     { label: "Reports", show: S.admin, words: "reports how long days stage stalled waiting average", run: go(openReports) },
     { label: "Notifications", show: true, words: "notifications alerts push bell phone", run: go(openNotifications) },
     { label: "Show the tour", show: !S.owner, words: "tour tutorial help how guide welcome what can i do", run: go(() => showTour(S.role, tourOpts())) },
-    ...(S.owner ? [["admin", "an Admin"], ["coordinator", "the Interview coordinator"], ["interviewer", "an Interviewer"], ["member", "a Member"], ["applicant", "an applicant"], ["newmember", "a new member in orientation"]]
+    ...(S.owner ? [["admin", "an Admin"], ["coordinator", "the Interview coordinator"], ["interviewer", "an Interviewer"], ["member", "a Member"], ["applicant", "an applicant"], ["newmember", "a new member in orientation"], ["records", "an active member on their records page"]]
       .map(([r, l]) => ({ label: `Tour: what ${l} is shown`, show: true, words: "tour tutorial help guide welcome preview " + r, run: go(() => showTour(r, { email: S.me })) })) : []),
     ...["light", "dark", "system"].map(t => ({ label: `Appearance: ${THEME_LABEL[t]}`, sub: getTheme() === t ? "Current, on this device" : "This device only", show: true, words: "appearance theme dark light mode night system device colours colors " + t, run: go(() => { setTheme(t); toast("Appearance: " + THEME_LABEL[t] + " (this device)"); }) })),
     { label: "Two-step sign-in", show: true, words: "two step 2fa mfa authenticator security code", run: go(openTwoStep) },
@@ -2296,7 +2390,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation board"], ["trainBtn", "Sign-offs"], ["paperBtn", "My paperwork"], ["libBtn", "Documents"], ["teamBtn", "Team"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation board"], ["trainBtn", "Sign-offs"], ["paperBtn", $("#paperBtn")?.querySelector(".nl")?.textContent || "My paperwork"], ["libBtn", "Documents"], ["teamBtn", "Team"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.assistant ? "Assistant" : S.full ? "Full access" : S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div>
@@ -2307,7 +2401,7 @@ function openMore(){
     <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`);
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); if (e.target.closest("[data-notif]")) { closeModal(); setTimeout(openNotifications, 60); return; } if (e.target.closest("[data-tour]")) { closeModal(); setTimeout(() => showTour(S.role, tourOpts()), 60); return; } const b = e.target.closest("[data-more]"); if (b) { closeModal(); setTimeout(() => $("#" + b.dataset.more).click(), 60); } };
 }
-function deselect(){ if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
+function deselect(){ if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchMember(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
 // Choosing a filter (sidebar or stage tile) shows the results in the dashboard's Applicants box.
 function setFilter(f, focusList){
   S.filter = f;
@@ -2472,6 +2566,10 @@ function bindEvents(){
       if (k.startsWith("fu_")) { edit(id, `follow.${k.slice(3)}.done`, today()); toast("Follow-up done"); renderOverview(); return; }
       if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
       return; }
+    const mok = t.closest("[data-memok]"); if (mok) { const [k, f] = mok.dataset.memok.split("|"); return approveMem(k, f); }
+    const cv = t.closest("[data-cmever]"); if (cv) { const e = (S.cme || []).find(x => x.id === cv.dataset.cmever); if (!e) return;
+      try { await updateDoc(doc(db, "portal", S.sel, "cmeLog", e.id), e.verified ? { verified: null, verifiedBy: null } : { verified: Date.now(), verifiedBy: S.me }); } catch (err) { console.error(err); toast("Couldn't change that."); } return; }
+    const pfa = t.closest("[data-pfapply]"); if (pfa) return applyProfile(pfa.dataset.pfapply);
     if (t.closest("#tagAdd")) return addTag();
     const trm = t.closest("[data-tagrm]"); if (trm) { edit(S.sel, `tags.${trm.dataset.tagrm}`, ""); renderTags(S.apps.get(S.sel)); renderList(); return; }
     if (t.closest("#fuAdd")) return addFollow();
@@ -2479,7 +2577,7 @@ function bindEvents(){
     const fr = t.closest("[data-furm]"); if (fr) { if (fr.dataset.confirm !== "1") { fr.dataset.confirm = "1"; fr.textContent = "Confirm"; return; } edit(S.sel, `follow.${fr.dataset.furm}.removed`, true); renderFollows(S.apps.get(S.sel)); return; }
     const wt = t.closest("[data-wait]"); if (wt) { S.waitTab = wt.dataset.wait; S.waitAll = false; renderOverview(); return; }
     if (t.closest("[data-waitall]")) { S.waitAll = !S.waitAll; renderOverview(); return; }
-    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "reports") return openReports(); if (cmd.dataset.cmd === "deadlines") return openOrientDeadlines(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "team") openTeam(); if (cmd.dataset.cmd === "inbox") openChat(); return; }
+    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "reports") return openReports(); if (cmd.dataset.cmd === "deadlines") return openOrientDeadlines(); if (cmd.dataset.cmd === "compliance") return openCompliance(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "team") openTeam(); if (cmd.dataset.cmd === "inbox") openChat(); return; }
     const om = t.closest("[data-openmsg]"); if (om) return openChat("a:" + om.dataset.openmsg);
     const qr = t.closest("[data-qr]"); if (qr) return useQuickReply(+qr.dataset.qr);
     const air = t.closest("[data-aireply]"); if (air) return aiDraftReply(air);
@@ -4484,19 +4582,19 @@ function handoffMail(id, who){
 function openLibrary(){
   const ROLES = [["admin", "Admins"], ["interviewer", "Interviewers"], ["member", "Members"]];
   const M = openModal(`<h3>Documents</h3><p class="help">Squad handbook, policies and forms.${S.canEdit ? " Choose who sees each one. Nothing medical or Social Security." : ""}</p>
-    ${S.canEdit ? `<div class="ios" style="padding:12px"><div class="field"><label>Who can see it</label><div class="cv-rolepick">${ROLES.map(([v, l]) => `<label><input type="checkbox" value="${v}" checked> ${l}</label>`).join("")}<label><input type="checkbox" id="libNew" checked> New members in orientation</label></div></div>
+    ${S.canEdit ? `<div class="ios" style="padding:12px"><div class="field"><label>Who can see it</label><div class="cv-rolepick">${ROLES.map(([v, l]) => `<label><input type="checkbox" value="${v}" checked> ${l}</label>`).join("")}<label><input type="checkbox" id="libAct"> Active members' records page</label><label><input type="checkbox" id="libNew" checked> New members in orientation</label></div></div>
       <label class="dropzone" for="libFile"><input type="file" id="libFile" accept="application/pdf,image/*" hidden><b>Add a document</b><span>PDF or photo, up to 25 MB</span></label></div>` : ""}
     <div id="libList" class="ios" style="margin-top:10px"></div><div class="acts"><button class="btn" type="button" data-x>Done</button></div>`, true);
   const paint = () => { const el = $("#libList"); if (!el) return;
-    el.innerHTML = (S.library || []).map(d => `<div class="row"><span class="lbl">${esc(d.name)}<small>${S.canEdit ? esc([...(d.roles || []).map(r => roleLabel(r)), d.newMembers ? "New members" : ""].filter(Boolean).join(", ") || "Only you") : esc(new Date(d.uploadedAt).toLocaleDateString())}</small></span><button class="btn small" type="button" data-libopen="${esc(d.id)}">Open</button>${S.canEdit ? `<button class="copy" type="button" data-libdel="${esc(d.id)}">Remove</button>` : ""}</div>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">No documents yet.</span></div>`; };
+    el.innerHTML = (S.library || []).map(d => `<div class="row"><span class="lbl">${esc(d.name)}<small>${S.canEdit ? esc([...(d.roles || []).map(r => roleLabel(r)), d.newMembers ? "New members" : "", d.activeMembers ? "Active members" : ""].filter(Boolean).join(", ") || "Only you") : esc(new Date(d.uploadedAt).toLocaleDateString())}</small></span><button class="btn small" type="button" data-libopen="${esc(d.id)}">Open</button>${S.canEdit ? `<button class="copy" type="button" data-libdel="${esc(d.id)}">Remove</button>` : ""}</div>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">No documents yet.</span></div>`; };
   paint(); S._libPaint = paint; M._cleanup = () => { S._libPaint = null; };
   $("#libFile")?.addEventListener("change", async e => { const f = e.target.files[0]; e.target.value = ""; if (!f) return;
     if (!(f.type === "application/pdf" || /^image\//.test(f.type))) return toast("Only PDFs and photos.");
     if (f.size > 25 * 1024 * 1024) return toast("That file is over 25 MB.");
     if (isConfidential(f.name)) return toast("That looks medical or Social Security, so it can't go in Documents.");
-    const roles = [...M.querySelectorAll('.cv-rolepick input[value]')].filter(i => i.checked).map(i => i.value), newMembers = !!$("#libNew")?.checked;
+    const roles = [...M.querySelectorAll('.cv-rolepick input[value]')].filter(i => i.checked).map(i => i.value), newMembers = !!$("#libNew")?.checked, activeMembers = !!$("#libAct")?.checked;
     try { const id = doc(collection(db, "library")).id, path = `library/${id}/${Date.now()}-${f.name.replace(/[^\w.\-]+/g, "_").slice(-80)}`;
-      await setDoc(doc(db, "library", id), { name: f.name.slice(0, 200), path, size: f.size, type: f.type, roles, newMembers, uploadedAt: Date.now(), uploadedBy: S.me });
+      await setDoc(doc(db, "library", id), { name: f.name.slice(0, 200), path, size: f.size, type: f.type, roles, newMembers, activeMembers, uploadedAt: Date.now(), uploadedBy: S.me });
       await uploadBytes(ref(storage, path), f, { contentType: f.type }); toast("Added."); }
     catch (err) { console.error(err); toast("Couldn't add that document."); } });
   M.onclick = async e => { const t = e.target; if (t.closest("[data-x]")) return closeModal();
@@ -4639,7 +4737,7 @@ export function startDesk({ email, role, owner, full = false, assistant = false,
   startIdleLock();
   startPushToasts(); refreshPush();
   // A squad member who still owes orientation paperwork gets a way back to their orientation page.
-  if (paperwork) { const pb = $("#paperBtn"); pb.hidden = false; pb.addEventListener("click", () => { location.href = "/?paperwork=1"; }); paintMnav(); }
+  if (paperwork) { const pb = $("#paperBtn"); pb.hidden = false; if (paperwork === "records") { pb.querySelector(".nl").textContent = "My records"; pb.title = "Your cards, trainings and CME"; } pb.addEventListener("click", () => { location.href = "/?paperwork=1"; }); paintMnav(); }
   if (!S.owner) maybeTour(S.role, tourOpts());   // first visit only: what this role can do
   watchOrientation(); watchChat(); startPresence(); $("#msgsBtn").hidden = false; paintMnav();
   const lost = () => { conn.classList.remove("on"); conn.textContent = "Connection lost · reload"; };

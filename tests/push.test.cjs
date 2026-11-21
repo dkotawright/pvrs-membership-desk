@@ -129,6 +129,12 @@ const last = () => sent[sent.length - 1];
     portals: [{ id: "f1", docs: [{ label: "CPR card", received: false }] }] });
   check(fu.owner && fu.owner.body === "2 follow-ups due", "follow-ups due in the morning summary: " + JSON.stringify(fu.owner));
   check(!fu.applicants.length, "no documents nudge except on Mondays");
+  const iso = ms => new Date(ms).toISOString().slice(0, 10);
+  const mm2 = buildMorning({ now: NOW, slots: [], apps: [{ id: "m1", name: "Mia", updatedAt: NOW }, { id: "m2", name: "Gone", status: "withdrawn", updatedAt: NOW }],
+    portals: [{ id: "m1", member: { items: [{ label: "CPR / BLS card", expires: iso(NOW + 30 * D) }, { label: "HIPAA training", expires: iso(NOW) }, { label: "Photo ID", expires: iso(NOW + 90 * D) }, { label: "EMS card", expires: "" }] } },
+      { id: "m2", member: { items: [{ label: "CPR / BLS card", expires: iso(NOW) }] } }] });
+  check(mm2.applicants.map(x => x.title).join("|") === "CPR / BLS card expires in 30 days|HIPAA training expires today" && mm2.applicants.every(x => x.id === "m1"), "member renewal reminders 30 days out and on the day: " + JSON.stringify(mm2.applicants));
+  check(mm2.owner && mm2.owner.body === "2 member renewals due", "owner hears how many member renewals are due: " + JSON.stringify(mm2.owner));
   const MON = Date.parse("2026-11-09T12:30:00Z");
   const dn = buildMorning({ now: MON, slots: [], apps: [{ id: "d1", name: "Needs Docs", updatedAt: MON }, { id: "d2", name: "Declined", status: "declined", updatedAt: MON }, { id: "d3", name: "All In", updatedAt: MON }, { id: "d4", name: "In Orientation", updatedAt: MON }],
     portals: [{ id: "d1", docs: [{ label: "CPR card", received: false }, { label: "License", received: true }] }, { id: "d2", docs: [{ label: "CPR card" }] }, { id: "d3", docs: [{ label: "CPR card", received: true }] }, { id: "d4", orientation: { total: 3, done: 1 }, docs: [{ label: "X" }] }] });
