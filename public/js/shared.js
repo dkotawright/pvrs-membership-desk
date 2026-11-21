@@ -243,3 +243,46 @@ export function cmeTotals(entries, cme = CME_DEFAULT, period){
   const need = (cme.cats || []).reduce((s, c) => s + (+c.hours || 0), 0);
   return { by, total, drill, need, cats: (cme.cats || []).map(c => ({ ...c, got: by[c.key] || 0, done: (by[c.key] || 0) >= (+c.hours || 0) })) };
 }
+
+// ---- Colour themes and backgrounds (Nov 21). Saved on this device only (localStorage); nothing goes to the database. ----
+export const ACCENTS = [
+  { k: "", name: "Station", sub: "Warm rose, the squad default", fa: "#1C1917", fb: "#3F3A36", h: "#E11D48", h2: "#F97316", s: "#FDA4AF" },
+  { k: "pvrs", name: "PVRS", sub: "Our logo's red and navy", fa: "#0B1F3A", fb: "#17396B", h: "#C8102E", h2: "#1F4E9C", s: "#FCA5A5" },
+  { k: "star", name: "Star of Life", sub: "EMS blue", fa: "#0B1B3F", fb: "#1E3A8A", h: "#1D4ED8", h2: "#0EA5E9", s: "#93C5FD" },
+  { k: "sirens", name: "Lights & sirens", sub: "Red and blue", fa: "#111827", fb: "#1F2A44", h: "#DC2626", h2: "#2563EB", s: "#FCA5A5" },
+  { k: "night", name: "Night shift", sub: "Amber on midnight", fa: "#0B1220", fb: "#1E293B", h: "#F59E0B", h2: "#FBBF24", s: "#FCD34D" },
+  { k: "rescue", name: "Rescue", sub: "Hi-vis orange and yellow", fa: "#1C1917", fb: "#44403C", h: "#EA580C", h2: "#FACC15", s: "#FDBA74" },
+  { k: "triage", name: "Triage green", sub: "Calm green", fa: "#052E2B", fb: "#065F46", h: "#047857", h2: "#0D9488", s: "#6EE7B7" }];
+export const BACKGROUNDS = [
+  { k: "none", name: "Plain glow", sub: "No pattern" }, { k: "ecg", name: "Heartbeat", sub: "An ECG strip" },
+  { k: "star", name: "Star of Life", sub: "The EMS star" }, { k: "cross", name: "Medical cross", sub: "Small crosses" },
+  { k: "stripes", name: "Rig stripes", sub: "Ambulance chevrons" }, { k: "radar", name: "Dispatch", sub: "Radar rings" },
+  { k: "map", name: "Response map", sub: "Contour lines" }, { k: "auto", name: "Change every visit", sub: "A different one each time" }];
+const lsGet = k => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
+const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch {} };
+export const getAccent = () => lsGet("pvrsAccent");
+export const getBg = () => lsGet("pvrsBg");
+export function setAccent(k){ lsSet("pvrsAccent", k); if (k) document.documentElement.setAttribute("data-accent", k); else document.documentElement.removeAttribute("data-accent"); }
+// The background for this page view. `fallback` applies when this device hasn't chosen one: the portal and the public
+// pages change every visit (Dkota), the desk stays plain.
+export function applyBg(fallback = "none"){
+  const pick = getBg() || fallback, pats = BACKGROUNDS.map(b => b.k).filter(k => k !== "none" && k !== "auto");
+  let k = pick;
+  if (pick === "auto") { const last = lsGet("pvrsBgLast"), pool = pats.filter(x => x !== last); k = pool[Math.floor(Math.random() * pool.length)]; lsSet("pvrsBgLast", k); }
+  if (k && k !== "none") document.documentElement.setAttribute("data-bg", k); else document.documentElement.removeAttribute("data-bg");
+  return k;
+}
+export function openAppearance(fallbackBg = "none"){
+  const mode = getTheme(), acc = getAccent(), bg = getBg() || fallbackBg;
+  const M = openModal(`<div class="look"><h3>Appearance</h3><p class="help" style="margin:0">Pick a look. It's saved on this device only, so everyone can choose their own.</p>
+    <h4>Light or dark</h4><div class="lookseg" role="group" aria-label="Light or dark">${["light", "dark", "system"].map(t => `<button type="button" data-lmode="${t}" aria-pressed="${mode === t}">${THEME_LABEL[t]}</button>`).join("")}</div>
+    <h4>Colours</h4><div class="lookgrid">${ACCENTS.map(a => `<button type="button" class="lookcard" data-lacc="${a.k}" aria-pressed="${acc === a.k}" style="--sw-fa:${a.fa};--sw-fb:${a.fb};--sw-h:${a.h};--sw-h2:${a.h2};--sw-s:${a.s}"><span class="looksw" aria-hidden="true"></span><b>${a.name}</b><small>${a.sub}</small></button>`).join("")}</div>
+    <h4>Background</h4><div class="lookgrid">${BACKGROUNDS.map(b => `<button type="button" class="lookcard lookbg" data-lbg="${b.k}" data-bgv="${b.k}" aria-pressed="${bg === b.k}"><span class="lbg" aria-hidden="true"><i></i>${b.k === "auto" ? "🔀" : ""}</span><b>${b.name}</b><small>${b.sub}</small></button>`).join("")}</div>
+    <div class="acts"><button class="btn primary" type="button" data-x>Done</button></div></div>`, true);
+  M.onclick = e => { const t = e.target;
+    if (t.closest("[data-x]")) return closeModal();
+    const m = t.closest("[data-lmode]"); if (m) { setTheme(m.dataset.lmode); M.querySelectorAll("[data-lmode]").forEach(b => b.setAttribute("aria-pressed", String(b === m))); return; }
+    const a = t.closest("[data-lacc]"); if (a) { setAccent(a.dataset.lacc); M.querySelectorAll("[data-lacc]").forEach(b => b.setAttribute("aria-pressed", String(b === a))); return; }
+    const g = t.closest("[data-lbg]"); if (g) { lsSet("pvrsBg", g.dataset.lbg); applyBg(fallbackBg); M.querySelectorAll("[data-lbg]").forEach(b => b.setAttribute("aria-pressed", String(b === g))); }
+  };
+}

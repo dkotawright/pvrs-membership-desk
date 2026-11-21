@@ -1955,11 +1955,19 @@ try {
     await page.locator("#palQ").fill("week cal"); await wait(page, 200);
     if (!/Week calendar/.test(await page.locator("#palList").textContent())) fail("⌘K has no Week calendar"); else ok("⌘K finds the week calendar");
     await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await wait(page, 300);
-    // appearance
+    // appearance: the half-moon button opens the picker (mode, colours, background), saved on this device only
     const th = [];
-    for (let i = 0; i < 3; i++) { await page.locator("#themeBtn").click(); await wait(page, 100); th.push(await page.evaluate(() => (document.documentElement.getAttribute("data-theme") || "system") + ":" + (localStorage.getItem("pvrsTheme") || "-"))); }
-    if (th.join(",") !== "light:light,dark:dark,system:-") fail("appearance cycle: " + th.join(",")); else ok("appearance switch cycles light, dark, follow the device (saved on this device only)");
-    await page.locator("#themeBtn").click(); await page.locator("#themeBtn").click(); await wait(page, 100);
+    await page.locator("#themeBtn").click(); await wait(page, 200);
+    for (const m of ["light", "dark", "system"]) { await page.locator(`[data-lmode="${m}"]`).click(); await wait(page, 100); th.push(await page.evaluate(() => (document.documentElement.getAttribute("data-theme") || "system") + ":" + (localStorage.getItem("pvrsTheme") || "-"))); }
+    if (th.join(",") !== "light:light,dark:dark,system:-") fail("appearance modes: " + th.join(",")); else ok("appearance picker switches light, dark, follow the device (saved on this device only)");
+    await page.locator('[data-lacc="star"]').click(); await wait(page, 500);
+    const accBtn = await page.evaluate(() => [document.documentElement.getAttribute("data-accent"), getComputedStyle(document.querySelector("#newBtn")).backgroundColor]);
+    if (accBtn[0] !== "star" || accBtn[1] !== "rgb(29, 78, 216)") fail("colour theme: " + accBtn); else ok("a colour theme recolours the highlight (Star of Life blue)");
+    await page.locator('[data-lbg="ecg"]').click(); await wait(page, 100);
+    const bgv = await page.evaluate(() => [document.documentElement.getAttribute("data-bg"), getComputedStyle(document.querySelector("#bgfx")).display, getComputedStyle(document.querySelector("#bgfx")).maskImage || getComputedStyle(document.querySelector("#bgfx")).webkitMaskImage]);
+    if (bgv[0] !== "ecg" || bgv[1] !== "block" || !/svg/.test(bgv[2])) fail("background: " + bgv.join(" | ").slice(0, 200)); else ok("an EMS background pattern shows behind the desk");
+    await page.locator("#modal [data-x]").click(); await wait(page, 200);
+    await page.locator("#themeBtn").click(); await wait(page, 200); await page.locator('[data-lmode="dark"]').click(); await page.locator('[data-lacc=""]').click(); await page.locator('[data-lbg="none"]').click(); await page.locator("#modal [data-x]").click(); await wait(page, 100);
     if (await dataNow() !== before) fail("dock, command bar or appearance changed stored data"); else ok("dock, command bar and appearance switch save nothing to the database");
     await page.reload(); await wait(page, 1500);
     if (await page.evaluate(() => document.documentElement.getAttribute("data-theme")) !== "dark") fail("dark choice not kept after reload"); else ok("the appearance choice is kept after a reload");
@@ -2090,6 +2098,9 @@ try {
       const cm = (await page.locator("#cmeCard").textContent()).replace(/\s+/g, " ");
       if (!/4 of 45 hours/.test(cm) || !/Core \/ refresher ?4 of 20 h/.test(cm)) fail("cme card: " + cm.slice(0, 300)); else ok("CME card totals the hours toward recertification by category");
       await snap(page, "90-member-records");
+      const bg1 = await page.evaluate(() => document.documentElement.getAttribute("data-bg"));
+      await page.reload(); await wait(page, 900); const bg2 = await page.evaluate(() => document.documentElement.getAttribute("data-bg"));
+      if (!bg1 || !bg2 || bg1 === bg2) fail(`portal background didn't change between visits: ${bg1} → ${bg2}`); else ok("the portal shows a different EMS background each visit");
       // log hours
       await page.locator(".cmeform summary").click(); await wait(page, 150);
       await page.locator("#cmeHours").fill("2.5"); await page.locator("#cmeTopic").fill("Stroke assessment"); await page.locator("#cmeCat").selectOption("additional"); await page.locator("[data-cmeadd]").click(); await wait(page, 600);
