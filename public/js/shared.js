@@ -85,7 +85,7 @@ export const TYPE_INFO = {
   "Non-Resident":"24 hours · must already be an EMT · not required at meetings, must attend 50% of trainings · cannot vote or hold office"
 };
 // Fields under these roots live in applicants/{id}/private/main (admins only).
-export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","notes","status","docs","portal","pagesign","onb","notDupes","otherForms"]);
+export const SECURE = new Set(["mvr","dl","refs","bg","appr","board","notify","notes","status","docs","portal","pagesign","onb","notDupes","otherForms","follow","tags"]);   // follow + tags: Nov 20 (follow-up reminders, labels)
 export const DOC_ITEMS = ["Copy of driver's license (front and back)","EMT certification card","CPR card","Medical documentation for orientation","Social Security card","Missing pages of the application","Reference contact information"];
 // Medical and Social Security paperwork is confidential: it goes to the paperwork account only (see PAPERWORK_EMAIL).
 export const isConfidential = label => /medical|immuni[sz]|vaccin|physical|tuberc|\bTB\b|\bPPD\b|hepatitis|hep\s?b\b|titer|health|social security|\bSSN\b|beneficiar/i.test(label || "");
@@ -201,3 +201,15 @@ export function timelineHTML(steps){
     <span class="mtext"><span class="mlabel">${esc(s.label)}</span>${s.state!=="todo"&&s.detail?`<small>${esc(s.detail)}</small>`:""}</span></div>`).join("")}</div>`;
 }
 export const checkSVG = CHECK;
+
+// Appearance (Nov 20): light, dark or follow the device. Saved in this browser only (localStorage "pvrsTheme");
+// index.html applies it before the page draws. Nothing about it is stored in Firestore.
+export const THEME_LABEL = { system: "Follow this device", light: "Light", dark: "Dark" };
+export function getTheme(){ try { const t = localStorage.getItem("pvrsTheme"); return t === "light" || t === "dark" ? t : "system"; } catch { return "system"; } }
+export function setTheme(t){
+  if (t !== "light" && t !== "dark") t = "system";
+  try { if (t === "system") localStorage.removeItem("pvrsTheme"); else localStorage.setItem("pvrsTheme", t); } catch {}
+  if (t === "system") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t);
+  return t;
+}
+export const nextTheme = () => setTheme({ system: "light", light: "dark", dark: "system" }[getTheme()]);

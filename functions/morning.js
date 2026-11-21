@@ -42,7 +42,16 @@ function buildMorning({ apps, slots, now, portals = [], coordinators = [] }){
     const touched = Math.max(a.updatedAt || 0, a.secUpdatedAt || 0);
     if (a.stage !== "act" && !waitingOnBoard && touched && now - touched >= 14 * DAY) stalled++;
   }
-  const parts = [ivToday && `${plural(ivToday, "interview")} today`, ivTomorrow && `${plural(ivTomorrow, "interview")} tomorrow`,
+  // Follow-up reminders the owner set on files (private record follow.<key>): due today or earlier, not done.
+  let follows = 0;
+  for (const a of apps) for (const f of Object.values(get(a, "follow") || {})) if (f && f.text && !f.removed && !f.done && f.due && f.due <= today) follows++;
+  // Documents still needed: a gentle weekly nudge (Mondays) to applicants with requested documents not yet in.
+  // Generic wording; never for declined or withdrawn files; not once they're in orientation (that has its own reminders).
+  const monday = new Date(now).toLocaleDateString("en-US", { timeZone: TZ, weekday: "short" }) === "Mon";
+  if (monday) for (const p of portals) { const a = byId.get(p.id); if (!a || isClosed(a) || p.orientation) continue;
+    const need = (p.docs || []).filter(d => d && d.label && !d.received).length;
+    if (need) applicants.push({ id: p.id, title: "Documents still needed", body: `${plural(need, "document")} still needed for your PVRS application. You can upload ${need === 1 ? "it" : "them"} in your portal.` }); }
+  const parts = [follows && `${plural(follows, "follow-up")} due`, ivToday && `${plural(ivToday, "interview")} today`, ivTomorrow && `${plural(ivTomorrow, "interview")} tomorrow`,
     orToday && `${plural(orToday, "orientation")} today`, orTomorrow && `${plural(orTomorrow, "orientation")} tomorrow`, orBehind && `${orBehind} behind on orientation`,
     refsLate && `${plural(refsLate, "reference")} overdue`, expiring && `${plural(expiring, "card")} expiring`, stalled && `${plural(stalled, "file")} with no movement`].filter(Boolean);
   return { owner: parts.length ? { title: "Good morning. Today on the desk", body: parts.join(" · ") } : null, interviewers, applicants };

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#F4F6FB" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F7F5F2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141210" media="(prefers-color-scheme: dark)">
 <meta name="robots" content="noindex">
 <title>PVRS Membership Desk</title>
 <link rel="icon" type="image/png" sizes="192x192" href="/img/icon-192.png">
@@ -17,6 +17,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap">
 <link rel="stylesheet" href="/app.css">
+<script>/* Light / dark / follow the device (Nov 20): chosen per device, saved in this browser only. */
+(function(){ try { var t = localStorage.getItem("pvrsTheme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {} })();</script>
 </head>
 <body>
 
@@ -200,6 +202,7 @@
       <div class="navh">Desk</div>
       <button class="nav-i" id="overviewBtn" type="button" title="Overview (Esc)"><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.5"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.5"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.5"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.5"/></svg><span class="nl">Overview</span></button>
       <button class="nav-i" id="slotsBtn" type="button" title="Interview times" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><path d="M1.5 6.5h13M5 1v3M11 1v3"/></svg><span class="nl">Interview times</span></button>
+      <button class="nav-i" id="calBtn" type="button" title="Week calendar: interview and orientation times" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" rx="2"/><path d="M1.5 6.5h13M5 1v3M11 1v3M4.5 9h2M7 9h2M9.5 9h2M4.5 11.7h2M7 11.7h2"/></svg><span class="nl">Week calendar</span></button>
       <button class="nav-i" id="orientBtn" type="button" title="Orientation checklist for everyone in orientation" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2.5h10v11H3zM5.5 6l1 1 2-2M5.5 10.5l1 1 2-2M10 6.5h1.5M10 11h1.5"/></svg><span class="nl">Orientation board</span></button>
       <button class="nav-i" id="trainBtn" type="button" title="Sign-offs" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8"/></svg><span class="nl">Sign-offs</span></button>
       <button class="nav-i" id="paperBtn" type="button" title="Finish your orientation paperwork" hidden><svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.5h5.5L12.5 4.5v10H4zM9.5 1.5v3h3M8 12V7.5M6 9.3l2-2 2 2"/></svg><span class="nl">My paperwork</span></button>
@@ -214,6 +217,7 @@
     <div class="me">
       <span class="av" id="meAv" aria-hidden="true"></span>
       <span class="who"><b id="meName"></b><span id="conn" class="live">Connecting…</span></span>
+      <button class="iconbtn themebtn" type="button" id="themeBtn" title="Appearance: light, dark or follow this device" aria-label="Appearance"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 2.4a5.6 5.6 0 0 1 0 11.2z" fill="currentColor"/></svg></button>
       <button class="iconbtn" type="button" id="pwBtn" title="Sign-in password" aria-label="Set your sign-in password"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="10.5" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7.2 8.3 13.5 2M11 4.5l1.8 1.8M12.6 2.9l1.4 1.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
       <button class="iconbtn" type="button" data-signout title="Sign out" aria-label="Sign out"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2.5H3.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1H6M10.5 11l3-3-3-3M13.5 8H6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
@@ -233,18 +237,29 @@
           <div class="tt"><h1 id="rosterTitle">All applicants</h1><span class="count" id="rosterCount"></span></div>
           <button class="btn small" type="button" id="orientAddBtn" hidden>Add someone</button>
           <button class="btn small" type="button" id="bulkBtn" aria-pressed="false" hidden>Select</button>
+          <button class="btn small xfbtn" type="button" id="xfBtn" aria-expanded="false" aria-controls="xfRow">Filters</button>
           <label class="sortsel" title="Sort"><span class="sr">Sort:</span><select id="sort">
             <option value="stage">Stage</option><option value="name">Name</option><option value="newest">Newest</option><option value="waiting">Longest waiting</option><option value="updated">Recently updated</option>
           </select></label>
         </div>
         <label class="search"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="q" type="search" placeholder="Search name, email, phone" autocomplete="off" aria-label="Search applicants"><kbd>⌘K</kbd></label>
         <div class="chips" id="chipsMini"></div>
+        <div class="xf" id="xfRow" hidden role="group" aria-label="Filter the list">
+          <label><span>Stage</span><select id="xfStage"></select></label>
+          <label><span>Type</span><select id="xfType"></select></label>
+          <label><span>Location</span><select id="xfLoc"><option value="">Anywhere</option><option value="Potsdam">Potsdam</option><option value="other">Other</option></select></label>
+          <label hidden><span>Tag</span><select id="xfTag"></select></label>
+          <label class="xfchk"><input type="checkbox" id="xfStale"> <span>No movement in 14+ days</span></label>
+          <button class="btn small" type="button" id="xfClear" hidden>Clear filters</button>
+          <div class="xfviews" id="xfViews" aria-label="Saved views"></div>
+        </div>
       </div>
       <div class="list" id="list"></div>
       <div class="bulkbar" id="bulkBar" hidden></div>
     </section>
     <section class="pane detail" id="detail"></section>
   </div>
+  <button class="cmdbar" id="cmdBar" type="button" title="Find anyone or run a command (⌘K)"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span id="cmdBarText">Search anyone or run a command…</span><b>⌘K</b></button>
 </div>
 
 <!-- Applicant portal -->

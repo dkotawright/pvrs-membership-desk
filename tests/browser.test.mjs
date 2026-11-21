@@ -1932,6 +1932,156 @@ try {
     if (v !== "Flyer or poster") fail(`?src=flyer didn't pre-pick: "${v}"`); else ok("scanning the flyer pre-picks Flyer or poster on the application");
     await ctx.close();
   }
+  // ---- Dock redesign (Nov 20): floating dock, command bar, appearance switch, and the read-only additions
+  {
+    const noon = new Date(); noon.setHours(12, 0, 0, 0);
+    const { ctx, page } = await open(browser, { seed: [["slots/wk1", { start: noon.getTime(), duration: 30, location: "Station", bookedBy: "a1", host: "dkota@pvrs.org", hostName: "Dkota" }],
+      ["slots/wk2", { start: noon.getTime() + 36e5, duration: 30, location: "Station", bookedBy: null }]] });
+    await wait(page, 1500);
+    const dataNow = () => page.evaluate(() => JSON.stringify([...window.__mock.docs.entries()].filter(([k]) => !k.startsWith("presence/")).sort()));
+    // the owner's desk syncs portal pages and stage mirrors on its own after loading; wait for that to finish
+    const settle = async () => { await wait(page, 6500); let a = await dataNow(); for (let i = 0; i < 12; i++) { await wait(page, 900); const b = await dataNow(); if (b === a) return b; a = b; } return a; };
+    const before = await settle();
+    // the dock: icons only until hovered
+    const w0 = await page.locator(".app > .side").evaluate(e => e.getBoundingClientRect().width);
+    const lblHidden = await page.locator("#overviewBtn .nl").isHidden();
+    await page.locator("#overviewBtn").hover(); await wait(page, 300);
+    const w1 = await page.locator(".app > .side").evaluate(e => e.getBoundingClientRect().width);
+    if (!(w0 < 100 && lblHidden && w1 > 200 && await page.locator("#overviewBtn .nl").isVisible())) fail(`dock: closed ${w0}px (labels hidden ${lblHidden}), open ${w1}px`); else ok("the desk menu is a floating icon dock that opens with labels on hover");
+    await page.mouse.move(900, 500); await wait(page, 300);
+    // command bar
+    await page.locator("#cmdBar").click(); await wait(page, 300);
+    if (await page.locator("#palQ").isHidden()) fail("command bar didn't open the search"); else ok("the floating command bar opens ⌘K search");
+    await page.locator("#palQ").fill("week cal"); await wait(page, 200);
+    if (!/Week calendar/.test(await page.locator("#palList").textContent())) fail("⌘K has no Week calendar"); else ok("⌘K finds the week calendar");
+    await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await wait(page, 300);
+    // appearance
+    const th = [];
+    for (let i = 0; i < 3; i++) { await page.locator("#themeBtn").click(); await wait(page, 100); th.push(await page.evaluate(() => (document.documentElement.getAttribute("data-theme") || "system") + ":" + (localStorage.getItem("pvrsTheme") || "-"))); }
+    if (th.join(",") !== "light:light,dark:dark,system:-") fail("appearance cycle: " + th.join(",")); else ok("appearance switch cycles light, dark, follow the device (saved on this device only)");
+    await page.locator("#themeBtn").click(); await page.locator("#themeBtn").click(); await wait(page, 100);
+    if (await dataNow() !== before) fail("dock, command bar or appearance changed stored data"); else ok("dock, command bar and appearance switch save nothing to the database");
+    await page.reload(); await wait(page, 1500);
+    if (await page.evaluate(() => document.documentElement.getAttribute("data-theme")) !== "dark") fail("dark choice not kept after reload"); else ok("the appearance choice is kept after a reload");
+    const before2 = await settle();   // the mock data is made fresh on reload
+    const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    if (bg !== "rgb(20, 18, 16)") fail("dark background not applied: " + bg); else ok("dark appearance applies the dark palette");
+    await page.evaluate(() => localStorage.removeItem("pvrsTheme"));
+    // week calendar
+    await page.locator("#calBtn").click(); await wait(page, 300);
+    const cal = await page.locator("#wcal").textContent();
+    if (!/Georgia Thurmond/.test(cal) || !/Open interview time/.test(cal) || !/1 interview booked · 1 open interview time/.test(cal)) fail("week calendar: " + cal.slice(0, 300)); else ok("week calendar shows booked and open interview times for the week");
+    await page.locator('#wcal [data-wk="1"]').click(); await wait(page, 200);
+    if (/Georgia Thurmond/.test(await page.locator("#wcal").textContent())) fail("next week still shows this week's interview"); else ok("week calendar moves to the next week");
+    await page.locator('#wcal [data-wk="0"]').click(); await wait(page, 200);
+    await page.locator("#wcal [data-wcopen]").first().click(); await wait(page, 600);
+    if (!/Georgia Thurmond/.test(await page.locator(".dname").textContent())) fail("calendar entry didn't open the file"); else ok("clicking a booked interview on the calendar opens the file");
+    // file timeline
+    await page.locator('.tabdock [data-tab="notes"]').click(); await wait(page, 400);
+    const tl = await page.locator("#tlList").textContent();
+    if (!/Application received/.test(tl) || !/Driving record \(MVR\) done/.test(tl) || !/Reference received: Sam Ortiz/.test(tl) || !/days later/.test(tl)) fail("timeline: " + tl.slice(0, 300)); else ok("the Notes tab shows the file's dates in order as a timeline");
+    await page.locator("#overviewBtn").click(); await wait(page, 600);
+    // waiting on
+    const wc = () => page.locator("#waitCard").textContent();
+    if (!/Marcus Bell/.test(await wc()) || /Georgia Thurmond/.test(await wc())) fail("waiting on you: " + (await wc()).slice(0, 300)); else ok("Waiting on: You lists files whose next step is the squad's");
+    await page.locator('#waitCard [data-wait="refs"]').click(); await wait(page, 300);
+    if (!/Georgia Thurmond/.test(await wc()) || !/1 of 3 in · waiting on Ann Lee/.test(await wc())) fail("waiting on refs: " + (await wc()).slice(0, 300)); else ok("Waiting on: References names who hasn't answered");
+    // filters
+    const names = () => page.evaluate(() => [...document.querySelectorAll("#list .arow")].map(r => r.querySelector("b,strong,.nm")?.textContent || r.textContent).join("|"));
+    const all0 = await names();
+    await page.locator("#xfBtn").click(); await wait(page, 200);
+    await page.locator("#xfType").selectOption("Associate"); await wait(page, 300);
+    const assoc = await names();
+    if (!/Marcus Bell/.test(assoc) || /Georgia/.test(assoc) || !/Filters · 1/.test(await page.locator("#xfBtn").textContent())) fail("type filter: " + assoc); else ok("list filter by membership type");
+    await page.locator("#xfType").selectOption(""); await page.locator("#xfLoc").selectOption("other"); await wait(page, 300);
+    if (/Georgia|Marcus/.test(await names())) fail("location filter kept Potsdam people"); else ok("list filter by location");
+    await page.locator("#xfLoc").selectOption(""); await page.locator("#xfStale").check(); await wait(page, 300);
+    const stale = await names();
+    if (/Georgia|Marcus/.test(stale)) fail("stale filter kept recently changed files: " + stale); else ok("list filter: no movement in 14+ days");
+    await page.locator("#xfClear").click(); await wait(page, 300);
+    if (await names() !== all0) fail("Clear filters didn't restore the list"); else ok("Clear filters brings everyone back");
+    await page.locator("#xfStage").selectOption("screen"); await wait(page, 400);
+    if (await page.locator("#rosterTitle").textContent() !== "Screening") fail("stage filter didn't switch the list"); else ok("list filter by stage");
+    if (await dataNow() !== before2) fail("read-only additions changed stored data"); else ok("dock, calendar, timeline, Waiting on, filters and appearance saved nothing");
+    await ctx.close();
+  }
+  // ---- Nov 20 extras: flags, tags, follow-ups, board-ready, summary, saved views, deadlines, reports, no-shows, calendar feed, keys
+  {
+    const D = 864e5, iso = d => localDay(Date.now() + d * D);
+    const { ctx, page } = await open(browser, { seed: [
+      ["applicants/f1", { name: "Flora Flagged", email: "flora@example.com", phone: "(315) 555-0177", type: "Associate", location: "Potsdam", app: { received: iso(-30), complete: "yes" }, sched: { noShow: iso(-5) }, updatedAt: Date.now() - D, updatedBy: "dkota@pvrs.org" }],
+      ["applicants/f1/private/main", { mvr: { completed: iso(-20) }, dl: { date: iso(-20), valid: "yes", expires: iso(10) }, appr: { committee: "yes" }, notes: "SECRET NOTE TEXT",
+        refs: { r1: { name: "Late Larry", email: "l@example.com", contacted: iso(-10) }, r2: { name: "R Two", returned: iso(-3) }, r3: { name: "R Three", returned: iso(-3) } },
+        follow: { f1: { text: "Call the chief about Flora", due: iso(-1), at: Date.now() - 3 * D, by: "dkota@pvrs.org", done: "" } }, tags: { emt_student: "EMT student" }, secUpdatedAt: Date.now() - D }]] });
+    await wait(page, 1200);
+    const row = () => page.evaluate(() => [...document.querySelectorAll(".arow,.lcard")].filter(r => /Flora Flagged/.test(r.textContent)).map(r => r.textContent.replace(/\s+/g, " ")).join(" | "));
+    const fr = await row();
+    if (!/Refs late/.test(fr) || !/Expiring/.test(fr) || !/Not board-ready/.test(fr) || !/Follow up/.test(fr) || !/EMT student/.test(fr)) fail("flags/tags on cards: " + fr.slice(0, 400)); else ok("cards and list rows show warning flags (refs late, expiring, not board-ready, follow-up) and tags");
+    if (/Georgia Thurmond[^|]*Refs late/.test(await row())) fail("flag on the wrong person");
+    // To do: the due follow-up, and Done from there
+    const todo = await page.locator(".ovcard.todo").textContent();
+    if (!/Follow up: Call the chief about Flora/.test(todo)) fail("follow-up not in To do: " + todo.slice(0, 300)); else ok("a due follow-up shows in To do");
+    await page.locator('.ovcard.todo [data-todoact="fu_f1"]').click(); await wait(page, 600);
+    if ((await priv(page, "f1")).follow?.f1?.done !== localDay(Date.now())) fail("To do Done didn't mark the follow-up"); else ok("Done in To do marks the follow-up done");
+    // tag filter + saved view
+    await page.locator("#xfBtn").click(); await wait(page, 200);
+    await page.locator("#xfTag").selectOption("EMT student"); await wait(page, 300);
+    const tagged = await page.evaluate(() => [...document.querySelectorAll("#list .arow .nm")].map(x => x.textContent).join("|"));
+    if (tagged !== "Flora Flagged") fail("tag filter: " + tagged); else ok("list filter by tag");
+    page.once("dialog", d => d.accept("EMT students"));
+    await page.locator("#xfSave").click(); await wait(page, 300);
+    await page.locator("#xfClear").click(); await wait(page, 300);
+    await page.locator('#xfViews [data-view="0"]').click(); await wait(page, 400);
+    const again = await page.evaluate(() => [...document.querySelectorAll("#list .arow .nm")].map(x => x.textContent).join("|"));
+    if (again !== "Flora Flagged" || !/EMT students/.test(await page.locator("#xfViews").textContent())) fail("saved view: " + again); else ok("saved views bring back a set of filters with one click (this browser only)");
+    await page.locator("#xfClear").click(); await wait(page, 200);
+    // open the file
+    await pickApplicant(page, "Flora Flagged");
+    await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
+    const br = await page.locator("#brdReady").textContent();
+    if (!/2 things still missing before the board/.test(br) || !/Interview held/.test(br) || await page.locator("#brdReady .brd.no").count() !== 2) fail("board-ready: " + br); else ok("Board tab shows the board-ready check and what's missing");
+    await page.locator('.tabdock [data-tab="iv"]').click(); await wait(page, 300);
+    if (!/Missed 1 interview so far/.test(await page.locator("#nsCount").textContent()) || await page.locator("#nsCount").isHidden()) fail("no-show count"); else ok("Interview tab shows how many interviews they've missed");
+    // keyboard: T goes to the timeline (Notes)
+    await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {}); await page.keyboard.press("t"); await wait(page, 300);
+    if (await page.locator('.tabdock [data-tab="notes"]').getAttribute("aria-selected") !== "true") fail("T didn't open the timeline"); else ok("keyboard T opens the file's timeline");
+    // tags and follow-ups on the Notes tab
+    await page.locator("#tagIn").fill("Needs ride"); await page.locator("#tagIn").press("Enter"); await wait(page, 1200);
+    let pv = await priv(page, "f1");
+    if (pv.tags?.needs_ride !== "Needs ride") fail("tag not saved: " + JSON.stringify(pv.tags)); else ok("adding a tag saves it on the private record");
+    await page.locator('[data-tagrm="needs_ride"]').click(); await wait(page, 1200);
+    pv = await priv(page, "f1");
+    if (pv.tags?.needs_ride !== "" || pv.tags?.emt_student !== "EMT student") fail("tag remove: " + JSON.stringify(pv.tags)); else ok("removing a tag blanks it (nothing deleted)");
+    await page.locator("#fuText").fill("Check on CPR card"); await page.locator("#fuDate").fill(iso(3)); await page.locator("#fuAdd").click(); await wait(page, 1200);
+    pv = await priv(page, "f1");
+    const nf = Object.values(pv.follow || {}).find(f => f.text === "Check on CPR card");
+    if (!nf || nf.due !== iso(3) || nf.by !== "dkota@pvrs.org") fail("follow-up add: " + JSON.stringify(pv.follow)); else ok("adding a follow-up saves text, date and who");
+    // print summary: P key; leaves out notes
+    await page.evaluate(() => { window.print = () => { window.__printed = document.getElementById("print")?.innerText || ""; }; });
+    await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {}); await page.keyboard.press("p"); await wait(page, 400);
+    const pr = await page.evaluate(() => window.__printed || "");
+    if (!/Applicant summary/.test(pr) || !/Flora Flagged/.test(pr) || !/Late Larry/.test(pr) || /SECRET NOTE/.test(pr)) fail("summary print: " + pr.slice(0, 300)); else ok("one-page summary prints (P) and leaves out notes");
+    await page.locator("#overviewBtn").click(); await wait(page, 500);
+    // reports: where members come from
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 200);
+    await page.locator("#palQ").fill("reports"); await page.keyboard.press("Enter"); await wait(page, 400);
+    if (!/Where members come from/.test(await page.locator("#modal").textContent())) fail("reports source table missing"); else ok("Reports shows which sources turn into active members");
+    await page.locator("#modal [data-x]").click(); await wait(page, 200);
+    // orientation deadlines
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 200);
+    await page.locator("#palQ").fill("orientation deadlines"); await page.keyboard.press("Enter"); await wait(page, 400);
+    if (!/Orientation deadlines/.test(await page.locator("#modal").textContent())) fail("deadlines window"); else ok("Orientation deadlines opens from ⌘K");
+    await page.locator("#modal [data-x]").click(); await wait(page, 200);
+    await ctx.close();
+  }
+  // phones: the command bar stays out of the way (the bottom menu is there), filters still reachable
+  {
+    const { ctx, page } = await open(browser, { w: 390, h: 844 });
+    if (await page.locator("#cmdBar").isVisible()) fail("command bar shows on phones"); else ok("phones keep the bottom menu, no command bar");
+    await page.locator("#xfBtn").click(); await wait(page, 200);
+    if (await page.locator("#xfType").isHidden()) fail("filters hidden on phones"); else ok("list filters work on phones");
+    await ctx.close();
+  }
 } catch (e) { errors.push("[harness] " + (e.stack || e.message)); }
 await browser.close();
 console.log(notes.join("\n"));

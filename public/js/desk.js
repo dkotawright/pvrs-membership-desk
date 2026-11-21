@@ -4,7 +4,8 @@ import { app, auth, db, storage, doc, collection, collectionGroup, getDoc, setDo
   GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup, multiFactor, TotpMultiFactorGenerator } from "./fb.js";
 import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
-  progress, statusOf, PHASES, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD } from "./shared.js";
+  progress, statusOf, PHASES, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD,
+  getTheme, setTheme, nextTheme, THEME_LABEL } from "./shared.js";
 import { portalHTML, threadHTML } from "./portal.js";
 import { showTour, maybeTour } from "./tour.js";
 import { FORMS, formByKey, formForItem, formDocHTML, printDoc } from "./forms.js";
@@ -89,6 +90,7 @@ function tabHTML(tab){
     <section class="group noiv"><h3><span>${admin ? "Interviewers' impressions" : "My impressions"}</span></h3><div class="ios" id="impBox"></div></section>
     ${admin ? `<section class="group noiv"><h3><span>Interviewers</span>${S.sched ? `<button class="btn small" type="button" data-act="assigniv">Assign</button>` : ""}</h3><div class="ios" id="ivAssign"></div></section>` : ""}
     ${group("Scheduling",[
+      `<p class="note warn" id="nsCount" hidden></p>`,
       `<div class="row"><span class="lbl">Booked time<small id="bookedEcho">—</small></span><span id="bookedActs" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"></span></div>`,
       F.date("sched.contacted","Applicant contacted"),F.date("sched.scheduled","Interview date (if not booked above)"),F.text("sched.time","Interview time","6:30 PM"),F.date("sched.completed","Interview completed"),F.init("sched.completedInit","Completed by (initials)")])}
     ${group("Who was at the interview",[F.note("Committee members who sat in on the interview. Matches the panel on the completed interview intake."),
@@ -146,6 +148,7 @@ function tabHTML(tab){
     ${admin?group("Committee decision",[F.yn("appr.committee","Committee approval",true)]):""}
   </div>`;
   if (tab === "board") return `${admin && aiOn() ? `<section class="group aibrief"><h3><span>Med Control brief</span>${S.canEdit ? `<button class="btn small" type="button" data-aibrief>Make brief</button>` : ""}</h3><div class="ios" id="aiBrief"></div></section>` : ""}<div class="cols">
+    <section class="group brdready"><h3><span>Ready for the board?</span><small style="font-weight:500;color:var(--fg3)">Checked from the other tabs</small></h3><div class="ios" id="brdReady"></div></section>
     ${group("Membership committee",[`<div class="note warn" id="boardRefNote" hidden></div>`,F.yn("appr.committee","Committee approval",true),F.date("appr.chairNotified","Membership chair notified")])}
     ${group("Board vote",[F.date("board.date","Board meeting date"),F.text("board.motion","Motion by","Name"),F.text("board.second","Seconded by","Name"),
       `<div class="row"><span class="lbl">Vote</span><div class="tally">
@@ -186,6 +189,9 @@ function tabHTML(tab){
     ${group("Admin notes",[`<label class="row stack"><span class="lbl">Only admins see these</span><textarea id="f-notes" data-k="notes" rows="10" placeholder="Anything about this applicant that should stay off the member view"></textarea></label>`])}
     ${group("Status",[F.seg("status","Override",[["open","In process"],["hold","On hold","warn"],["declined","Declined","bad"],["withdrawn","Withdrawn"]],true),
       F.note("“In process” lets the checklist set the stage automatically. Declined is never shown to the applicant; their portal reads as under review until the administrator's letter arrives.")])}
+    <section class="group"><h3><span>Follow-ups</span><small style="font-weight:500;color:var(--fg3)">Reminders for you; they show in To do on the day</small></h3><div class="ios" id="fuList"></div></section>
+    <section class="group"><h3><span>Tags</span><small style="font-weight:500;color:var(--fg3)">Your own labels; filter the list by them</small></h3><div class="ios" id="tagBox"></div></section>
+    <section class="group"><h3><span>Timeline</span><small style="font-weight:500;color:var(--fg3)">Dates from this file, in order (read only)</small></h3><div class="ios tline" id="tlList"></div></section>
     <section class="group"><h3><span>Change history</span><small id="histNote" style="font-weight:500;color:var(--fg3)">Every edit, by whom and when</small></h3><div class="ios hist" id="histList"></div></section>
     <section class="group"><h3><span>Remove</span></h3><div class="ios"><div class="row"><span class="lbl">Delete this applicant, their portal and uploads</span><button class="btn small danger" type="button" id="delBtn">Delete</button></div>
       <div class="row" id="delConfirm" hidden><span class="lbl">This can't be undone.</span><button class="btn small" type="button" id="delCancel">Cancel</button><button class="btn small danger" type="button" id="delYes">Delete permanently</button></div></div></section>
@@ -280,7 +286,8 @@ function paintList(){
   const q = S.q.trim().toLowerCase(), qd = q.replace(/\D/g, "");
   const match = a => !q || (a.name||"").toLowerCase().includes(q) || lower(a.email).includes(q) || (qd.length >= 3 && String(a.phone||"").replace(/\D/g,"").includes(qd));
   const inFilter = r => S.filter==="orient" ? r.or : r.or ? ((S.filter==="all" && !!q) || (S.filter==="act" && r.p.stage==="act")) : S.filter==="all" || (S.filter==="board" ? inBoardQueue(r.a) : PSEUDO[S.filter] ? PSEUDO[S.filter].test(r.a, r.p) : r.p.stage===S.filter);
-  const vis = rows.filter(r => inFilter(r) && match(r.a));
+  const vis = rows.filter(r => inFilter(r) && match(r.a) && xfOk(r.a));
+  paintXf();
   if (SORTS[S.sort]) vis.sort((x,y) => SORTS[S.sort](x,y) || (x.a.name||"").localeCompare(y.a.name||""));
   S.vis = vis.map(r => r.a._id);
   { const pool = S.filter === "orient" ? S.counts.orient : S.counts.all; $("#rosterCount").textContent = S.ready ? (vis.length === pool ? String(pool) : `${vis.length} of ${pool}`) : ""; }
@@ -291,7 +298,7 @@ function paintList(){
     : S.role === "interviewer" ? `<div class="empty"><h3>No interviews assigned</h3>Applicants you're assigned to interview show up here.</div>`
     : `<div class="empty"><h3>No applicants yet</h3>When an application comes in, click <strong>New applicant</strong> or press <kbd>N</kbd> to start their file.</div>`; return; }
   if (!vis.length) { const orientEmpty = S.filter === "orient" && !q;
-    L.innerHTML = `<div class="empty"><h3>${S.filter==="board"&&!q?"Board queue is empty":orientEmpty?"Nobody here yet":"No matches"}</h3>${S.filter==="board"&&!q?"Applicants show up here once the committee approves them.":orientEmpty?(S.canEdit?`People the board approves show up here. Use <strong>Add someone</strong> for a person who didn't apply and is already in orientation.`:"People the board approves show up here."):q?`Nothing matches “${esc(S.q.trim())}”${S.filter!=="all"?` in ${esc(filterLabel(S.filter))}`:""}.`:"Try a different stage."}</div>`; return; }
+    L.innerHTML = xfCount() && !q ? `<div class="empty"><h3>No matches</h3>Nobody in ${esc(filterLabel(S.filter))} fits the filters. <button class="copy" type="button" data-xfclear>Clear filters</button></div>` : `<div class="empty"><h3>${S.filter==="board"&&!q?"Board queue is empty":orientEmpty?"Nobody here yet":"No matches"}</h3>${S.filter==="board"&&!q?"Applicants show up here once the committee approves them.":orientEmpty?(S.canEdit?`People the board approves show up here. Use <strong>Add someone</strong> for a person who didn't apply and is already in orientation.`:"People the board approves show up here."):q?`Nothing matches “${esc(S.q.trim())}”${S.filter!=="all"?` in ${esc(filterLabel(S.filter))}`:""}.`:"Try a different stage."}</div>`; return; }
   L.innerHTML = vis.map(({a,p}) => {
     const d = daysSince(get(a,"app.received"));
     const iv = a._booked ? `${slotDay(a._booked.start)} · ${slotTime(a._booked.start)}` : get(a,"sched.scheduled") ? `${fmtDate(get(a,"sched.scheduled"))}${get(a,"sched.time")?" · "+get(a,"sched.time"):""}` : "";
@@ -306,6 +313,7 @@ function paintList(){
         <span class="r1"><span class="nm">${hl(a.name||"Unnamed applicant", q)}</span><span class="pill">${esc(S.admin ? stat(a, p).pill : STAGES[p.stage].label)}</span></span>
         <span class="meta">${milestoneChip(a)}${get(a,"app.source") === "online" ? `<span class="srctag" title="Applied online">Online</span>` : ""}${get(a,"onb.direct") ? `<span class="srctag" title="Added straight to orientation, no application">Orientation</span>` : ""}${[a.type,loc(a),inProc?`${d} day${d===1?"":"s"}`:null].filter(Boolean).map(esc).join(" · ")||"Details not entered"}</span>
         <span class="next">${nextLine}</span>
+        ${S.admin && (flagsOf(a, p).length || tagsOf(a).length) ? `<span class="flags">${flagHTML(a, p)}${tagHTML(a)}</span>` : ""}
         ${S.admin?`<span class="bar" title="${p.n} of ${MILESTONES.length} steps"><span style="width:${(p.n/MILESTONES.length*100).toFixed(1)}%"></span></span>`:""}
       </span>
     </button>`;
@@ -481,6 +489,8 @@ function todoItems(){
     }
   }
   out.push(...orientToDo());
+  if (S.canEdit) for (const a of S.apps.values()) for (const f of followsDue(a))
+    out.push({ id: a._id, a, pri: 1, text: `Follow up: ${f.text}`, sub: f.due < today() ? `was due ${fmtDate(f.due)}` : "due today", tab: "notes", act: "fu_" + f.key, btn: "Done", age: daysSince(f.due) || 0 });
   return out.sort((x, y) => x.pri - y.pri || y.age - x.age);
 }
 // The interview coordinator's To do: only the interview work, each with the button that does it.
@@ -556,12 +566,12 @@ function boardHTML(rows, c, notSched, inOrientation){
   const card = r => { if (r.p.stage === "act") return member(r); const a = r.a, st = stat(a, r.p), d = daysSince(get(a, "app.received")), pct = Math.round(r.p.n / MILESTONES.length * 100);
     return `<button class="lcard${need.has(a._id) ? " need" : ""}" type="button" data-open="${esc(a._id)}"><span class="lc-top"><span class="av" aria-hidden="true">${esc(initials(a.name))}</span>
         <span class="lc-who"><b>${esc(a.name || "Unnamed applicant")}</b><small>${d != null ? `Day ${d}` : esc(a.type || "")}</small></span>${need.has(a._id) ? PING : ""}</span>
-      <span class="lc-st">${esc(st.head.replace(/^Next: /, ""))}</span><span class="lc-bar" aria-hidden="true"><i style="width:${pct}%"></i></span></button>`; };
+      <span class="lc-st">${esc(st.head.replace(/^Next: /, ""))}</span>${flagsOf(a, r.p).length || tagsOf(a).length ? `<span class="flags">${flagHTML(a, r.p)}${tagHTML(a)}</span>` : ""}<span class="lc-bar" aria-hidden="true"><i style="width:${pct}%"></i></span></button>`; };
   return `<div class="lanes" role="group" aria-label="The board">${cols.map(([k, label, n, sub]) => { const lane = k === "orient" ? "onb" : k, list = rows.filter(r => inCol(r, k));
     return `<section class="lane${k === "act" ? " lane-act" : ""}" style="--stage-c:${stageVar(lane)}" aria-label="${label}">
       <button class="stg lhead" type="button" data-filter="${k}"><span class="k">${label}</span>${sub ? `<span class="s">${esc(sub)}</span>` : ""}<span class="v">${n}</span></button>
       ${list.length ? `<div class="lane-list">${list.map(card).join("")}</div>` : `<div class="lempty">${k === "orient" ? "Approve at the board and the file moves here on its own." : k === "act" ? "Squad members show up here once they finish onboarding." : "All clear in this lane."}</div>`}
-      ${k === "orient" && S.canEdit ? `<button class="lmore" type="button" data-oadd>Add someone</button>` : ""}</section>`; }).join("")}</div>`;
+      ${k === "orient" && S.canEdit ? `<button class="lmore" type="button" data-oadd>Add someone</button>` : ""}${k === "orient" && list.length ? `<button class="lmore" type="button" data-cmd="deadlines">Deadlines</button>` : ""}</section>`; }).join("")}</div>`;
 }
 
 /* ---------- year at a glance (overview) ---------- */
@@ -596,7 +606,11 @@ function reportData(){
   const waiting = open.map(r => ({ ...r, d: daysSince(g(r.a, "app.received")) || 0 })).sort((x, y) => y.d - x.d);
   const stalled = open.map(r => ({ ...r, idle: lastTouched(r.a) ? Math.floor((Date.now() - lastTouched(r.a)) / 864e5) : 0 })).filter(r => r.idle >= 14).sort((x, y) => y.idle - x.idle);
   const byPhase = PHASES.map(([k, label]) => { const l = waiting.filter(r => r.p.stage === k); return { label, n: l.length, avg: avg(l.map(r => r.d)) }; });
-  return { spans, waiting, stalled, byPhase };
+  // Where members come from: applications and active members per "How did you hear" answer.
+  const src = new Map(); all.forEach(a => { const k = g(a, "app.heard") || (g(a, "app.source") === "online" ? "Not answered (online)" : "Not recorded"); const x = src.get(k) || { apps: 0, act: 0, appr: 0 };
+    x.apps++; if (progress(a).stage === "act") x.act++; if (g(a, "board.result") === "approved") x.appr++; src.set(k, x); });
+  const sources = [...src.entries()].sort((x, y) => y[1].act - x[1].act || y[1].apps - x[1].apps);
+  return { spans, waiting, stalled, byPhase, sources };
 }
 function openReports(){
   if (!S.admin) return;
@@ -608,6 +622,8 @@ function openReports(){
     <table class="rpt">${r.byPhase.map(p => `<tr><th>${esc(p.label)}</th><td><b>${p.n}</b></td><td>${p.n ? "applied " + d(p.avg) + " ago on average" : ""}</td></tr>`).join("")}</table>
     <h4>No movement in 14 days or more</h4>
     ${r.stalled.length ? `<table class="rpt">${r.stalled.map(x => `<tr><th>${who(x)}</th><td><b>${x.idle} days</b></td><td>${esc(stat(x.a, x.p).head)}</td></tr>`).join("")}</table>` : `<p class="help">Nobody is stalled. 🎉</p>`}
+    <h4>Where members come from<small> · how they heard about PVRS</small></h4>
+    ${r.sources.length ? `<table class="rpt"><tr><th></th><td><b>Applied</b></td><td><b>Board approved</b></td><td><b>Active members</b></td></tr>${r.sources.map(([k, x]) => `<tr><th>${esc(k)}</th><td>${x.apps}</td><td>${x.appr}</td><td><b>${x.act}</b>${x.apps ? ` (${Math.round(x.act / x.apps * 100)}%)` : ""}</td></tr>`).join("")}</table>` : `<p class="help">No applications yet.</p>`}
     <h4>Waiting longest</h4>
     ${r.waiting.length ? `<table class="rpt">${r.waiting.slice(0, 10).map(x => `<tr><th>${who(x)}</th><td><b>${d(x.d)}</b></td><td>${esc(stat(x.a, x.p).head)}</td></tr>`).join("")}</table>` : `<p class="help">Nobody is in process.</p>`}`;
   const M = openModal(`<h3>Reports</h3><div class="rptwrap">${body}</div><div class="acts"><button class="btn" type="button" data-x>Close</button><button class="btn" type="button" id="rpPrint">Print</button></div>`, true);
@@ -706,7 +722,7 @@ function renderOverview(){
       <div class="ovquick">${S.admin ? `<button class="btn small" type="button" data-cmd="board">Board meeting${c.board ? ` <b class="qcount">${c.board}</b>` : ""}</button>` : ""}<button class="btn small" type="button" data-cmd="palette">Search <kbd>⌘K</kbd></button></div></div>
     <div class="stages">${stage("screen", "Screening")}${stage("int", "Interview", S.admin && notSched ? `${notSched} not scheduled yet` : "")}${stage("appr", "Approval", S.admin && c.board ? `${c.board} on the board queue` : "")}${S.admin ? `<button class="stg" type="button" data-filter="orient" style="--stage-c:${stageVar("onb")}"><span class="v">${c.orient || 0}</span><span class="k">Onboard</span>${inOrientation ? `<span class="s">${inOrientation} in orientation</span>` : ""}</button>` : stage("onb", "Onboard")}${stage("act", "Active members")}</div>`}
     ${S.role !== "member" ? `<div id="ovRoster" class="ovroster"></div>` : ""}
-    ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}
+    ${S.admin ? `<div class="ovmain"><div class="ovcol">${todoCard()}${waitingCard()}
       ${unreadChatTotal() ? `<section class="ovcard"><h3>New messages<button class="btn small" type="button" data-cmd="inbox">Open messages</button></h3><div class="olist">${[...new Set(S.msgs.filter(m => S.apps.has(m.appId) && unreadIn("a:" + m.appId)).map(m => m.appId))].slice(0,5).map(id => { const a = S.apps.get(id), t = threadOf(id), last = t[t.length-1];
         return `<button class="oitem" type="button" data-openmsg="${esc(id)}"><span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name)}</b><small>${esc(last.text.slice(0, 80))}</small></span><span class="when"><span class="newdot"></span>${esc(ago(last.at))}</span></button>`; }).join("")}</div></section>` : ""}
       ${S.owner && !S.assistant && S.requests.length ? `<section class="ovcard"><h3>Team access requests<button class="btn small primary" type="button" data-cmd="team">Review</button></h3><div class="olist">${S.requests.slice(0,5).map(q => `<div class="oitem" style="cursor:default"><span class="av" aria-hidden="true">${esc(initials(q.name || q.email))}</span><span class="ot"><b>${esc(q.name || q.email)}</b><small>${esc(q.email)}${q.note ? " · " + esc(q.note) : ""}</small></span><span class="when">${esc(ago(q.requestedAt))}</span></div>`).join("")}</div></section>` : ""}</div>
@@ -832,6 +848,8 @@ function paintDetail(){
           <button class="btn small" type="button" data-act="docs" title="Request documents">${ICON.doc}<span class="tl">Request docs</span></button>
           <button class="btn small" type="button" data-act="preview" title="See their applicant portal">${ICON.eye}<span class="tl">Portal</span></button>
           <button class="btn small" type="button" data-act="printapp" title="Print the original application">${ICON.print}<span class="tl">Application</span></button>
+          <button class="btn small" type="button" data-act="summary" title="Print a one-page summary (P)">${ICON.doc}<span class="tl">Summary</span></button>
+          ${S.canEdit ? `<button class="btn small" type="button" data-act="followup" title="Add a follow-up reminder (F)">${ICON.cal}<span class="tl">Remind me</span></button>` : ""}
           ${S.canEdit ? `<button class="btn small hdel" type="button" data-act="delete" title="Delete this applicant">${ICON.trash}<span class="tl">Delete</span></button>` : ""}
           <button class="btn small hmore" type="button" data-act="actions" aria-haspopup="dialog"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.5" cy="8" r="1.4" fill="currentColor"/></svg>Actions</button>
         </div>` : ""}</div>
@@ -889,7 +907,7 @@ function syncDetail(){
     const cal = a._booked ? `<button class="btn small" type="button" data-act="ics" title="Add to Calendar">${ICON.cal}<span class="tl">Calendar</span></button>` : "";
     $("#bookedActs").innerHTML = cal + (S.admin ? (a._booked ? `${S.sched && a._booked.start < Date.now() && !get(a, "sched.completed") ? `<button class="btn small" type="button" data-act="noshow" title="They didn't come: reopen booking and write to them">No-show</button>` : ""}<button class="btn small" type="button" data-act="book">Change</button><button class="btn small danger" type="button" data-act="release">Release</button>` : `<button class="btn small" type="button" data-act="book">Book a time</button>`) : "");
   }
-  renderImpressions(); renderDocs(a); renderHistory(); syncRefs(a); updateMsgBadges(); renderInterviewers(a); renderDupeNote(a); renderOrientTab(a);
+  renderImpressions(); renderDocs(a); renderHistory(); renderTimeline(a); renderBoardReady(a); renderTags(a); renderFollows(a); renderNoShows(a); syncRefs(a); updateMsgBadges(); renderInterviewers(a); renderDupeNote(a); renderOrientTab(a);
   if (S.tab === "msgs" && !$("#dThread")?.childElementCount) renderMessages();
   syncSignoff(a);
   const dlr = $("#dlFromApp"); if (dlr) { const n = get(a, "form.person.dlNumber"); dlr.hidden = !n; if (n) { $("#dlNum").textContent = n; $("#dlFromAppNote").textContent = `Issued in ${get(a, "form.person.dlState") || "—"} · admins only`; } }
@@ -1097,7 +1115,7 @@ function watchHistory(id){
   if (!S.admin || !id) return;
   histUnsub = onSnapshot(collection(db, "applicants", id, "history"), s => {
     S.hist = s.docs.map(d => d.data()).sort((x,y) => (y.at||0) - (x.at||0));
-    if (S.sel === id) renderHistory();
+    if (S.sel === id) { renderHistory(); renderNoShows(S.apps.get(id)); }
   }, () => {});
 }
 let LABELS = null;
@@ -1121,6 +1139,256 @@ function segValues(){
 }
 const histVal = (v, path) => { if (v === "") return "blank"; const sv = segValues()[path]; if (sv && sv[v]) return sv[v];
   return v === "yesbad" || v === "yes" || v === "true" ? "Yes" : v === "no" ? "No" : /^\d{4}-\d{2}-\d{2}$/.test(v) ? fmtDate(v) : v; };
+/* ---------- health flags, board-ready check, tags, follow-ups (Nov 20) ---------- */
+// Board-ready: what has to be in place before a file goes on the board agenda (read only).
+const boardReadyList = a => [["Application complete", get(a, "app.complete") === "yes"], ["Driving record (MVR)", !!get(a, "mvr.completed")],
+  ["Driver's license verified", !!get(a, "dl.date") && get(a, "dl.valid") === "yes"], [`References (${refStatus(a).got} of ${REFS_NEEDED})`, refStatus(a).done],
+  ["Interview held", !!get(a, "sched.completed")], ["Committee approval", get(a, "appr.committee") === "yes"]];
+const boardReady = a => boardReadyList(a).every(x => x[1]);
+function renderBoardReady(a){
+  const el = $("#brdReady"); if (!el || !a) return;
+  const l = boardReadyList(a), miss = l.filter(x => !x[1]).length;
+  el.innerHTML = `<div class="brd-sum ${miss ? "no" : "yes"}">${miss ? `${miss} thing${miss === 1 ? "" : "s"} still missing before the board` : "Ready for the board"}</div>
+    <div class="brd-list">${l.map(([t, ok]) => `<span class="brd ${ok ? "ok" : "no"}"><i aria-hidden="true">${ok ? "✓" : "✗"}</i>${esc(t)}<span class="sr-only">${ok ? " done" : " missing"}</span></span>`).join("")}</div>`;
+}
+// Small warning flags on list rows and lane cards (read only).
+function flagsOf(a, p){
+  if (!S.admin || isClosedFile(a)) return [];
+  const out = [], now = Date.now(), dayMs = 864e5;
+  const late = [1, 2, 3, 4].some(i => { const r = get(a, `refs.r${i}`) || {}; if (!String(r.name || "").trim() || (r.returned && !r.replace) || r.form) return false;
+    const sent = r.linkAt || (r.contacted ? new Date(r.contacted + "T12:00").getTime() : 0); return sent && now - sent >= 7 * dayMs; });
+  if (late) out.push(["refs", "Refs late", "A reference was asked 7+ days ago and hasn't answered"]);
+  for (const [k, label] of EXPIRES) { const d = get(a, k); if (!d) continue; const n = Math.round((new Date(d + "T12:00") - now) / dayMs);
+    if (n <= 30) { out.push(["exp", n < 0 ? "Expired" : "Expiring", `${label} ${n < 0 ? "expired" : "expires"} ${longDate(d)}`]); break; } }
+  if (a._booked && a._booked.start > now && !(a.interviewers || []).length) out.push(["noiv", "No interviewer", "Interview booked but nobody is assigned to interview"]);
+  const waitingBoard = get(a, "appr.committee") === "yes" && !get(a, "board.result");
+  if (IN_PROCESS.includes(p.stage) && !waitingBoard && lastTouched(a) && now - lastTouched(a) >= 14 * dayMs) out.push(["stall", "Stalled", `No changes in ${Math.floor((now - lastTouched(a)) / dayMs)} days`]);
+  if (waitingBoard && !boardReady(a)) out.push(["brd", "Not board-ready", "On the board queue with steps still missing"]);
+  if (followsDue(a).length) out.push(["fu", "Follow up", followsDue(a).map(f => f.text).join("; ")]);
+  return out;
+}
+const flagHTML = (a, p) => flagsOf(a, p).map(([k, l, t]) => `<span class="flag f-${k}" title="${esc(t)}">${esc(l)}</span>`).join("");
+// Tags: private record, tags.<slug> = label ("" = removed).
+const tagSlug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 30);
+const tagsOf = a => Object.values(get(a, "tags") || {}).filter(x => typeof x === "string" && x.trim());
+const allTags = () => [...new Set([...S.apps.values()].flatMap(tagsOf))].sort((x, y) => x.localeCompare(y));
+const tagHTML = a => tagsOf(a).map(t => `<span class="tagchip">${esc(t)}</span>`).join("");
+function renderTags(a){
+  const el = $("#tagBox"); if (!el || !a) return;
+  const list = Object.entries(get(a, "tags") || {}).filter(([, v]) => typeof v === "string" && v.trim());
+  el.innerHTML = `<div class="tagrow">${list.length ? list.map(([k, v]) => `<span class="tagchip big">${esc(v)}${S.canEdit ? `<button type="button" data-tagrm="${esc(k)}" aria-label="Remove tag ${esc(v)}">×</button>` : ""}</span>`).join("") : `<span class="help">No tags yet.</span>`}</div>
+    ${S.canEdit ? `<div class="row"><input type="text" id="tagIn" list="tagList" maxlength="24" placeholder="Add a tag, e.g. EMT student" autocomplete="off" aria-label="New tag"><datalist id="tagList">${allTags().map(t => `<option value="${esc(t)}">`).join("")}</datalist><button class="btn small" type="button" id="tagAdd">Add</button></div>` : ""}`;
+}
+function addTag(){
+  const inp = $("#tagIn"); if (!inp || !S.sel) return; const v = inp.value.trim().replace(/\s+/g, " ").slice(0, 24), k = tagSlug(v);
+  if (!k) return; edit(S.sel, `tags.${k}`, v); inp.value = ""; renderTags(S.apps.get(S.sel)); renderList(); $("#tagIn")?.focus();
+}
+// Follow-ups: private record, follow.<key> = { text, due, at, by, done, removed }.
+const followsOf = a => Object.entries(get(a, "follow") || {}).filter(([, f]) => f && f.text && !f.removed).map(([key, f]) => ({ key, ...f })).sort((x, y) => String(x.due || "9").localeCompare(String(y.due || "9")));
+const followsDue = a => followsOf(a).filter(f => !f.done && f.due && f.due <= today());
+function renderFollows(a){
+  const el = $("#fuList"); if (!el || !a) return;
+  const l = followsOf(a);
+  el.innerHTML = (l.length ? l.map(f => { const due = f.due && !f.done && f.due <= today();
+    return `<div class="row furow${f.done ? " done" : ""}${due ? " due" : ""}"><span class="lbl">${esc(f.text)}<small>${f.done ? `Done ${esc(fmtDate(f.done))}` : f.due ? `${due ? "Due" : "Remind me"} ${esc(longDate(f.due))}` : "No date"}${f.by ? " · " + esc(personName(f.by) || f.by) : ""}</small></span>
+      ${S.canEdit ? `<button class="btn small${f.done ? "" : " primary"}" type="button" data-fudone="${esc(f.key)}">${f.done ? "Undo" : "Done"}</button><button class="btn small" type="button" data-furm="${esc(f.key)}" aria-label="Remove this follow-up">Remove</button>` : ""}</div>`; }).join("")
+    : `<div class="row"><span class="lbl" style="color:var(--fg2)">No follow-ups. Add one and it shows up in To do on that day.</span></div>`)
+    + (S.canEdit ? `<div class="row fuadd"><input type="text" id="fuText" maxlength="200" placeholder="e.g. Call Ann Lee about her reference" autocomplete="off" aria-label="Follow-up"><input type="date" id="fuDate" aria-label="Remind me on" value="${esc(today())}"><button class="btn small primary" type="button" id="fuAdd">Add</button></div>` : "");
+}
+function addFollow(){
+  const t = $("#fuText"), d = $("#fuDate"); if (!t || !S.sel) return; const text = t.value.trim(); if (!text) { t.focus(); return; }
+  edit(S.sel, `follow.f${Date.now()}`, { text, due: d.value || today(), at: Date.now(), by: S.me, done: "" });
+  toast("Follow-up added"); renderFollows(S.apps.get(S.sel));
+}
+function openFollowUp(){ if (!S.sel || !S.admin) return; if (S.tab !== "notes") switchTab("notes"); setTimeout(() => { $("#fuText")?.scrollIntoView({ block: "center" }); $("#fuText")?.focus(); }, 80); }
+// No-shows: counted from the change history (each time "Missed interview" was marked); nothing new is stored.
+function renderNoShows(a){
+  const el = $("#nsCount"); if (!el || !a) return;
+  const n = S.hist.filter(h => (h.changes || []).some(c => c.path === "sched.noShow" && c.to)).length || (get(a, "sched.noShow") ? 1 : 0);
+  el.hidden = !n; el.textContent = n ? `Missed ${n} interview${n === 1 ? "" : "s"} so far${get(a, "sched.noShow") ? ` (last ${fmtDate(get(a, "sched.noShow"))})` : ""}` : "";
+}
+
+/* ---------- file summary (Nov 20, print only): one page for a chief or the board ---------- */
+function printSummary(id){
+  const a = S.apps.get(id); if (!a || !S.admin) return;
+  const p = progress(a), rs = refStatus(a), tl = timelineOf(a), st = stat(a, p);
+  const row = (k, v) => v ? `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>` : "";
+  const bres = { approved: "Approved", tabled: "Tabled", denied: "Denied" }[get(a, "board.result")] || "";
+  printHTML(`<section class="pk"><header><img src="/img/logo.png" alt=""><div><div class="pk-k">Applicant summary</div><h1>${esc(a.name || "Applicant")}</h1></div></header>
+    <h2>Contact</h2><table class="pk-t">${row("Email", a.email)}${row("Phone", a.phone)}${row("Membership type", a.type)}${row("Location", loc(a))}${row("Applied", get(a, "app.received") ? longDate(get(a, "app.received")) : "")}</table>
+    <h2>Where things stand</h2><table class="pk-t">${row("Stage", st.pill)}${row("Status", st.head)}${row("Steps done", `${p.n} of ${MILESTONES.length}`)}${row("Next step", p.next || "")}</table>
+    <h2>Steps</h2><table class="pk-t">${MILESTONES.map((m, i) => `<tr><th>${esc(m[0])}</th><td>${p.done[i] ? "✓ Done" : "Not yet"}</td></tr>`).join("")}</table>
+    <h2>References</h2><table class="pk-t">${rs.list.length ? rs.list.map(r => `<tr><th>${esc(r.name)}</th><td>${r.received ? "Received" : r.replace ? "Being replaced" : "Waiting"}</td></tr>`).join("") : `<tr><td>None entered</td></tr>`}</table>
+    <h2>Interview and board</h2><table class="pk-t">${row("Interview", get(a, "sched.completed") ? "Held " + longDate(get(a, "sched.completed")) : a._booked ? "Booked " + slotLong(a._booked.start) : "Not yet")}${row("Committee", get(a, "appr.committee") === "yes" ? "Recommends approval" : get(a, "appr.committee") === "no" ? "Does not recommend" : "No decision yet")}${row("Board", bres ? `${bres}${get(a, "board.date") ? " · " + longDate(get(a, "board.date")) : ""}` : "Not voted yet")}${row("Background check", get(a, "bg.sterDone") ? "Complete" : get(a, "bg.sterReq") ? "Requested" : "Not started")}</table>
+    ${tl.length ? `<h2>Timeline</h2><table class="pk-t">${tl.map(x => `<tr><th>${esc(x.d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }))}</th><td>${esc(x.label)}</td></tr>`).join("")}</table>` : ""}
+    <footer>Potsdam Volunteer Rescue Squad · Confidential · printed ${esc(new Date().toLocaleDateString())}. Leaves out notes, license number, check results and reference answers.</footer></section>`);
+}
+
+/* ---------- orientation deadlines (Nov 20, read only) ---------- */
+function openOrientDeadlines(){
+  const rows = [...S.apps.values()].filter(a => inOrient(a) && orientOpen(a) && view(a).stage !== "act").map(a => ({ a, c: orientCounts(a), l: orientDaysLeft(a), due: orientDue(a) }))
+    .sort((x, y) => (x.l ?? 1e9) - (y.l ?? 1e9));
+  const M = openModal(`<h3>Orientation deadlines</h3><p class="help">Everyone in orientation, soonest deadline first.${+S.settings.orientDays ? ` Deadline = ${+S.settings.orientDays} days after moving to orientation (Settings).` : " No deadline is set in Settings, so nobody has a due date."}</p>
+    <div class="olist">${rows.length ? rows.map(({ a, c, l, due }) => `<button class="oitem odl${l !== null && l < 0 ? " late" : l !== null && l <= 7 ? " soon" : ""}" type="button" data-odl="${esc(a._id)}"><span class="av" style="--stage-c:var(--s-onb)" aria-hidden="true">${esc(initials(a.name))}</span>
+      <span class="ot"><b>${esc(a.name || "New member")}</b><small>${c.done} of ${c.total} done</small><span class="odl-bar" aria-hidden="true"><i style="width:${c.total ? Math.round(c.done / c.total * 100) : 0}%"></i></span></span>
+      <span class="when"><b>${l === null ? "No deadline" : l < 0 ? `${-l} day${l === -1 ? "" : "s"} late` : l === 0 ? "Due today" : `${l} day${l === 1 ? "" : "s"} left`}</b>${due ? esc(fmtDate(due)) : ""}</span></button>`).join("") : `<div class="oempty">Nobody is in orientation right now.</div>`}</div>
+    <div class="acts"><button class="btn" type="button" data-x>Close</button></div>`);
+  M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const o = e.target.closest("[data-odl]"); if (o) { closeModal(); setTimeout(() => { select(o.dataset.odl); if (S.tab !== "onb") switchTab("onb"); }, 60); } };
+}
+
+/* ---------- saved list views (Nov 20): stage + filters + sort, saved in this browser only ---------- */
+const views = () => { try { return JSON.parse(prefs.get("views") || "[]"); } catch { return []; } };
+function paintViews(){
+  const el = $("#xfViews"); if (!el) return; const v = views();
+  el.innerHTML = v.map((x, i) => `<span class="vchip"><button type="button" data-view="${i}">${esc(x.name)}</button><button type="button" data-viewrm="${i}" aria-label="Forget view ${esc(x.name)}">×</button></span>`).join("")
+    + `<button class="btn small" type="button" id="xfSave">Save this view</button>`;
+}
+function saveView(){
+  const name = (prompt("Name this view (saved in this browser only):", "") || "").trim().slice(0, 30); if (!name) return;
+  const v = views().filter(x => x.name !== name); v.push({ name, filter: S.filter, xf: { ...S.xf }, sort: S.sort }); prefs.set("views", JSON.stringify(v.slice(-12))); paintViews(); toast(`Saved “${name}”`);
+}
+function useView(i){
+  const x = views()[i]; if (!x) return; S.xf = { type: "", loc: "", stale: false, tag: "", ...x.xf };
+  if (x.sort && (SORTS[x.sort] || x.sort === "stage")) { S.sort = x.sort; const ss = $("#sort"); if (ss) ss.value = x.sort; }
+  setFilter(x.filter || "all");
+}
+
+/* ---------- file timeline (Nov 20, read only): the dates already entered on the file, in order ---------- */
+const TIMELINE = [["app.received", "Application received"], ["portal.welcomed", "Welcomed to the portal"], ["mvr.completed", "Driving record (MVR) done"], ["dl.date", "Driver's license checked"],
+  ["sched.contacted", "Contacted about the interview"], ["sched.scheduled", "Interview date"], ["sched.completed", "Interview held"], ["appr.chairNotified", "Membership chair notified"],
+  ["board.date", "Board vote"], ["bg.sterReq", "Sterling background check requested"], ["bg.sterDone", "Sterling background check finished"], ["notify.applicant", "Applicant notified"],
+  ["onb.orientStarted", "Moved to orientation"], ["notify.orientation", "Orientation notified"], ["notify.chief", "Chief notified for duty crew"], ["notify.tech", "Tech chair notified"], ["onb.memberSince", "Became a squad member"]];
+const asDay = v => { if (v == null || v === "" || v === true) return null; if (typeof v === "number") return v > 1e11 ? new Date(v) : null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v)); if (m) return new Date(+m[1], +m[2] - 1, +m[3]); const d = new Date(v); return isNaN(d) ? null : d; };
+function timelineOf(a){
+  const out = [];
+  TIMELINE.forEach(([k, label]) => { const d = asDay(get(a, k)); if (!d) return;
+    const extra = k === "board.date" && get(a, "board.result") ? `: ${({ approved: "Approved", tabled: "Tabled", denied: "Denied" })[get(a, "board.result")] || get(a, "board.result")}` : k === "sched.scheduled" && get(a, "sched.time") ? ` · ${get(a, "sched.time")}` : "";
+    out.push({ d, label: label + extra }); });
+  refList(a).forEach(r => { const d = asDay(r.returned); if (d) out.push({ d, label: `Reference received: ${r.name}` }); });
+  if (a._booked && !asDay(get(a, "sched.scheduled"))) out.push({ d: new Date(a._booked.start), label: `Interview booked for ${slotTime(a._booked.start)}` });
+  return out.sort((x, y) => x.d - y.d);
+}
+function renderTimeline(a){
+  const el = $("#tlList"); if (!el || !a) return;
+  const list = timelineOf(a);
+  if (!list.length) { el.innerHTML = `<div class="row"><span class="lbl" style="color:var(--fg2)">No dates entered yet. Dates from the other tabs show up here in order.</span></div>`; return; }
+  const today0 = new Date(); today0.setHours(0, 0, 0, 0);
+  el.innerHTML = list.map((x, i) => { const gap = i ? Math.round((x.d - list[i - 1].d) / 864e5) : null, future = x.d > today0;
+    return `<div class="tl-row${future ? " future" : ""}"><span class="tl-dot" aria-hidden="true"></span><span class="tl-t"><b>${esc(x.label)}</b><small>${esc(x.d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" }))}${gap ? ` · ${gap} day${gap === 1 ? "" : "s"} later` : ""}${future ? " · coming up" : ""}</small></span></div>`; }).join("");
+}
+
+/* ---------- list filters (Nov 20, read only): stage, membership type, location, no movement in 14+ days ---------- */
+S.xf = { type: "", loc: "", stale: false, tag: "" };
+const xfCount = () => (S.xf.type ? 1 : 0) + (S.xf.loc ? 1 : 0) + (S.xf.stale ? 1 : 0) + (S.xf.tag ? 1 : 0);
+const xfOk = a => (!S.xf.type || a.type === S.xf.type) && (!S.xf.loc || (S.xf.loc === "Potsdam" ? a.location === "Potsdam" : !!a.location && a.location !== "Potsdam"))
+  && (!S.xf.stale || Date.now() - lastTouched(a) >= 14 * 864e5) && (!S.xf.tag || tagsOf(a).includes(S.xf.tag));
+function paintXf(){
+  const b = $("#xfBtn"), row = $("#xfRow"); if (!b || !row) return;
+  const n = xfCount(); b.textContent = n ? `Filters · ${n}` : "Filters"; b.classList.toggle("on", !!n || !row.hidden);
+  const st = $("#xfStage"); if (st) { const keys = [...document.querySelectorAll("#chipsMini [data-f]")].map(x => x.dataset.f);
+    const want = keys.map(k => `<option value="${k}"${S.filter === k ? " selected" : ""}>${esc(filterLabel(k))}</option>`).join("");
+    if (st._h !== want) { st.innerHTML = want; st._h = want; } st.value = S.filter; }
+  $("#xfType").value = S.xf.type; $("#xfLoc").value = S.xf.loc; $("#xfStale").checked = S.xf.stale; $("#xfClear").hidden = !n;
+  { const tg = $("#xfTag"), tags = allTags(), want = `<option value="">Any tag</option>` + tags.map(t => `<option>${esc(t)}</option>`).join("");
+    if (tg) { if (tg._h !== want) { tg.innerHTML = want; tg._h = want; } tg.value = S.xf.tag; tg.closest("label").hidden = !tags.length && !S.xf.tag; } }
+}
+function wireXf(){
+  const row = $("#xfRow"); if (!row) return;
+  $("#xfType").innerHTML = `<option value="">Any type</option>` + TYPES.map(t => `<option>${esc(t)}</option>`).join("");
+  $("#xfBtn").addEventListener("click", () => { row.hidden = !row.hidden; $("#xfBtn").setAttribute("aria-expanded", String(!row.hidden)); paintXf(); if (!row.hidden) $("#xfStage").focus(); });
+  row.addEventListener("change", e => { const t = e.target;
+    if (t.id === "xfStage") return setFilter(t.value);
+    if (t.id === "xfType") S.xf.type = t.value; if (t.id === "xfLoc") S.xf.loc = t.value; if (t.id === "xfStale") S.xf.stale = t.checked; if (t.id === "xfTag") S.xf.tag = t.value;
+    renderList(); });
+  document.addEventListener("click", e => { if (e.target.closest("#xfClear,[data-xfclear]")) { S.xf = { type: "", loc: "", stale: false, tag: "" }; renderList(); } });
+  paintViews();
+  $("#xfViews").addEventListener("click", e => { if (e.target.closest("#xfSave")) return saveView();
+    const u = e.target.closest("[data-view]"); if (u) return useView(+u.dataset.view);
+    const r = e.target.closest("[data-viewrm]"); if (r) { const v = views(); v.splice(+r.dataset.viewrm, 1); prefs.set("views", JSON.stringify(v)); paintViews(); } });
+}
+function openFilters(){
+  const row = $("#xfRow"); if (!row) return;
+  if (matchMedia("(max-width:860px)").matches) mnavGo("list"); else if (S.sel) deselect(); else if (S.chatOn) { closeChat(); renderDetail(); }
+  if (row.hidden) $("#xfBtn").click();
+  setTimeout(() => { $("#xfRow")?.scrollIntoView({ block: "center" }); $("#xfStage")?.focus(); }, 80);
+}
+
+/* ---------- waiting on (Nov 20, read only): who each open file is waiting for ---------- */
+// References: not enough answers yet. The applicant: a time to pick, documents or a new reference they were asked
+// for. You: the next step is the squad's. A file can be in more than one.
+function waitingOn(){
+  const out = { refs: [], appl: [], you: [] };
+  sorted().forEach(({ a, p }) => {
+    const or = inOrient(a);
+    if (isClosedFile(a) || p.stage === "act" || p.stage === "hold" || (!or && !IN_PROCESS.includes(p.stage))) return;
+    const rs = refStatus(a), why = [];
+    const refsOpen = !or && !rs.done;
+    if (refsOpen) out.refs.push({ a, p, sub: rs.list.length ? `${rs.got} of ${rs.need} in · waiting on ${rs.pending.filter(r => !r.replace).map(r => r.name).join(", ") || "a new reference"}` : "No references entered yet" });
+    if (rs.list.some(r => r.replace)) why.push("a new reference");
+    const docs = requestedDocs(a).filter(d => !d.received); if (docs.length) why.push(docs.length === 1 ? docs[0].label : `${docs.length} documents`);
+    const bookOpen = !or && p.cur === 5 && get(a, "portal.bookingOpen") === "yes" && !a._booked;
+    if (bookOpen) why.push("an interview time");
+    const onbReq = Object.keys(get(a, "onb.requested") || {}).filter(k => get(a, "onb.requested." + k) && !get(a, "onb.items." + k)).length;
+    if (onbReq) why.push(`${onbReq} orientation document${onbReq === 1 ? "" : "s"}`);
+    if (why.length) out.appl.push({ a, p, sub: "To send " + why.join(", ") });
+    const theirMove = (p.cur === 4 && refsOpen) || bookOpen;
+    if (!theirMove && (p.next || or)) out.you.push({ a, p, sub: stat(a, p).head.replace(/^Next: /, "") });
+  });
+  return out;
+}
+function waitingCard(){
+  const w = waitingOn(), tab = S.waitTab || "you";
+  const tabs = [["you", "You"], ["appl", "The applicant"], ["refs", "References"]];
+  const list = w[tab];
+  return `<section class="ovcard waitcard" id="waitCard"><h3>Waiting on<small>Who each open file is waiting for</small></h3>
+    <div class="wseg" role="group" aria-label="Waiting on">${tabs.map(([k, l]) => `<button type="button" data-wait="${k}" aria-pressed="${tab === k}">${l} <b>${w[k].length}</b></button>`).join("")}</div>
+    <div class="olist">${list.length ? list.slice(0, S.waitAll ? 99 : 6).map(({ a, p, sub }) => `<button class="oitem" type="button" data-open="${esc(a._id)}"><span class="av" style="--stage-c:${stageVar(laneOf(a, p))}" aria-hidden="true">${esc(initials(a.name))}</span><span class="ot"><b>${esc(a.name || "Unnamed applicant")}</b><small>${esc(sub)}</small></span><span class="when">${esc(ago(lastTouched(a)))}</span></button>`).join("")
+      : `<div class="oempty">${tab === "you" ? "Nothing is waiting on you." : tab === "appl" ? "Nobody owes the squad anything right now." : "No references outstanding."}</div>`}
+      ${list.length > 6 ? `<button class="lmore" type="button" data-waitall>${S.waitAll ? "Show fewer" : `Show all ${list.length}`}</button>` : ""}</div></section>`;
+}
+function openWaiting(){
+  if (matchMedia("(max-width:860px)").matches) mnavGo("ov"); else if (S.sel) deselect(); else if (S.chatOn) { closeChat(); renderDetail(); }
+  setTimeout(() => $("#waitCard")?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion:reduce)").matches ? "auto" : "smooth" }), 120);
+}
+
+/* ---------- week calendar (Nov 20, read only): interview and orientation times, one week at a time ---------- */
+function openWeekCal(){
+  let wk = 0;
+  const seeAllIv = S.sched || S.admin;
+  openModal(`<div class="wcal" id="wcal"></div>`, true);
+  const paint = () => {
+    const box = $("#wcal"); if (!box) return;
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+    const mon = new Date(t0); mon.setDate(t0.getDate() - ((t0.getDay() + 6) % 7) + wk * 7);
+    const days = [...Array(7)].map((_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d; });
+    const end = new Date(days[6]); end.setDate(end.getDate() + 1);
+    const ev = [];
+    for (const s of S.slots.values()) if (s.start >= mon.getTime() && s.start < end.getTime() && (seeAllIv || s.host === S.me)) ev.push({ kind: s.bookedBy ? "iv" : "open", s, a: s.bookedBy ? S.apps.get(s.bookedBy) : null });
+    for (const s of (S.oslots || new Map()).values()) if (s.start >= mon.getTime() && s.start < end.getTime()) ev.push({ kind: s.bookedBy ? "or" : "oopen", s, a: s.bookedBy ? S.apps.get(s.bookedBy) : null });
+    ev.sort((x, y) => x.s.start - y.s.start);
+    const label = x => x.kind === "iv" ? (x.a ? x.a.name || "Applicant" : "Booked interview") : x.kind === "or" ? (x.a ? x.a.name || "New member" : "Booked orientation") : x.kind === "open" ? "Open interview time" : "Open orientation time";
+    const kindText = { iv: "Interview", open: "Interview time", or: "Orientation", oopen: "Orientation time" };
+    const fmt = d => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const n = k => ev.filter(x => x.kind === k).length;
+    box.innerHTML = `<div class="wc-head"><h3>Week calendar<small>${esc(fmt(days[0]))} – ${esc(fmt(days[6]))}, ${days[6].getFullYear()}</small></h3>
+      <div class="wc-nav"><button class="btn small" type="button" data-wk="-1" aria-label="Previous week">‹</button><button class="btn small" type="button" data-wk="0"${wk === 0 ? " disabled" : ""}>This week</button><button class="btn small" type="button" data-wk="1" aria-label="Next week">›</button></div></div>
+      <p class="help wc-sum">${n("iv")} interview${n("iv") === 1 ? "" : "s"} booked · ${n("open")} open interview time${n("open") === 1 ? "" : "s"}${S.oslots?.size ? ` · ${n("or")} orientation session${n("or") === 1 ? "" : "s"} · ${n("oopen")} open orientation time${n("oopen") === 1 ? "" : "s"}` : ""}</p>
+      <div class="wc-grid">${days.map(d => { const de = ev.filter(x => new Date(x.s.start).toDateString() === d.toDateString()), isToday = d.getTime() === t0.getTime();
+        return `<section class="wc-day${isToday ? " today" : ""}${d < t0 ? " past" : ""}"><h4><span>${esc(d.toLocaleDateString(undefined, { weekday: "short" }))}</span><b>${d.getDate()}</b></h4>
+          ${de.length ? de.map(x => { const can = !!(x.a && S.apps.has(x.a._id));
+            return `<${can ? `button type="button" data-wcopen="${esc(x.a._id)}"` : "div"} class="wc-ev ${x.kind}"><b>${esc(slotTime(x.s.start))}</b><span>${esc(label(x))}</span><small>${esc([kindText[x.kind], x.s.hostName ? "with " + x.s.hostName : "", x.s.location].filter(Boolean).join(" · "))}</small></${can ? "button" : "div"}>`; }).join("") : `<p class="wc-none">Nothing</p>`}</section>`; }).join("")}</div>
+      <div class="acts"><span class="help" style="margin-right:auto">Read only. Times are added and changed in ${canHostSlots() ? `<button class="copy" type="button" data-wcgo="slots">Interview times</button>` : "Interview times"}${S.canEdit ? ` and <button class="copy" type="button" data-wcgo="orient">Orientation times</button>` : ""}.</span><button class="btn" type="button" data-x>Close</button></div>`;
+  };
+  paint();
+  const M = $("#modal");
+  M.onclick = e => { const t = e.target;
+    if (t.closest("[data-x]")) return closeModal();
+    const w = t.closest("[data-wk]"); if (w) { wk = w.dataset.wk === "0" ? 0 : wk + +w.dataset.wk; return paint(); }
+    const o = t.closest("[data-wcopen]"); if (o) { closeModal(); const id = o.dataset.wcopen; setTimeout(() => select(id), 60); return; }
+    const g = t.closest("[data-wcgo]"); if (g) { closeModal(); setTimeout(g.dataset.wcgo === "slots" ? openSlots : openOrientTimes, 60); } };
+}
+
 function renderHistory(){
   const el = $("#histList"); if (!el) return;
   if (!S.hist.length) { el.innerHTML = `<div class="row"><span class="lbl" style="color:var(--fg2)">No changes recorded yet. Edits made from now on show up here.</span></div>`; return; }
@@ -1883,6 +2151,10 @@ function openPalette(){
     { label: "Recruiting flyer (print)", show: S.admin, words: "flyer poster qr recruit print", run: go(printFlyer) },
     { label: "Year-end report (print)", show: S.admin, words: "year end annual report stats print", run: go(printYearReport) },
     { label: S.canEdit ? "Interview times" : "My interview times", show: canHostSlots(), words: "interview times slots schedule calendar", run: go(openSlots) },
+    { label: "Week calendar", show: !$("#calBtn").hidden, words: "week calendar interview orientation times schedule this week", run: go(openWeekCal) },
+    { label: "Waiting on", show: S.admin && S.role !== "interviewer", words: "waiting on references applicant you blocked stuck owes", run: go(openWaiting) },
+    { label: "Orientation deadlines", show: S.admin, words: "orientation deadlines due late overdue new members progress", run: go(openOrientDeadlines) },
+    { label: "Filter the list", show: !S.member, words: "filter filters type location stalled no movement stage", run: go(openFilters) },
     { label: "Orientation board", show: S.admin || S.owner, words: "orientation new members board checklist", run: go(openOrientBoard) },
     { label: "Orientation times", show: S.canEdit, words: "orientation times schedule slots", run: go(openOrientTimes) },
     { label: "Sign-offs", show: !$("#trainBtn").hidden, words: "sign offs trainer skills", run: go(openSignoffs) },
@@ -1896,6 +2168,7 @@ function openPalette(){
     { label: "Show the tour", show: !S.owner, words: "tour tutorial help how guide welcome what can i do", run: go(() => showTour(S.role, tourOpts())) },
     ...(S.owner ? [["admin", "an Admin"], ["coordinator", "the Interview coordinator"], ["interviewer", "an Interviewer"], ["member", "a Member"], ["applicant", "an applicant"], ["newmember", "a new member in orientation"]]
       .map(([r, l]) => ({ label: `Tour: what ${l} is shown`, show: true, words: "tour tutorial help guide welcome preview " + r, run: go(() => showTour(r, { email: S.me })) })) : []),
+    ...["light", "dark", "system"].map(t => ({ label: `Appearance: ${THEME_LABEL[t]}`, sub: getTheme() === t ? "Current, on this device" : "This device only", show: true, words: "appearance theme dark light mode night system device colours colors " + t, run: go(() => { setTheme(t); toast("Appearance: " + THEME_LABEL[t] + " (this device)"); }) })),
     { label: "Two-step sign-in", show: true, words: "two step 2fa mfa authenticator security code", run: go(openTwoStep) },
     { label: "Sign-in password", show: true, words: "password key sign in", run: go(openPassword) },
     { label: "Keyboard shortcuts", hint: "?", show: true, words: "keyboard shortcuts help keys", run: go(openShortcuts) },
@@ -1908,7 +2181,7 @@ function openPalette(){
   const has = (hay, q) => { const words = hay.split(/[^a-z0-9@.]+/).filter(Boolean); return q.split(/\s+/).filter(Boolean).every(w => words.some(x => x.startsWith(w))); };
   const build = () => {
     const q = $("#palQ").value.trim().toLowerCase(), out = [];
-    const people = sorted().map(r => r.a).filter(a => !q || has(`${a.name || ""} ${a.email || ""} ${a.phone || ""} ${String(a.phone || "").replace(/\D/g, "")}`.toLowerCase(), q));
+    const people = sorted().map(r => r.a).filter(a => !q || has(`${a.name || ""} ${a.email || ""} ${a.phone || ""} ${String(a.phone || "").replace(/\D/g, "")} ${tagsOf(a).join(" ")}`.toLowerCase(), q));
     people.slice(0, q ? 6 : 5).forEach(a => out.push({ label: a.name || "Unnamed applicant", sub: [STAGES[view(a).stage]?.label, a.type].filter(Boolean).join(" · "), av: a, run: openFile(a._id) }));
     const top = q && people[0];
     if (top && people.length <= 3) {
@@ -1916,6 +2189,9 @@ function openPalette(){
       out.push({ label: `Interview mode`, sub: fn, icon: "▶", run: go(() => { select(id); enterIvMode(); }) });
       if (S.admin) out.push({ label: "Open Checks", sub: fn, icon: "✓", run: openFile(id, "checks") });
       if (S.admin) out.push({ label: "Print application", sub: fn, icon: "⎙", run: go(() => printOriginal(id)) });
+      if (S.admin) out.push({ label: "Timeline", sub: fn, icon: "◷", run: openFile(id, "notes") });
+      if (S.admin) out.push({ label: "Print summary", sub: fn, icon: "⎙", run: go(() => printSummary(id)) });
+      if (S.canEdit) out.push({ label: "Add a follow-up", sub: fn, icon: "⏰", run: go(() => { select(id); setTimeout(openFollowUp, 80); }) });
       if (S.canEdit && refList(top).length) out.push({ label: "Email reference forms", sub: fn, icon: "✉", run: go(() => openRefsAll(id)) });
       if (S.canEdit && !get(top, "portal.invited") && okEmail(top.email)) out.push({ label: `Welcome ${first(top.name)}`, sub: "Portal invite, welcome message and email", icon: "✉", run: go(() => inviteToPortal(id)) });
       if (S.canEdit && okEmail(top.email)) out.push({ label: `Email ${first(top.name)}`, sub: top.email, icon: "✉", run: go(() => { select(id); openEmailPicker(); }) });
@@ -2076,6 +2352,9 @@ function openShortcuts(){
     ${k("[")}<span>Previous tab</span>
     ${k("]")}<span>Next tab</span>
     ${S.canEdit ? `${k("E")}<span>Write an email to the open applicant</span>` : ""}
+    ${S.sched ? `${k("B")}<span>Book an interview time for the open applicant</span>` : ""}
+    ${S.canEdit ? `${k("R")}<span>Request documents from the open applicant</span>${k("F")}<span>Add a follow-up reminder</span>` : ""}
+    ${S.admin ? `${k("P")}<span>Print a one-page summary of the open file</span>${k("T")}<span>Show the open file's timeline</span>` : ""}
     ${k("Esc")}<span>Close a window, clear search, or go back to the overview</span>
     ${k("?")}<span>Show this list</span></div>
     <p class="help">Shortcuts pause while you're typing in a field. Press <kbd>Esc</kbd> to leave the field first.</p>
@@ -2112,6 +2391,11 @@ function onKeys(e){
   else if (S.sel && /^[1-9]$/.test(e.key) && tabs[+e.key - 1]) { e.preventDefault(); switchTab(tabs[+e.key - 1]); }
   else if (S.sel && (e.key === "[" || e.key === "]")) { e.preventDefault(); const i = tabs.indexOf(S.tab); switchTab(tabs[(i + (e.key === "]" ? 1 : -1) + tabs.length) % tabs.length]); }
   else if (S.sel && S.canEdit && (e.key === "e" || e.key === "E")) { e.preventDefault(); openEmailPicker(); }
+  else if (S.sel && S.sched && (e.key === "b" || e.key === "B")) { e.preventDefault(); openBook(S.sel); }
+  else if (S.sel && S.canEdit && (e.key === "r" || e.key === "R")) { e.preventDefault(); document.querySelector('.dhead [data-act="docs"]')?.click(); }
+  else if (S.sel && S.admin && (e.key === "p" || e.key === "P")) { e.preventDefault(); printSummary(S.sel); }
+  else if (S.sel && S.admin && (e.key === "t" || e.key === "T")) { e.preventDefault(); switchTab("notes"); setTimeout(() => $("#tlList")?.scrollIntoView({ block: "center" }), 80); }
+  else if (S.sel && S.canEdit && (e.key === "f" || e.key === "F")) { e.preventDefault(); openFollowUp(); }
 }
 function bindEvents(){
   $("#list").addEventListener("click", e => { if (e.target.closest("[data-oadd]")) return openAddOrientation(); const c = e.target.closest(".arow"); if (!c) return;
@@ -2131,13 +2415,17 @@ function bindEvents(){
   $("#mnav").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) mnavGo(b.dataset.m); });
   $("#detail").addEventListener("pointerover", statsHover); $("#detail").addEventListener("pointerleave", () => { const t = $("#mtip"); if (t) t.hidden = true; });
   $("#kbdBtn").addEventListener("click", openShortcuts);
+  $("#themeBtn").addEventListener("click", () => toast("Appearance: " + THEME_LABEL[nextTheme()] + " (this device)"));
+  $("#cmdBar").addEventListener("click", openPalette);
+  $("#calBtn").addEventListener("click", openWeekCal);
+  wireXf();
   addEventListener("keydown", onKeys);
   const D = $("#detail");
   D.addEventListener("input", e => { const el = e.target.closest("[data-k]"); if (!el || el.classList.contains("seg")) return;
     let v = el.value; if (el.classList.contains("init")) v = v.toUpperCase(); if (el.type === "number") v = v === "" ? "" : Math.max(0, parseInt(v,10) || 0);
     edit(S.sel, el.dataset.k, v); });
   D.addEventListener("focusout", e => { if (e.target.matches("[data-k]")) flushAll(); });
-  D.addEventListener("keydown", e => { if (e.target.id === "replyText" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendReply(); } });
+  D.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "tagIn") { e.preventDefault(); addTag(); return; } if (e.key === "Enter" && e.target.id === "fuText") { e.preventDefault(); addFollow(); return; } if (e.target.id === "replyText" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendReply(); } });
   D.addEventListener("click", async e => {
     if (e.target.closest("[data-oadd]")) return openAddOrientation();
     const t = e.target;
@@ -2181,9 +2469,17 @@ function bindEvents(){
       if (k === "assigniv") return openAssignInterviewers(id);
       if (k === "slots") return openSlots();
       if (k === "ivmail") return openEmail("interview", undefined, id);
+      if (k.startsWith("fu_")) { edit(id, `follow.${k.slice(3)}.done`, today()); toast("Follow-up done"); renderOverview(); return; }
       if (k === "booking") { edit(id, "portal.bookingOpen", "yes"); toast(`Booking opened for ${S.apps.get(id)?.name || "them"}`); renderOverview(); return; }
       return; }
-    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "reports") return openReports(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "team") openTeam(); if (cmd.dataset.cmd === "inbox") openChat(); return; }
+    if (t.closest("#tagAdd")) return addTag();
+    const trm = t.closest("[data-tagrm]"); if (trm) { edit(S.sel, `tags.${trm.dataset.tagrm}`, ""); renderTags(S.apps.get(S.sel)); renderList(); return; }
+    if (t.closest("#fuAdd")) return addFollow();
+    const fd = t.closest("[data-fudone]"); if (fd) { const a = S.apps.get(S.sel), k = fd.dataset.fudone; edit(S.sel, `follow.${k}.done`, get(a, `follow.${k}.done`) ? "" : today()); renderFollows(S.apps.get(S.sel)); return; }
+    const fr = t.closest("[data-furm]"); if (fr) { if (fr.dataset.confirm !== "1") { fr.dataset.confirm = "1"; fr.textContent = "Confirm"; return; } edit(S.sel, `follow.${fr.dataset.furm}.removed`, true); renderFollows(S.apps.get(S.sel)); return; }
+    const wt = t.closest("[data-wait]"); if (wt) { S.waitTab = wt.dataset.wait; S.waitAll = false; renderOverview(); return; }
+    if (t.closest("[data-waitall]")) { S.waitAll = !S.waitAll; renderOverview(); return; }
+    const cmd = t.closest("[data-cmd]"); if (cmd) { if (cmd.dataset.cmd === "todoall") { S.todoAll = !S.todoAll; renderOverview(); return; } if (cmd.dataset.cmd === "board") return openBoardMtg(); if (cmd.dataset.cmd === "reports") return openReports(); if (cmd.dataset.cmd === "deadlines") return openOrientDeadlines(); if (cmd.dataset.cmd === "flyer") return printFlyer(); if (cmd.dataset.cmd === "yearreport") return printYearReport(); if (cmd.dataset.cmd === "palette") return openPalette(); if (cmd.dataset.cmd === "slots") openSlots(); if (cmd.dataset.cmd === "settings") gateSettings(); if (cmd.dataset.cmd === "team") openTeam(); if (cmd.dataset.cmd === "inbox") openChat(); return; }
     const om = t.closest("[data-openmsg]"); if (om) return openChat("a:" + om.dataset.openmsg);
     const qr = t.closest("[data-qr]"); if (qr) return useQuickReply(+qr.dataset.qr);
     const air = t.closest("[data-aireply]"); if (air) return aiDraftReply(air);
@@ -2207,6 +2503,8 @@ function bindEvents(){
       if (k === "viewform") return openForm(S.sel);
       if (k === "printform") { const a = S.apps.get(S.sel); if (a && a.form) printForm(a.form); return; }
       if (k === "printapp") return printOriginal(S.sel);
+      if (k === "summary") return printSummary(S.sel);
+      if (k === "followup") return openFollowUp();
       if (k === "assigniv") return openAssignInterviewers(S.sel);
       if (k === "uploadapp") return openUploadRecords(S.sel, "Application");
       if (k === "book") return openBook(S.sel);
@@ -4334,7 +4632,7 @@ export function startDesk({ email, role, owner, full = false, assistant = false,
   $("#meName").title = email;
   $("#meAv").textContent = initials(S.name || email);
   if (S.owner && !S.assistant) { $("#settingsBtn").hidden = false; $("#teamBtn").hidden = false; }
-  if (canHostSlots()) $("#slotsBtn").hidden = false;
+  if (canHostSlots()) { $("#slotsBtn").hidden = false; $("#calBtn").hidden = false; }
   $("#newBtn").hidden = !S.canEdit; paintMnav();
   if (!S.canEdit) document.body.classList.add("viewonly-user");
   S.seenBefore = +prefs.get("seen") || 0; prefs.set("seen", String(Date.now()));
