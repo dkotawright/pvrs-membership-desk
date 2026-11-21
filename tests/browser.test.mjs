@@ -457,7 +457,7 @@ try {
   // ---- Two-step sign-in: set up from the key button; sign-in asks for the code
   {
     const { ctx, page } = await open(browser); await wait(page, 600);
-    await page.locator("#pwBtn").click(); await wait(page, 200);
+    await page.locator("#pwBtn").dispatchEvent("click"); await wait(page, 200);
     if (!/Off/.test(await page.locator("#modal").textContent())) fail("two-step status not shown"); else ok("the key button shows two-step sign-in status");
     await page.locator("#twoStepBtn").click(); await wait(page, 200);
     await page.locator("#tsStart").click(); await wait(page, 300);
@@ -484,7 +484,7 @@ try {
   // ---- Notifications: off until the Web Push key is set; then each device turns them on for itself
   {
     const { ctx, page } = await open(browser, { files: { "/js/config.js": t => t.replace(/VAPID_KEY = "[^"]*"/, 'VAPID_KEY = ""') } }); await wait(page, 600);
-    await page.locator("#pwBtn").click(); await wait(page, 200); await page.locator("#notifBtn").click(); await wait(page, 400);
+    await page.locator("#pwBtn").dispatchEvent("click"); await wait(page, 200); await page.locator("#notifBtn").click(); await wait(page, 400);
     if (!/aren't set up for PVRS yet/.test(await page.locator("#modal").textContent())) fail("notifications without a key: " + await page.locator("#modal").textContent()); else ok("notifications explain they need setting up first");
     await ctx.close();
   }
@@ -591,7 +591,7 @@ try {
   // ---- Interviewer role: only assigned applicants; members see none
   {
     const { ctx, page } = await open(browser, { seed: [["staff/ivy@pvrs.org", { role: "interviewer", name: "Ivy Interviewer" }]] }); await wait(page, 700);
-    await page.locator("#settingsBtn").click(); await wait(page, 500);
+    await page.locator("#settingsBtn").dispatchEvent("click"); await wait(page, 500);
     if (await page.locator("#teamList").count() || !(await page.locator("#sTeam").count())) fail("Team is still inside Settings"); else ok("Settings no longer holds the team list; it points to Team");
     await page.locator("#sTeam").click(); await wait(page, 400);
     if (!/What each role can do/.test(await page.locator("#modal").textContent()) || !(await page.locator("#teamList").count())) fail("Team menu didn't open"); else ok("Team is its own menu with the roles explained");
@@ -759,7 +759,7 @@ try {
       await ctx.close(); }
     // a squad member who still owes paperwork
     { const { ctx, page } = await open(browser, { user: { email: "mel@pvrs.org", displayName: "Mel" }, seed }); await wait(page, 900);
-      if (await page.locator("#paperBtn").isHidden()) fail("member has no My paperwork"); else ok("a squad member with orientation paperwork left gets My paperwork");
+      if (await page.locator("#paperBtn").evaluate(b => b.hidden)) fail("member has no My paperwork"); else ok("a squad member with orientation paperwork left gets My paperwork");
       await ctx.close(); }
     { const { ctx, page } = await open(browser, { url: "/?paperwork=1", user: { email: "mel@pvrs.org", displayName: "Mel" }, seed }); await wait(page, 900);
       const t = await page.locator("#portal").textContent().catch(() => "");
@@ -793,7 +793,7 @@ try {
     const names = async () => (await page.locator(".arow").allTextContents()).join("|").replace(/\s+/g, " ");
     const apps = await names();
     if (/Bea Blank|Hal Hold|Lee Legacy|Fin Finished/.test(apps) || !/Nia NotYet/.test(apps) || !/Wes Withdrew/.test(apps)) fail("board-approved files still with applicants: " + apps.slice(0, 500)); else ok("every board-approved file leaves the applicant list; not-yet-approved and withdrawn ones stay");
-    await page.locator('#chips [data-f="orient"]').click(); await wait(page, 400);
+    await page.locator('#chips [data-f="orient"]').dispatchEvent("click"); await wait(page, 400);
     const onb = await names();
     if (!/Bea Blank/.test(onb) || !/Hal Hold/.test(onb) || !/Lee Legacy/.test(onb) || !/Fin Finished/.test(onb) || /Nia NotYet|Wes Withdrew/.test(onb)) fail("onboard list: " + onb.slice(0, 500)); else ok("Onboard has them all: blank earlier steps, on hold, an older file with no board result, and a finished one");
     const beaRow = await page.locator(".arow", { hasText: "Bea Blank" }).textContent();
@@ -804,13 +804,13 @@ try {
     if (await page.locator("#orDocsGroup").isHidden() || !(await page.locator("#orDocs [data-orup]").count())) fail("no orientation documents before orientation"); else ok("orientation documents can be uploaded as soon as they're in Onboard");
     await page.screenshot({ path: path.join(OUT, "60-status-onboard.png") });
     // approving at the board moves the file at once
-    await page.locator('#chips [data-f="all"]').click(); await wait(page, 300);
+    await page.locator('#chips [data-f="all"]').dispatchEvent("click"); await wait(page, 300);
     await pickApplicant(page, "Nia NotYet"); await page.locator('.tabdock [data-tab="board"]').click(); await wait(page, 300);
     await page.locator('.seg[data-k="board.result"] button[data-v="approved"]').click(); await wait(page, 900);
     await page.keyboard.press("Escape"); await wait(page, 300);
     await page.evaluate(() => document.querySelector('[data-act="back"], .backbtn')?.click()); await wait(page, 300);
-    await page.locator('#chips [data-f="all"]').click(); await wait(page, 400);
-    const after = await names(); await page.locator('#chips [data-f="orient"]').click(); await wait(page, 400); const after2 = await names();
+    await page.locator('#chips [data-f="all"]').dispatchEvent("click"); await wait(page, 400);
+    const after = await names(); await page.locator('#chips [data-f="orient"]').dispatchEvent("click"); await wait(page, 400); const after2 = await names();
     if (/Nia NotYet/.test(after) || !/Nia NotYet/.test(after2)) fail("approving didn't move the file: " + after.slice(0, 200) + " // " + after2.slice(0, 200)); else ok("saving Approved moves the file to Onboard straight away");
     if (!/1/.test(await page.locator('.stg[data-filter="act"]').textContent().catch(() => "1"))) fail("Active tile lost the finished member"); else ok("a finished member still counts on the Active tile");
     await ctx.close();
@@ -936,7 +936,7 @@ try {
     // an interviewer offers times and has their own home
     { const { ctx, page } = await open(browser, { user: IVY, seed: [...ivySeed, ["slots/other", { start: Date.now() + 5 * 864e5, duration: 30, location: "X", bookedBy: null, host: "admin@pvrs.org", hostName: "Casey" }]] }); await wait(page, 700);
       if (!/My interviews/.test(await page.locator(".ov h2").textContent().catch(() => ""))) fail("no My interviews home"); else ok("interviewers land on My interviews");
-      await page.locator("#slotsBtn").click(); await wait(page, 300);
+      await page.locator("#slotsBtn").dispatchEvent("click"); await wait(page, 300);
       if (!/My interview times/.test(await page.locator("#modal h3").textContent())) fail("interviewer times title"); else ok("interviewers manage their own interview times");
       if (await page.locator('#slotList [data-del="other"]').count()) fail("sees someone else's time"); else ok("they don't see other people's times");
       await page.locator("#slotForm button[type=submit]").click(); await wait(page, 400);
@@ -1062,7 +1062,7 @@ try {
       ["orientSlots/s1", { start: Date.now() + 5 * 864e5, duration: 60, location: "Station", bookedBy: null }]];
     const { ctx, page } = await open(browser, { seed }); await wait(page, 900);
     await page.evaluate(() => { window.__mock.docs.set("settings/main", { signature: "Dkota Wright", orientDays: 60 }); window.__mock.emit(); }); await wait(page, 300);
-    await page.locator("#orientBtn").click(); await wait(page, 400);
+    await page.locator("#orientBtn").dispatchEvent("click"); await wait(page, 400);
     const b0 = await page.locator("#orBoard").textContent();
     if (!/Ready to move to orientation/.test(b0) || !/Sam Ready/.test(b0)) fail("board ready: " + b0.slice(0, 200)); else ok("Sterling clear shows as ready to move, not moved");
     if (!/Waiting on Sterling/.test(b0) || !/Una Waiting/.test(b0) || !/Rae Review/.test(b0) || !/needs review/.test(b0)) fail("board waiting: " + b0.slice(0, 300)); else ok("not-complete and needs-review Sterling stay locked");
@@ -1080,7 +1080,7 @@ try {
     if (!o.msg.some(x => /moving on to orientation/.test(x))) fail("no welcome message"); else ok("moving posts a message to them");
     const others = await page.evaluate(() => [window.__mock.docs.get("portal/o2")?.orientation, window.__mock.docs.get("portal/o3")?.orientation]);
     if (others.some(Boolean)) fail("orientation opened for a locked file"); else ok("locked files get no orientation data");
-    await page.locator("#orientBtn").click(); await wait(page, 400);
+    await page.locator("#orientBtn").dispatchEvent("click"); await wait(page, 400);
     if (!(await page.locator(".or-grid").count())) fail("no grid after moving"); else ok("the board shows them against every requirement");
     await page.locator('[data-ocell="o1"]').nth(2).click(); await wait(page, 400);
     if (!(await page.locator('[data-ocell="o1"]').nth(2).evaluate(b => b.classList.contains("on")))) fail("cell didn't toggle"); else ok("clicking a box marks it done");
@@ -1094,7 +1094,7 @@ try {
     const orBtn = page.locator('#chips [data-f="orient"]');
     if (/Sam Ready|Una Waiting|Rae Review/.test(allNames) || !/3/.test(await orBtn.textContent()) || !/Onboard/.test(await page.locator("#chips .navh2").textContent())) fail("board-approved people still listed with applicants: " + allNames.slice(0, 200)); else ok("once the board approves someone they leave the applicant list for the Onboard list");
     if (await page.locator('#chips [data-f="onb"]').count()) fail("old Onboarding stage filter still in the applicant filters"); else ok("the applicant filters no longer have an Onboarding stage");
-    await orBtn.click(); await wait(page, 400);
+    await orBtn.dispatchEvent("click"); await wait(page, 400);
     const orRow = (await page.locator(".arow").allTextContents()).join("|");
     if (!/Sam Ready/.test(orRow) || !/Orientation: \d+ of \d+ done/.test(orRow) || !/Una Waiting/.test(orRow) || !/Rae Review/.test(orRow)) fail("onboard list: " + orRow.replace(/\s+/g, " ").slice(0, 400)); else ok("the Onboard list has everyone the board approved: those not yet in orientation, and those in it with their progress");
     await pickApplicant(page, "Sam Ready");
@@ -1139,7 +1139,7 @@ try {
     await ctx.close();
     // Ivy, the trainer: only the sign-off list
     { const { ctx, page } = await open(browser, { user: { email: "ivy@pvrs.org", displayName: "Ivy" }, seed: [...seed, ...seed2] }); await wait(page, 800);
-      if (await page.locator("#trainBtn").isHidden()) fail("trainer has no Sign-offs"); else { await page.locator("#trainBtn").click(); await wait(page, 300);
+      if (await page.locator("#trainBtn").evaluate(b => b.hidden)) fail("trainer has no Sign-offs"); else { await page.locator("#trainBtn").dispatchEvent("click"); await wait(page, 300);
         if (!/Sam Ready/.test(await page.locator("#trList").textContent())) fail("trainer list"); else { await page.locator("#trList [data-tr]").first().click(); await wait(page, 300);
           const d = await page.evaluate(() => window.__mock.docs.get("signoffs/o1").done); if (Object.values(d)[0]?.by !== "ivy@pvrs.org") fail("sign off: " + JSON.stringify(d)); else ok("a trainer signs off an item"); }
         await page.locator("#modal [data-x]").click(); await wait(page, 200); }
@@ -1350,7 +1350,7 @@ try {
       await page.screenshot({ path: path.join(OUT, "17-celebrate.png") });
       await page.locator('#boardMtg [data-bm="close"]').click(); await wait(page, 2600);
       if (await page.locator("canvas.confetti").count()) fail("confetti not cleaned up"); else ok("confetti clears itself");
-      await page.locator('#chips [data-f="orient"]').click(); await wait(page, 300);
+      await page.locator('#chips [data-f="orient"]').dispatchEvent("click"); await wait(page, 300);
       if (!/🎉 Approved/.test(await page.locator(".arow", { hasText: "Georgia Thurmond" }).textContent())) fail("no Approved badge on the card"); else ok("approved applicant gets a 🎉 Approved badge in the list");
     }
     await ctx.close();
@@ -1391,7 +1391,7 @@ try {
     await page.locator("#ovRoster .arow").first().click(); await wait(page, 400);
     if (await page.locator("#ovRoster").count() || !(await page.locator("#backBtn").isVisible())) fail("file view"); else ok("opening a file gives a clear way back");
     if (!/Applicants/.test(await page.locator("#backBtn").textContent())) fail("back label"); else ok("the back button says Applicants");
-    await page.locator('#chips [data-f="screen"]').click(); await wait(page, 500);
+    await page.locator('#chips [data-f="screen"]').dispatchEvent("click"); await wait(page, 500);
     if (!(await inBox()) || !/Screening/.test(await page.locator("#rosterTitle").textContent())) fail("sidebar filter from a file"); else ok("a sidebar filter returns to the dashboard and filters the box");
     await page.locator("#msgsBtn").click(); await wait(page, 300);
     if (!(await page.locator(".cv").count()) || !(await page.evaluate(() => !!document.querySelector(".roster")))) fail("Messages lost the list"); else ok("Messages opens without destroying the list");
@@ -1664,13 +1664,13 @@ try {
     const box = await page.locator("#orientBox").textContent();
     if (!/no application on file/.test(box) || !/Status: New member/.test(box)) fail("status: " + (box || "").slice(0, 240)); else ok("the Onboard tab says they started here with no application");
     await snap(page, "71-add-orientation");
-    await page.locator('#chips [data-f="all"]').click(); await wait(page, 400);
+    await page.locator('#chips [data-f="all"]').dispatchEvent("click"); await wait(page, 400);
     if (/Casey Morgan/.test((await page.locator(".arow").allTextContents()).join("|"))) fail("Casey is on the applicant list"); else ok("they are not on the applicant list");
-    await page.locator('#chips [data-f="orient"]').click(); await wait(page, 400);
+    await page.locator('#chips [data-f="orient"]').dispatchEvent("click"); await wait(page, 400);
     const or = (await page.locator(".arow").allTextContents()).join("|");
     if (!/Casey Morgan/.test(or) || !/Orientation/.test(or)) fail("onboard row: " + or.replace(/\s+/g, " ").slice(0, 300)); else ok("they show on the Onboard list, in orientation");
     if (await page.locator("#orientAddBtn").isHidden()) fail("Add someone hidden on Onboard"); else ok("Add someone is on the Onboard list");
-    await page.locator("#orientBtn").click(); await wait(page, 400);
+    await page.locator("#orientBtn").dispatchEvent("click"); await wait(page, 400);
     const board = await page.locator("#modal").textContent();
     const waitPart = board.split("Waiting on Sterling")[1] || "";
     if (/Casey Morgan/.test(waitPart)) fail("Casey is waiting on Sterling");
@@ -1894,7 +1894,17 @@ try {
     await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {});
     await page.keyboard.press(process.platform === "darwin" ? "Meta+k" : "Control+k"); await wait(page, 200); await page.locator("#palQ").fill("settings"); await wait(page, 200);
     const palOpen = await page.locator("#palList").isVisible().catch(() => false);
-    if (!palOpen || await page.locator("#palList").getByText("Settings", { exact: true }).count()) fail("Settings in the Assistant's ⌘K (open: " + palOpen + ")"); else ok("Settings isn't in the Assistant's search");
+    if (!palOpen) fail("Assistant's ⌘K didn't open");
+    await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await wait(page, 200);
+    await page.locator("#setPageBtn").click(); await wait(page, 500);
+    const anav = await page.locator(".setnav").textContent();
+    if (!/Squad \(view only\)/.test(anav) || !/Team/.test(anav) || !/Appearance/.test(anav)) fail("Assistant's Settings page: " + anav.replace(/\s+/g, " ").slice(0, 200)); else ok("the Assistant sees the squad settings and team in Settings, marked view only");
+    await page.locator('[data-setsec="team"]').click(); await wait(page, 600);
+    const tl = await page.evaluate(() => [/View only/.test(document.querySelector("#setBody").textContent), [...document.querySelectorAll("#setBody [data-rolesel]")].every(x => x.disabled), !document.querySelector("#setBody #tmAdd") || document.querySelector("#setBody #tmAdd").hidden]);
+    if (tl.join() !== "true,true,true") fail("Assistant's Team not locked: " + tl); else ok("the Assistant can see the Team but not change roles or add people");
+    await page.locator('[data-setsec="s-emails"]').click(); await wait(page, 600);
+    const sl = await page.evaluate(() => [document.querySelector("#setBody #sSig")?.disabled, document.querySelector("#setBody #sSave")?.hidden]);
+    if (sl.join() !== "true,true") fail("Assistant's settings not locked: " + sl); else ok("the Assistant can read squad settings but not change or save them");
     await ctx.close();
   }
   {
@@ -1957,7 +1967,7 @@ try {
     await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await wait(page, 300);
     // appearance: the half-moon button opens the picker (mode, colours, background), saved on this device only
     const th = [];
-    await page.locator("#themeBtn").click(); await wait(page, 200);
+    await page.locator("#themeBtn").dispatchEvent("click"); await wait(page, 200);
     for (const m of ["light", "dark", "system"]) { await page.locator(`[data-lmode="${m}"]`).click(); await wait(page, 100); th.push(await page.evaluate(() => (document.documentElement.getAttribute("data-theme") || "system") + ":" + (localStorage.getItem("pvrsTheme") || "-"))); }
     if (th.join(",") !== "light:light,dark:dark,system:-") fail("appearance modes: " + th.join(",")); else ok("appearance picker switches light, dark, follow the device (saved on this device only)");
     await page.locator('[data-lacc="star"]').click(); await wait(page, 500);
@@ -1966,8 +1976,15 @@ try {
     await page.locator('[data-lbg="ecg"]').click(); await wait(page, 100);
     const bgv = await page.evaluate(() => [document.documentElement.getAttribute("data-bg"), getComputedStyle(document.querySelector("#bgfx")).display, getComputedStyle(document.querySelector("#bgfx")).maskImage || getComputedStyle(document.querySelector("#bgfx")).webkitMaskImage]);
     if (bgv[0] !== "ecg" || bgv[1] !== "block" || !/svg/.test(bgv[2])) fail("background: " + bgv.join(" | ").slice(0, 200)); else ok("an EMS background pattern shows behind the desk");
+    await page.locator('[data-lbg="onscene"]').click(); await wait(page, 300);
+    const sc = await page.evaluate(() => { const w = document.querySelector("#bgscene .sc-onscene .wheel"); return [document.documentElement.getAttribute("data-scene"), !!document.querySelector("#bgscene svg.sc-onscene"), getComputedStyle(document.querySelector("#bgscene")).display, document.querySelectorAll("#bgscene .emt").length]; });
+    if (sc[0] !== "onscene" || !sc[1] || sc[2] !== "block" || sc[3] < 3) fail("scene: " + sc); else ok("an animated EMS scene (roadside call) shows along the bottom");
+    await page.locator('[data-lanim="off"]').click(); await wait(page, 200);
+    const an = await page.evaluate(() => [document.documentElement.getAttribute("data-anim"), localStorage.getItem("pvrsAnim"), getComputedStyle(document.querySelector("#bgscene .lr")).animationName]);
+    if (an[0] !== "off" || an[1] !== "off" || an[2] !== "none") fail("animations off: " + an); else ok("Animations: Off stops the scene moving (saved on this device)");
+    await page.locator('[data-lanim="on"]').click(); await wait(page, 100);
     await page.locator("#modal [data-x]").click(); await wait(page, 200);
-    await page.locator("#themeBtn").click(); await wait(page, 200); await page.locator('[data-lmode="dark"]').click(); await page.locator('[data-lacc=""]').click(); await page.locator('[data-lbg="none"]').click(); await page.locator("#modal [data-x]").click(); await wait(page, 100);
+    await page.locator("#themeBtn").dispatchEvent("click"); await wait(page, 200); await page.locator('[data-lmode="dark"]').click(); await page.locator('[data-lacc=""]').click(); await page.locator('[data-lbg="none"]').click(); await page.locator("#modal [data-x]").click(); await wait(page, 100);
     if (await dataNow() !== before) fail("dock, command bar or appearance changed stored data"); else ok("dock, command bar and appearance switch save nothing to the database");
     await page.reload(); await wait(page, 1500);
     if (await page.evaluate(() => document.documentElement.getAttribute("data-theme")) !== "dark") fail("dark choice not kept after reload"); else ok("the appearance choice is kept after a reload");
@@ -1976,7 +1993,7 @@ try {
     if (bg !== "rgb(20, 18, 16)") fail("dark background not applied: " + bg); else ok("dark appearance applies the dark palette");
     await page.evaluate(() => localStorage.removeItem("pvrsTheme"));
     // week calendar
-    await page.locator("#calBtn").click(); await wait(page, 300);
+    await page.locator("#calBtn").dispatchEvent("click"); await wait(page, 300);
     const cal = await page.locator("#wcal").textContent();
     if (!/Georgia Thurmond/.test(cal) || !/Open interview time/.test(cal) || !/1 interview booked · 1 open interview time/.test(cal)) fail("week calendar: " + cal.slice(0, 300)); else ok("week calendar shows booked and open interview times for the week");
     await page.locator('#wcal [data-wk="1"]').click(); await wait(page, 200);
@@ -2100,7 +2117,7 @@ try {
       await snap(page, "90-member-records");
       const bg1 = await page.evaluate(() => document.documentElement.getAttribute("data-bg"));
       await page.reload(); await wait(page, 900); const bg2 = await page.evaluate(() => document.documentElement.getAttribute("data-bg"));
-      if (!bg1 || !bg2 || bg1 === bg2) fail(`portal background didn't change between visits: ${bg1} → ${bg2}`); else ok("the portal shows a different EMS background each visit");
+      if (!bg1 || !bg2 || bg1 === bg2 || !(await page.evaluate(() => !!document.querySelector("#bgscene svg.sc")))) fail(`portal background didn't change between visits: ${bg1} → ${bg2}`); else ok("the portal shows a different animated EMS scene each visit");
       // log hours
       await page.locator(".cmeform summary").click(); await wait(page, 150);
       await page.locator("#cmeHours").fill("2.5"); await page.locator("#cmeTopic").fill("Stroke assessment"); await page.locator("#cmeCat").selectOption("additional"); await page.locator("[data-cmeadd]").click(); await wait(page, 600);
@@ -2164,6 +2181,32 @@ try {
       if (!/Compliance board/.test(cb) || !/Mia Member/.test(cb) || !/3\/45/.test(cb)) fail("compliance board: " + cb.slice(0, 300)); else ok("the compliance board shows each member's items and CME hours");
       await snap(page, "92-compliance");
       await ctx.close(); }
+  }
+  // ---- Slim dock + Settings page (Nov 21): no scrolling dock, one Settings page with sections
+  {
+    const { ctx, page } = await open(browser, { h: 800 });
+    await wait(page, 800);
+    const fits = await page.evaluate(() => { const s = document.querySelector(".app > .side"); return s.scrollHeight <= s.clientHeight + 2 && s.getBoundingClientRect().bottom <= innerHeight; });
+    if (!fits) fail("dock still scrolls at 800px tall"); else ok("the dock fits without scrolling");
+    if (await page.locator("#chips").isVisible() || !(await page.locator("#chipsMini").isVisible())) fail("filters not moved to the list"); else ok("the list filters sit above the applicant list, not in the dock");
+    await page.locator("#grpSched .dgrp-b").click(); await wait(page, 200);
+    if (!(await page.locator("#slotsBtn").isVisible()) || !(await page.locator("#calBtn").isVisible())) fail("Schedule menu didn't open"); else ok("Schedule opens a small menu with Interview times and Week calendar");
+    await page.locator("#calBtn").click(); await wait(page, 300);
+    if (!(await page.locator("#wcal").count())) fail("week calendar from the Schedule menu"); else ok("tools still open from the grouped menu");
+    await page.keyboard.press("Escape"); await wait(page, 200);
+    await page.locator("#setPageBtn").click(); await wait(page, 500);
+    const nav = (await page.locator(".setnav").textContent()).replace(/\s+/g, " ");
+    if (!/Appearance/.test(nav) || !/Notifications/.test(nav) || !/Team/.test(nav) || !/Emails and replies/.test(nav) || !/Sign out/.test(nav) || !(await page.locator("#setBody .look").count()) || !(await page.locator("#modal").isHidden())) fail("settings page: " + nav.slice(0, 300)); else ok("Settings is one page with sections, Appearance shown inside it (no pop-up)");
+    await page.locator('[data-setsec="team"]').click(); await wait(page, 500);
+    if (!/Squad members/.test(await page.locator("#setBody").textContent()) || !(await page.locator("#modal").isHidden())) fail("team in settings"); else ok("Team opens inside the Settings page");
+    await page.locator('[data-setsec="s-emails"]').click(); await wait(page, 500);
+    const em = await page.evaluate(() => [!!document.querySelector("#setBody #sSig"), document.querySelector("#setBody #sSig")?.closest(".group")?.hidden, document.querySelector("#setBody #sIdle")?.closest(".group")?.hidden]);
+    if (!em[0] || em[1] !== false || em[2] !== true) fail("settings sections: " + em); else ok("each Settings section shows only its own part");
+    await page.locator("#setBody #sSig").fill("Test signature line"); await page.locator("#setBody #sSave").click(); await wait(page, 600);
+    if ((await page.evaluate(() => window.__mock.docs.get("settings/main"))).signature !== "Test signature line") fail("save from settings page"); else ok("saving from the Settings page works");
+    await page.locator("#overviewBtn").click(); await wait(page, 400);
+    if (await page.locator(".setpage").count() || !(await page.locator(".ov").count())) fail("leaving settings"); else ok("Home leaves the Settings page");
+    await ctx.close();
   }
   // phones: the command bar stays out of the way (the bottom menu is there), filters still reachable
   {

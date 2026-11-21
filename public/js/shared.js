@@ -1,3 +1,4 @@
+import { SCENES, sceneSVG } from "./scenes.js";
 // Shared helpers, PVRS process definitions, and the applicant status timeline.
 export const $ = s => document.querySelector(s);
 export const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -28,7 +29,15 @@ export async function copyText(text, fallbackEl){
 // One modal at a time. Opening makes the page behind it inert and moves focus into the sheet;
 // closing runs the sheet's cleanup (M._cleanup) and puts focus back where it was.
 const behind = () => ["#app", "#portal"].map(s => $(s)).filter(Boolean);
+// The Settings page (Nov 21) shows the usual windows inside itself instead of as pop-ups: hostNextModal(el, back) makes
+// the next openModal draw into `el`, and closing it calls `back` (which redraws that settings section).
+let HOST_NEXT = null, HOST_ON = null;
+export function hostNextModal(el, back){ HOST_NEXT = { el, back }; }
+export function clearHost(){ if (HOST_ON && HOST_ON.el._cleanup) { HOST_ON.el._cleanup(); HOST_ON.el._cleanup = null; } HOST_ON = null; HOST_NEXT = null; }
 export function openModal(html, wide){
+  if (HOST_NEXT) { const h = HOST_NEXT; HOST_NEXT = null; HOST_ON = h;
+    if (h.el._cleanup) { h.el._cleanup(); h.el._cleanup = null; }
+    h.el.innerHTML = `<div class="sheet embedded">${html}</div>`; h.el.onclick = null; return h.el; }
   const M = $("#modal");
   if (M.hidden) M._prev = document.activeElement;
   if (M._cleanup) { M._cleanup(); M._cleanup = null; }
@@ -41,6 +50,7 @@ export function openModal(html, wide){
   return M;
 }
 export function closeModal(){
+  if (HOST_ON && $("#modal").hidden) { const h = HOST_ON; if (h.el._cleanup) { h.el._cleanup(); h.el._cleanup = null; } h.back && h.back(); return; }
   const M = $("#modal");
   if (M._cleanup) { M._cleanup(); M._cleanup = null; }
   M.hidden = true; M.innerHTML = ""; M.onclick = null;
@@ -254,10 +264,11 @@ export const ACCENTS = [
   { k: "rescue", name: "Rescue", sub: "Hi-vis orange and yellow", fa: "#1C1917", fb: "#44403C", h: "#EA580C", h2: "#FACC15", s: "#FDBA74" },
   { k: "triage", name: "Triage green", sub: "Calm green", fa: "#052E2B", fb: "#065F46", h: "#047857", h2: "#0D9488", s: "#6EE7B7" }];
 export const BACKGROUNDS = [
+  ...SCENES.map(x => ({ k: x.k, name: x.name, sub: x.sub, scene: true })),
   { k: "none", name: "Plain glow", sub: "No pattern" }, { k: "ecg", name: "Heartbeat", sub: "An ECG strip" },
   { k: "star", name: "Star of Life", sub: "The EMS star" }, { k: "cross", name: "Medical cross", sub: "Small crosses" },
   { k: "stripes", name: "Rig stripes", sub: "Ambulance chevrons" }, { k: "radar", name: "Dispatch", sub: "Radar rings" },
-  { k: "map", name: "Response map", sub: "Contour lines" }, { k: "auto", name: "Change every visit", sub: "A different one each time" }];
+  { k: "map", name: "Response map", sub: "Contour lines" }, { k: "auto", name: "Change every visit", sub: "A different scene each time" }];
 const lsGet = k => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
 const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch {} };
 export const getAccent = () => lsGet("pvrsAccent");
@@ -266,10 +277,17 @@ export function setAccent(k){ lsSet("pvrsAccent", k); if (k) document.documentEl
 // The background for this page view. `fallback` applies when this device hasn't chosen one: the portal and the public
 // pages change every visit (Dkota), the desk stays plain.
 export function applyBg(fallback = "none"){
-  const pick = getBg() || fallback, pats = BACKGROUNDS.map(b => b.k).filter(k => k !== "none" && k !== "auto");
+  const pick = getBg() || fallback, html = document.documentElement;
+  if (lsGet("pvrsAnim") === "off") html.setAttribute("data-anim", "off"); else html.removeAttribute("data-anim");
   let k = pick;
-  if (pick === "auto") { const last = lsGet("pvrsBgLast"), pool = pats.filter(x => x !== last); k = pool[Math.floor(Math.random() * pool.length)]; lsSet("pvrsBgLast", k); }
-  if (k && k !== "none") document.documentElement.setAttribute("data-bg", k); else document.documentElement.removeAttribute("data-bg");
+  // "Change every visit" picks one of the animated scenes, never the same one twice in a row.
+  if (pick === "auto") { const last = lsGet("pvrsBgLast"), pool = SCENES.map(x => x.k).filter(x => x !== last); k = pool[Math.floor(Math.random() * pool.length)]; lsSet("pvrsBgLast", k); }
+  const scene = SCENES.some(x => x.k === k);
+  let box = document.getElementById("bgscene");
+  if (scene && !box) { box = document.createElement("div"); box.id = "bgscene"; box.setAttribute("aria-hidden", "true"); document.body.prepend(box); }
+  if (box) { if (scene) { if (box.dataset.k !== k) { box.innerHTML = sceneSVG(k); box.dataset.k = k; } } else { box.innerHTML = ""; box.dataset.k = ""; } }
+  if (scene) html.setAttribute("data-scene", k); else html.removeAttribute("data-scene");
+  if (k && k !== "none") html.setAttribute("data-bg", k); else html.removeAttribute("data-bg");
   return k;
 }
 export function openAppearance(fallbackBg = "none"){
@@ -277,12 +295,14 @@ export function openAppearance(fallbackBg = "none"){
   const M = openModal(`<div class="look"><h3>Appearance</h3><p class="help" style="margin:0">Pick a look. It's saved on this device only, so everyone can choose their own.</p>
     <h4>Light or dark</h4><div class="lookseg" role="group" aria-label="Light or dark">${["light", "dark", "system"].map(t => `<button type="button" data-lmode="${t}" aria-pressed="${mode === t}">${THEME_LABEL[t]}</button>`).join("")}</div>
     <h4>Colours</h4><div class="lookgrid">${ACCENTS.map(a => `<button type="button" class="lookcard" data-lacc="${a.k}" aria-pressed="${acc === a.k}" style="--sw-fa:${a.fa};--sw-fb:${a.fb};--sw-h:${a.h};--sw-h2:${a.h2};--sw-s:${a.s}"><span class="looksw" aria-hidden="true"></span><b>${a.name}</b><small>${a.sub}</small></button>`).join("")}</div>
-    <h4>Background</h4><div class="lookgrid">${BACKGROUNDS.map(b => `<button type="button" class="lookcard lookbg" data-lbg="${b.k}" data-bgv="${b.k}" aria-pressed="${bg === b.k}"><span class="lbg" aria-hidden="true"><i></i>${b.k === "auto" ? "🔀" : ""}</span><b>${b.name}</b><small>${b.sub}</small></button>`).join("")}</div>
+    <h4>Background</h4><div class="lookgrid">${BACKGROUNDS.map(b => `<button type="button" class="lookcard lookbg" data-lbg="${b.k}" data-bgv="${b.k}" aria-pressed="${bg === b.k}"><span class="lbg" aria-hidden="true">${b.scene ? sceneSVG(b.k) : "<i></i>"}${b.k === "auto" ? "🔀" : ""}</span><b>${b.name}</b><small>${b.sub}</small></button>`).join("")}</div>
+    <h4>Animations</h4><div class="lookseg" role="group" aria-label="Animations">${[["on", "On"], ["off", "Off"]].map(([v, l]) => `<button type="button" data-lanim="${v}" aria-pressed="${(lsGet("pvrsAnim") === "off" ? "off" : "on") === v}">${l}</button>`).join("")}</div>
     <div class="acts"><button class="btn primary" type="button" data-x>Done</button></div></div>`, true);
   M.onclick = e => { const t = e.target;
     if (t.closest("[data-x]")) return closeModal();
     const m = t.closest("[data-lmode]"); if (m) { setTheme(m.dataset.lmode); M.querySelectorAll("[data-lmode]").forEach(b => b.setAttribute("aria-pressed", String(b === m))); return; }
     const a = t.closest("[data-lacc]"); if (a) { setAccent(a.dataset.lacc); M.querySelectorAll("[data-lacc]").forEach(b => b.setAttribute("aria-pressed", String(b === a))); return; }
+    const an = t.closest("[data-lanim]"); if (an) { lsSet("pvrsAnim", an.dataset.lanim === "off" ? "off" : ""); applyBg(fallbackBg); M.querySelectorAll("[data-lanim]").forEach(b => b.setAttribute("aria-pressed", String(b === an))); return; }
     const g = t.closest("[data-lbg]"); if (g) { lsSet("pvrsBg", g.dataset.lbg); applyBg(fallbackBg); M.querySelectorAll("[data-lbg]").forEach(b => b.setAttribute("aria-pressed", String(b === g))); }
   };
 }

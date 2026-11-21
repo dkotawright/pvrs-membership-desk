@@ -3019,3 +3019,145 @@ html[data-bg="radar"] #bgfx,html[data-bg="map"] #bgfx{opacity:.09}
 .lookseg button{flex:1;appearance:none;border:0;background:none;font:inherit;font-weight:600;color:var(--fg2);border-radius:999px;padding:8px 10px;cursor:pointer}
 .lookseg button[aria-pressed="true"]{background:var(--pane);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 @media (prefers-reduced-motion:reduce){ .lookcard{transition:none} }
+
+/* ======================================================================
+   SCENES (Nov 21, Dkota: "cooler… animations… EMS cartoony like a field incident"): animated cartoon scenes along the
+   bottom of the screen, fading out upward so text stays readable. Off with reduced motion or Appearance → Animations off.
+   ====================================================================== */
+#bgscene{position:fixed;left:0;right:0;bottom:0;height:clamp(210px,40vh,420px);z-index:0;pointer-events:none;display:none;opacity:.8;
+  -webkit-mask-image:linear-gradient(to top,#000 55%,transparent);mask-image:linear-gradient(to top,#000 55%,transparent)}
+html[data-scene] #bgscene{display:block}
+html[data-scene] #bgfx{display:none}
+#bgscene svg{display:block;width:100%;height:100%}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) #bgscene{opacity:.42;filter:brightness(.8) saturate(.9)} }
+:root[data-theme="dark"] #bgscene{opacity:.42;filter:brightness(.8) saturate(.9)}
+@media (max-width:860px){ #bgscene{height:clamp(150px,26vh,260px);opacity:.5} }
+@media print{ #bgscene{display:none!important} }
+.sc .wheel,.sc .rotor,.sc .trotor,.sc .puff,.sc .flag,.sc .wave,.sc .emt{transform-box:fill-box;transform-origin:center}
+.sc .flag{transform-origin:left center}.sc .wave{transform-origin:center bottom}
+.sc .town{animation:scTown 46s linear infinite}
+.sc .dashes{animation:scDash .9s linear infinite}
+.sc .drive{animation:scBounce .45s ease-in-out infinite alternate}
+.sc .wheel{animation:scSpin .45s linear infinite}
+.sc .parked .wheel,.sc .idle .wheel{animation:none}
+.sc .lr{fill:#EF4444;animation:scBlink .7s steps(1) infinite}
+.sc .lb{fill:#3B82F6;animation:scBlink .7s steps(1) infinite .35s}
+.sc .glow{opacity:0;filter:blur(10px)}
+.sc .gr{fill:#EF4444;animation:scGlow .7s steps(1) infinite}
+.sc .gb{fill:#3B82F6;animation:scGlow .7s steps(1) infinite .35s}
+.sc .idle .lr,.sc .idle .lb{animation:none;opacity:.55}.sc .idle .glow{display:none}
+.sc .bob{animation:scBob 1.4s ease-in-out infinite alternate}
+.sc .bob2{animation:scBob 1.4s ease-in-out infinite alternate-reverse}
+.sc .wave{animation:scSway 1.8s ease-in-out infinite alternate}
+.sc .puff{animation:scPuff 3.6s ease-out infinite;opacity:0}
+.sc .p1{animation-delay:1.2s}.sc .p2{animation-delay:2.4s}
+.sc .drift{animation:scDrift 14s ease-in-out infinite alternate}
+.sc .drift2{animation:scDrift 18s ease-in-out infinite alternate-reverse}
+.sc .flag{animation:scFlag .9s ease-in-out infinite alternate}
+.sc .heli{transform:translateX(640px);animation:scFly 24s linear infinite}
+.sc .rotor{animation:scRotor .16s linear infinite}
+.sc .trotor{animation:scSpin .3s linear infinite}
+.sc .sweep{fill:var(--bg);animation:scSweep 4.5s linear infinite}
+.sc .hr{animation:scBlink 1s steps(1) infinite}
+@keyframes scTown{to{transform:translateX(-1600px)}}
+@keyframes scDash{to{transform:translateX(-160px)}}
+@keyframes scBounce{to{transform:translateY(-4px)}}
+@keyframes scSpin{to{transform:rotate(360deg)}}
+@keyframes scBlink{0%{opacity:1}50%{opacity:.2}}
+@keyframes scGlow{0%{opacity:.55}50%{opacity:0}}
+@keyframes scBob{to{transform:translateY(-5px)}}
+@keyframes scSway{from{transform:rotate(-3deg)}to{transform:rotate(3deg)}}
+@keyframes scPuff{0%{transform:translateY(0) scale(.5);opacity:0}15%{opacity:.95}100%{transform:translateY(-150px) scale(1.5);opacity:0}}
+@keyframes scDrift{to{transform:translateX(70px)}}
+@keyframes scFlag{from{transform:skewY(-4deg)}to{transform:skewY(4deg) scaleX(.93)}}
+@keyframes scFly{0%{transform:translateX(-320px) translateY(0)}25%{transform:translateX(150px) translateY(-14px)}50%{transform:translateX(620px) translateY(6px)}75%{transform:translateX(1100px) translateY(-10px)}100%{transform:translateX(1920px) translateY(0)}}
+@keyframes scRotor{50%{transform:scaleX(.12)}}
+@keyframes scSweep{from{transform:translateX(-140px)}to{transform:translateX(1600px)}}
+/* patterns drift slowly too */
+html[data-bg] #bgfx{animation:bgDrift 90s linear infinite}
+@keyframes bgDrift{to{-webkit-mask-position:400px 200px;mask-position:400px 200px}}
+/* motion off: reduced-motion setting, or Appearance → Animations: Off */
+@media (prefers-reduced-motion:reduce){ #bgscene *,.lookbg *,#bgfx{animation:none!important} }
+html[data-anim="off"] #bgscene *,html[data-anim="off"] .lookbg *,html[data-anim="off"] #bgfx{animation:none!important}
+/* picker thumbnails for scenes */
+.lookbg .lbg svg{position:absolute;left:0;right:0;bottom:0;width:100%;height:100%}
+/* let the background show through the public pages and the portal (the home page had a solid ground) */
+html[data-bg] .gate,html[data-bg] .portal{background:transparent}
+/* With a scene on, cards are solid so the drawing never shows through them (Dkota: people looked "inside" the boxes) */
+html[data-scene]{--card:var(--pane)}
+html[data-scene] .side{background:var(--pane)}
+html[data-scene] .roster,html[data-scene] .ovroster .roster{background:var(--pane)}
+.sc .arm{transform-box:fill-box;transform-origin:center bottom;animation:scWave .55s ease-in-out infinite alternate}
+@keyframes scWave{from{transform:rotate(-16deg)}to{transform:rotate(16deg)}}
+
+/* ======================================================================
+   SLIM DOCK + SETTINGS PAGE (Nov 21, Dkota: "so much going on in the menu bar… I don't like the scrolling… one big settings screen").
+   The dock keeps New, Home, Messages, Schedule ▸, Onboarding ▸, Board meeting, Documents, Med Control, Settings. The list filters
+   live above the applicant list; Team, Settings, shortcuts, password, appearance and sign out are on the Settings page.
+   ====================================================================== */
+.dock-hidden{display:none!important}
+@media (min-width:861px){
+  .side{overflow:visible}
+  .side .navsec:not(.tools){display:none!important}
+  .side .navsec:not(.tools)::after{display:none}
+  #chipsMini{display:flex}
+  .side .me .iconbtn{display:none}
+  .side .me .av{cursor:pointer}
+  .side:hover .me,.side:focus-within .me{flex-direction:row}
+  .dgrp{position:relative;display:flex;flex-direction:column}
+  .dgrp[hidden]{display:none}
+  .dgrp-ch{display:none;margin-left:auto;font-weight:700;color:var(--fg3)}
+  .side:hover .dgrp-ch,.side:focus-within .dgrp-ch{display:inline}
+  .dfly{display:none;position:absolute;left:calc(100% + 16px);top:-10px;z-index:60;min-width:220px;flex-direction:column;gap:2px;padding:8px;
+    background:var(--pane);border-radius:20px;box-shadow:0 24px 48px -20px rgba(28,25,23,.45),0 0 0 1px var(--sep)}
+  .dfly::before{content:"";position:absolute;left:-18px;top:0;bottom:0;width:18px}
+  .dgrp:hover .dfly,.dgrp:focus-within .dfly,.dgrp.open .dfly{display:flex}
+  .dgrp:hover>.dgrp-b,.dgrp.open>.dgrp-b{background:var(--hover);color:var(--fg)}
+  .dfly-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fg3);padding:6px 10px 4px}
+  .side .dfly .nav-i,.side:hover .dfly .nav-i{width:100%;height:40px;min-height:40px;justify-content:flex-start;padding:0 12px;gap:12px;color:var(--fg)}
+  .side .dfly .nav-i .nl{display:inline!important;white-space:nowrap}
+  .side .dfly .nav-i:hover{background:var(--hover)}
+}
+@media (min-width:861px) and (max-height:820px){ .side .dfly .nav-i{height:36px;min-height:36px} }
+
+/* Settings page */
+.setpage{display:grid;grid-template-columns:290px minmax(0,1fr);gap:16px;align-items:start;height:100%;overflow:auto;padding:14px 14px 120px;box-sizing:border-box}
+.setnav{position:sticky;top:0;display:flex;flex-direction:column;gap:2px;background:var(--card);border-radius:26px;box-shadow:var(--soft);padding:14px}
+.setnav-top h2{font-size:26px;font-weight:800;letter-spacing:-.03em;margin:4px 6px 10px}
+.setback{display:none}
+.setme{display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:6px;background:var(--fill);border-radius:16px;min-width:0}
+.setme span:last-child{display:flex;flex-direction:column;min-width:0}
+.setme small{color:var(--fg2);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.setnav-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fg3);padding:12px 10px 4px}
+.setnav-sp{height:8px}
+.setnav-i{appearance:none;border:0;background:none;font:inherit;color:var(--fg);text-align:left;display:flex;align-items:center;gap:8px;justify-content:space-between;padding:9px 12px;border-radius:14px;cursor:pointer}
+.setnav-i span{display:flex;flex-direction:column;gap:1px;min-width:0}
+.setnav-i b{font-weight:650;font-size:14px}
+.setnav-i small{font-size:12px;color:var(--fg2)}
+.setnav-i:hover{background:var(--hover)}
+.setnav-i.on{background:var(--fg);color:var(--bg)}.setnav-i.on small{color:inherit;opacity:.75}
+.setnav-i.danger b{color:var(--red)}
+.setnav-i .navbadge{margin-left:auto}
+.setbody{min-width:0}
+.setbody .sheet.embedded{position:static;inset:auto;transform:none;animation:none;width:auto;max-width:900px;max-height:none;overflow:visible;margin:0;
+  background:var(--card);border:0;border-radius:26px;box-shadow:var(--soft);padding:22px 24px;-webkit-backdrop-filter:none;backdrop-filter:none}
+.setbody .sheet.embedded .acts [data-x]{display:none}
+.setbody .sheet.embedded .acts{position:static;background:none;box-shadow:none;margin-top:14px}
+.setbody .sheet.embedded>h3:first-child{font-size:22px;font-weight:800;letter-spacing:-.02em;margin-top:0}
+.setbody .look h3{font-size:22px}
+@media (max-width:860px){
+  .app.setopen .detail{transform:none}
+  .app.setopen .mnav{transform:translateX(-50%);opacity:1;pointer-events:auto}
+  .setpage{grid-template-columns:1fr;padding:12px 12px 110px}
+  .setnav{position:static}
+  .setback{display:inline-flex;margin-bottom:6px}
+  .setbody .sheet.embedded{padding:18px 16px}
+}
+@media (min-width:861px){ .side,.side:hover,.side:focus-within{overflow:visible} }
+.setlist{display:none}
+.setbodywrap{min-width:0}
+@media (max-width:860px){
+  .setpage:not(.picked) .setbodywrap{display:none}
+  .setpage.picked .setnav{display:none}
+  .setlist{display:inline-flex;margin-bottom:10px}
+}
