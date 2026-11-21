@@ -1957,7 +1957,7 @@ function openPreview(id){
 const SET_GROUPS = { "s-emails": ["Emails", "Saved replies"], "s-ai": ["Med Control (AI assistant)"], "s-lists": ["Onboard lists"], "s-apply": ["Online application", "Applicant view"], "s-data": ["Data retention", "Security", "Backups"] };
 const setSections = () => [
   { h: "You" },
-  { k: "appearance", l: "Appearance", sub: "Colours, background, light or dark", run: () => openAppearance("none") },
+  { k: "appearance", l: "Appearance", sub: "Colours, background, light or dark", run: () => openAppearance("desk") },
   { k: "notif", l: "Notifications", sub: "Alerts on this device", run: openNotifications },
   { k: "password", l: "Sign-in password", sub: "Sign in with email and password", run: openPassword },
   { k: "twostep", l: "Two-step sign-in", sub: "A code from an authenticator app", run: openTwoStep },
@@ -2326,7 +2326,7 @@ function openPalette(){
     { label: "Show the tour", show: !S.owner, words: "tour tutorial help how guide welcome what can i do", run: go(() => showTour(S.role, tourOpts())) },
     ...(S.owner ? [["admin", "an Admin"], ["coordinator", "the Interview coordinator"], ["interviewer", "an Interviewer"], ["member", "a Member"], ["applicant", "an applicant"], ["newmember", "a new member in orientation"], ["records", "an active member on their records page"]]
       .map(([r, l]) => ({ label: `Tour: what ${l} is shown`, show: true, words: "tour tutorial help guide welcome preview " + r, run: go(() => showTour(r, { email: S.me })) })) : []),
-    { label: "Appearance: colours and background", show: true, words: "appearance theme themes colours colors background wallpaper pattern ems star sirens night rescue look customize", run: go(() => openAppearance("none")) },
+    { label: "Appearance: colours and background", show: true, words: "appearance theme themes colours colors background wallpaper pattern ems star sirens night rescue look customize", run: go(() => openAppearance("desk")) },
     ...["light", "dark", "system"].map(t => ({ label: `Appearance: ${THEME_LABEL[t]}`, sub: getTheme() === t ? "Current, on this device" : "This device only", show: true, words: "appearance theme dark light mode night system device colours colors " + t, run: go(() => { setTheme(t); toast("Appearance: " + THEME_LABEL[t] + " (this device)"); }) })),
     { label: "Two-step sign-in", show: true, words: "two step 2fa mfa authenticator security code", run: go(openTwoStep) },
     { label: "Sign-in password", show: true, words: "password key sign in", run: go(openPassword) },
@@ -2576,7 +2576,7 @@ function bindEvents(){
   $("#mnav").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) mnavGo(b.dataset.m); });
   $("#detail").addEventListener("pointerover", statsHover); $("#detail").addEventListener("pointerleave", () => { const t = $("#mtip"); if (t) t.hidden = true; });
   $("#kbdBtn").addEventListener("click", openShortcuts);
-  $("#themeBtn").addEventListener("click", () => openAppearance("none"));
+  $("#themeBtn").addEventListener("click", () => openAppearance("desk"));
   $("#cmdBar").addEventListener("click", openPalette);
   $("#setPageBtn").addEventListener("click", () => openSettingsPage());
   $("#meAv").addEventListener("click", () => openSettingsPage());
