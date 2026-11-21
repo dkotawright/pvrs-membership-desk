@@ -29,7 +29,15 @@ export async function copyText(text, fallbackEl){
 // One modal at a time. Opening makes the page behind it inert and moves focus into the sheet;
 // closing runs the sheet's cleanup (M._cleanup) and puts focus back where it was.
 const behind = () => ["#app", "#portal"].map(s => $(s)).filter(Boolean);
+// The Settings page (Nov 21) shows the usual windows inside itself instead of as pop-ups: hostNextModal(el, back) makes
+// the next openModal draw into `el`, and closing it calls `back` (which redraws that settings section).
+let HOST_NEXT = null, HOST_ON = null;
+export function hostNextModal(el, back){ HOST_NEXT = { el, back }; }
+export function clearHost(){ if (HOST_ON && HOST_ON.el._cleanup) { HOST_ON.el._cleanup(); HOST_ON.el._cleanup = null; } HOST_ON = null; HOST_NEXT = null; }
 export function openModal(html, wide){
+  if (HOST_NEXT) { const h = HOST_NEXT; HOST_NEXT = null; HOST_ON = h;
+    if (h.el._cleanup) { h.el._cleanup(); h.el._cleanup = null; }
+    h.el.innerHTML = `<div class="sheet embedded">${html}</div>`; h.el.onclick = null; return h.el; }
   const M = $("#modal");
   if (M.hidden) M._prev = document.activeElement;
   if (M._cleanup) { M._cleanup(); M._cleanup = null; }
@@ -42,6 +50,7 @@ export function openModal(html, wide){
   return M;
 }
 export function closeModal(){
+  if (HOST_ON && $("#modal").hidden) { const h = HOST_ON; if (h.el._cleanup) { h.el._cleanup(); h.el._cleanup = null; } h.back && h.back(); return; }
   const M = $("#modal");
   if (M._cleanup) { M._cleanup(); M._cleanup = null; }
   M.hidden = true; M.innerHTML = ""; M.onclick = null;

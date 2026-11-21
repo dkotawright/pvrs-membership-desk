@@ -2,7 +2,7 @@
 import { app, auth, db, storage, doc, collection, collectionGroup, getDoc, setDoc, runTransaction, updateDoc, deleteDoc, addDoc, getDocs, onSnapshot, writeBatch, query, where,
   sendSignInLinkToEmail, ref, getDownloadURL, deleteObject, signOut, uploadBytes,
   GoogleAuthProvider, EmailAuthProvider, linkWithCredential, updatePassword, reauthenticateWithPopup, multiFactor, TotpMultiFactorGenerator } from "./fb.js";
-import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText,
+import { $, esc, get, isObj, merge, clone, nest, today, fmtDate, longDate, daysSince, ago, first, loc, lower, toast, copyText, hostNextModal, clearHost,
   openModal, closeModal, download, slotDay, slotTime, slotLong, TYPES, TYPE_INFO, SECURE, DOC_ITEMS, MILESTONES, STAGES, stageVar,
   progress, statusOf, PHASES, inBoardQueue, applicantSteps, checkSVG, icsFile, refList, refStatus, REFS_NEEDED, isDeclined, isConfidential, HEARD,
   getTheme, setTheme, nextTheme, THEME_LABEL, memberItemsFrom, openAppearance, CME_DEFAULT, CME_DRILL, addMonths, daysUntil, memState, cmePeriod, cmeTotals, itemKey } from "./shared.js";
@@ -704,7 +704,7 @@ function statsHover(e){
 
 /* ---------- overview (nothing selected) ---------- */
 function renderOverview(){
-  const D = $("#detail"); if (!D || S.sel || S.chatOn) return;
+  const D = $("#detail"); if (!D || S.sel || S.chatOn || S.setOn) return;
   $("#app").classList.remove("open");
   $("#overviewBtn").classList.add("on");
   const keepScroll = D.querySelector(".ov")?.scrollTop || 0;
@@ -841,8 +841,8 @@ function paintDetail(){
   parkRoster();
   const D = $("#detail"), a = S.apps.get(S.sel);
   $("#app").classList.toggle("open", !!a);
-  $("#overviewBtn").classList.toggle("on", !a && !S.chatOn);
-  if (!a) return S.chatOn ? paintChat() : renderOverview();
+  $("#overviewBtn").classList.toggle("on", !a && !S.chatOn && !S.setOn);
+  if (!a) return S.chatOn ? paintChat() : S.setOn ? paintSettings() : renderOverview();
   const tabs = S.admin ? TABS_ADMIN : TABS_MEMBER;
   if (S.tab === "screen" || S.tab === "refs") S.tab = "checks";   // the two tabs merged into Checks
   if (!tabs.some(t => t[0] === S.tab)) S.tab = "app";
@@ -1951,6 +1951,67 @@ function openPreview(id){
 }
 
 /* ---------- settings (owner only; the button is hidden for everyone else and the rules block their writes) ---------- */
+/* ---------- Settings page (Nov 21, Dkota: "so much going on in the menu bar… one big settings screen rather than a pop up") ----------
+   A full page in #detail (like Messages) with sections down the left. Each section shows its usual window inside the page
+   (hostNextModal), so nothing pops up. The old Settings window is split into smaller sections. */
+const SET_GROUPS = { "s-emails": ["Emails", "Saved replies"], "s-ai": ["Med Control (AI assistant)"], "s-lists": ["Onboard lists"], "s-apply": ["Online application", "Applicant view"], "s-data": ["Data retention", "Security", "Backups"] };
+const setSections = () => [
+  { h: "You" },
+  { k: "appearance", l: "Appearance", sub: "Colours, background, light or dark", run: () => openAppearance("none") },
+  { k: "notif", l: "Notifications", sub: "Alerts on this device", run: openNotifications },
+  { k: "password", l: "Sign-in password", sub: "Sign in with email and password", run: openPassword },
+  { k: "twostep", l: "Two-step sign-in", sub: "A code from an authenticator app", run: openTwoStep },
+  { k: "keys", l: "Keyboard shortcuts", sub: "Faster on a computer", run: openShortcuts },
+  ...(S.owner ? [] : [{ k: "tour", l: "How this works", sub: "The short tour for your role", run: () => showTour(S.role, tourOpts()) }]),
+  ...(S.owner ? [{ h: S.assistant ? "Squad (view only)" : "Squad" },
+    { k: "team", l: "Team", sub: "Squad members, roles, access requests", run: openTeam, badge: S.requests.length },
+    { k: "s-emails", l: "Emails and replies", sub: "Signature, addresses, saved replies", run: () => openSettings("s-emails") },
+    { k: "s-lists", l: "Onboarding and member lists", sub: "Checklists, CME, deadlines, hand-offs", run: () => openSettings("s-lists") },
+    { k: "s-ai", l: "Med Control", sub: "The AI assistant", run: () => openSettings("s-ai") },
+    { k: "s-apply", l: "Online application", sub: "Application link, applicant view", run: () => openSettings("s-apply") },
+    { k: "s-data", l: "Data, security and backups", sub: "Retention, sign-out timer, exports", run: () => openSettings("s-data") }] : []),
+  { h: "" }, { k: "signout", l: "Sign out", danger: true }];
+function openSettingsPage(sec){
+  if (S.ivMode) exitIvMode();
+  if (S.sel) { flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); watchMember(null); renderList(); }
+  if (S.chatOn) closeChat();
+  if (!$("#modal").hidden) closeModal();
+  S.setOn = true; S.mOv = false; S.setSec = sec || S.setSec || "appearance"; S.setPicked = !!sec;
+  if (!setSections().some(x => x.k === S.setSec && x.run)) S.setSec = "appearance";
+  parkRoster();
+  const D = $("#detail"); D._ovHTML = ""; D._chatKey = undefined; D.innerHTML = "";
+  $("#app").classList.remove("open"); $("#app").classList.add("setopen");
+  paintSettings(true); renderDetail();
+}
+// The Assistant sees the squad's settings and team but can't change them (Dkota, Nov 21; the rules refuse the writes too).
+const LOCK_OK = new Set(["sFull", "sSummary", "sCopyApply", "sPreview", "sRetReview"]);   // look-only buttons stay usable
+function lockSection(body){
+  const paint = () => { body.querySelectorAll("input,textarea,select,button").forEach(el => { if (el.closest(".acts [data-x]") || LOCK_OK.has(el.id)) return; el.disabled = true; });
+    body.querySelectorAll("#sSave,#sCancel,#qrAdd,[data-qrrm],label[for='sImport'],[data-rmstaff],[data-approve],[data-deny],#tmAdd,#addStaffBtn").forEach(el => { el.hidden = true; }); };
+  paint();
+  if (!body.querySelector(".lockline")) body.querySelector(".sheet")?.insertAdjacentHTML("afterbegin", `<p class="note lockline">View only. Only the owner changes squad settings and the team.</p>`);
+  if (S._teamPaint) { const tp = S._teamPaint; S._teamPaint = () => { tp(); paint(); }; }
+}
+function closeSettingsPage(){
+  if (!S.setOn) return;
+  S.setOn = false; clearHost(); $("#app").classList.remove("setopen"); $("#setPageBtn")?.classList.remove("on");
+  const D = $("#detail"); D.innerHTML = ""; D._ovHTML = "";
+}
+function paintSettings(force){
+  const D = $("#detail"); if (!D) return;
+  $("#setPageBtn")?.classList.add("on"); $("#overviewBtn").classList.remove("on");
+  if (!force && D.querySelector(".setpage")) return;   // never redraw over a half-filled form
+  const secs = setSections(), cur = secs.find(x => x.k === S.setSec);
+  D.innerHTML = `<div class="setpage${S.setPicked ? " picked" : ""}"><nav class="setnav" aria-label="Settings sections"><div class="setnav-top"><button class="btn small back setback" type="button" data-setclose>‹ Back</button><h2>Settings</h2>
+      <div class="setme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.assistant ? "Assistant" : S.full ? "Full access" : S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div></div>
+    ${secs.map(x => x.h !== undefined ? (x.h ? `<div class="setnav-h">${esc(x.h)}</div>` : `<div class="setnav-sp"></div>`)
+      : `<button type="button" class="setnav-i${x.k === S.setSec ? " on" : ""}${x.danger ? " danger" : ""}" data-setsec="${x.k}" aria-current="${x.k === S.setSec}"><span><b>${esc(x.l)}</b>${x.sub ? `<small>${esc(x.sub)}</small>` : ""}</span>${x.badge ? `<b class="navbadge">${x.badge}</b>` : ""}</button>`).join("")}</nav>
+    <div class="setbodywrap"><button class="btn small back setlist" type="button" data-setlist>‹ All settings</button><section class="setbody" id="setBody" aria-label="${esc(cur ? cur.l : "Settings")}"></section></div></div>`;
+  const body = $("#setBody");
+  body.onchange = e => S.onRole && S.onRole(e);
+  if (cur && cur.run) { hostNextModal(body, () => paintSettings(true));
+    Promise.resolve(cur.run()).then(() => { if (S.assistant && (cur.k === "team" || cur.k.startsWith("s-"))) lockSection(body); }).catch(e => console.error(e)); }
+}
 function gateSettings(){ if (S.owner && !S.assistant) openSettings(); }
 function requestsHTML(){
   if (!S.requests.length) return "";
@@ -1983,7 +2044,7 @@ function teamHTML(){
       <input id="tmName" type="text" placeholder="Name" class="inlinefield" style="flex:1 1 120px">
       <button class="btn small primary" type="button" id="tmAdd">Add member</button></div>`;
 }
-function openSettings(){
+function openSettings(only){
   const s = S.settings;
   const M = openModal(`<h3>Settings</h3>
     <div class="group"><h3><span>Team</span></h3><div class="ios"><div class="row"><span class="lbl">Squad members and roles<small>${S.staff.size} on the desk${S.requests.length ? ` · ${S.requests.length} access request${S.requests.length === 1 ? "" : "s"} waiting` : ""}. Team has its own menu now.</small></span><button class="btn small" type="button" id="sTeam">Open Team</button></div></div></div>
@@ -2024,6 +2085,9 @@ function openSettings(){
       <div class="row"><span class="lbl">Import records<small>The migration file from the old Claude version</small></span><label class="btn small" for="sImport">Choose file</label><input type="file" id="sImport" accept="application/json,.json" hidden></div></div></div>
     <div class="acts"><button class="btn" type="button" id="sCancel">Cancel</button><button class="btn primary" type="button" id="sSave">Save</button></div>`, true);
   $("#sImport").addEventListener("change", e => importFile(e.target.files && e.target.files[0]));
+  if (SET_GROUPS[only]) { const keep = SET_GROUPS[only];   // Settings page: show only this section's groups (one Save still saves everything)
+    M.querySelectorAll(".sheet > .group").forEach(g => { const t = g.querySelector(":scope > h3 > span")?.textContent.trim(); g.hidden = !keep.includes(t); });
+    M.querySelector(".sheet > h3").hidden = true; const c = $("#sCancel"); if (c) c.hidden = true; }
   $("#sAi").querySelectorAll("button").forEach(b => { const on = b.dataset.v === (s.ai ? "on" : "off"); b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
   M.onclick = async e => {
     const id = e.target.id;
@@ -2059,8 +2123,8 @@ const ROLE_HELP = [["Member", "Messages, squad documents and their own paperwork
   ["Assistant", "Everything the owner does day to day: edit every file, uploads, orientation signing, scheduling, messages, secure documents, Med Control. Can't delete anything, change Settings or manage the Team."],
   ["Full access", "Everything the owner can do: edit every file, team and settings, Med Control, secure documents. Only the owner's own account can't be changed."]];
 function openTeam(){
-  if (!S.owner || S.assistant) return;
-  $("#modal").onchange = async e => { const rs = e.target.closest?.("[data-rolesel]"); if (!rs) return;
+  if (!S.owner || (S.assistant && !S.setOn)) return;   // the Assistant sees Team only on the Settings page, view only
+  S.onRole = $("#modal").onchange = async e => { const rs = e.target.closest?.("[data-rolesel]"); if (!rs) return;
     const who = S.staff.get(rs.dataset.rolesel)?.name || rs.dataset.rolesel;
     // Full access is everything you can do, secure documents included: ask once before giving it.
     if (rs.value === "full" && !confirm(`Give ${who} full access? They'll be able to do everything you can: edit every file, manage the team and settings, and open secure documents.`)) { rs.value = S.staff.get(rs.dataset.rolesel)?.role || "member"; return; }
@@ -2255,7 +2319,7 @@ function openPalette(){
     { label: "Documents", show: true, words: "documents library handbook policies forms", run: go(openLibrary) },
     { label: "Messages", show: !$("#msgsBtn").hidden, words: "messages inbox questions", run: go(() => openChat()) },
     { label: "Team", show: S.owner && !S.assistant, words: "team squad members roles access requests staff people", run: go(openTeam) },
-    { label: "Settings", show: S.owner && !S.assistant, words: "settings signature emails checklist backups", run: go(gateSettings) },
+    { label: "Settings", show: true, words: "settings preferences appearance notifications password team signature emails checklist backups account", run: go(() => openSettingsPage()) },
     { label: "Med Control", show: aiOn(), words: "ai assistant ask med control chat draft question", run: go(openMedControl) },
     { label: "Reports", show: S.admin, words: "reports how long days stage stalled waiting average", run: go(openReports) },
     { label: "Notifications", show: true, words: "notifications alerts push bell phone", run: go(openNotifications) },
@@ -2365,6 +2429,7 @@ function ivGo(d){
 /* ---------- phone menu (floating glass bar at the bottom) ---------- */
 // It mirrors the sidebar: each item is shown only when the matching sidebar button is, so roles stay the same.
 function paintMnav(){
+  document.querySelectorAll(".dgrp").forEach(g => { g.hidden = ![...g.querySelectorAll(".dfly .nav-i")].some(b => !b.hidden); });
   const m = $("#mnav"); if (!m) return;
   m.querySelector('[data-m="msgs"]').hidden = $("#msgsBtn").hidden;
   m.querySelectorAll("[data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === (S.chatOn ? "msgs" : S.mOv ? "ov" : S.filter === "orient" ? "orient" : "list")));
@@ -2375,6 +2440,7 @@ function mnavGo(k){
   if (k === "msgs") return openChat();
   if (S.chatOn) closeChat();
   if (k === "more") return openMore();
+  if (S.setOn) closeSettingsPage();
   S.mOv = k === "ov";
   if (k === "orient") S.filter = "orient"; else if (k === "list" && S.filter === "orient") S.filter = "all";   // Applicants and Onboard are separate lists
   if (S.sel) deselect(); else { renderList(); renderDetail(); }
@@ -2391,7 +2457,7 @@ function openActions(){
   M.onclick = e => { if (e.target.closest("[data-x]")) return closeModal(); const p = e.target.closest("[data-pick]"); if (p) { closeModal(); const b = btns[+p.dataset.pick]; setTimeout(() => b.click(), 60); } };
 }
 function openMore(){
-  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation board"], ["trainBtn", "Sign-offs"], ["paperBtn", $("#paperBtn")?.querySelector(".nl")?.textContent || "My paperwork"], ["libBtn", "Documents"], ["teamBtn", "Team"], ["boardBtn", "Board meeting"], ["settingsBtn", "Settings"], ["kbdBtn", null], ["pwBtn", "Sign-in password"]]
+  const tools = [["newBtn", "New applicant"], ["aiBtn", "Med Control"], ["slotsBtn", "Interview times"], ["orientBtn", "Orientation board"], ["trainBtn", "Sign-offs"], ["paperBtn", $("#paperBtn")?.querySelector(".nl")?.textContent || "My paperwork"], ["libBtn", "Documents"], ["boardBtn", "Board meeting"], ["setPageBtn", "Settings"], ["kbdBtn", null], ["pwBtn", null && "Sign-in password"]]
     .filter(([id, label]) => label && $("#" + id) && !$("#" + id).hidden);
   const icon = id => { const svg = $("#" + id).querySelector("svg"); return svg ? svg.outerHTML : ""; };
   const M = openModal(`<div class="moreme"><span class="av" aria-hidden="true">${esc(initials(S.name || S.me))}</span><span><b>${esc(S.name || S.me)}</b><small>${S.assistant ? "Assistant" : S.full ? "Full access" : S.owner ? "Owner" : roleLabel(S.role)} · ${esc(S.me)}</small></span></div>
@@ -2405,7 +2471,7 @@ function openMore(){
 function deselect(){ if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchMember(null); watchHistory(null); watchRecords(null); renderList(); renderDetail(); }
 // Choosing a filter (sidebar or stage tile) shows the results in the dashboard's Applicants box.
 function setFilter(f, focusList){
-  S.filter = f;
+  S.filter = f; if (S.setOn) closeSettingsPage();
   if (isDesk()) { if (S.chatOn) { closeChat(); } if (S.sel) deselect(); else renderDetail(); }
   renderList();
   const slot = $("#ovRoster"); if (slot && isDesk()) slot.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion:reduce)").matches ? "auto" : "smooth" });
@@ -2506,12 +2572,24 @@ function bindEvents(){
   $("#q").addEventListener("input", e => { S.q = e.target.value; renderList(); });
   matchMedia("(min-width:861px)").addEventListener("change", () => { if (!S.sel && !S.chatOn) renderDetail(); placeRoster(); });
   const sortSel = $("#sort"); sortSel.value = S.sort; sortSel.addEventListener("change", e => { S.sort = e.target.value; prefs.set("sort", S.sort); renderList(); });
-  $("#overviewBtn").addEventListener("click", () => { if (S.chatOn) { closeChat(); renderDetail(); return; } if (S.sel) deselect(); else { S.filter = "all"; renderList(); } });
+  $("#overviewBtn").addEventListener("click", () => { if (S.setOn) { closeSettingsPage(); renderDetail(); return; } if (S.chatOn) { closeChat(); renderDetail(); return; } if (S.sel) deselect(); else { S.filter = "all"; renderList(); } });
   $("#mnav").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) mnavGo(b.dataset.m); });
   $("#detail").addEventListener("pointerover", statsHover); $("#detail").addEventListener("pointerleave", () => { const t = $("#mtip"); if (t) t.hidden = true; });
   $("#kbdBtn").addEventListener("click", openShortcuts);
   $("#themeBtn").addEventListener("click", () => openAppearance("none"));
   $("#cmdBar").addEventListener("click", openPalette);
+  $("#setPageBtn").addEventListener("click", () => openSettingsPage());
+  $("#meAv").addEventListener("click", () => openSettingsPage());
+  document.querySelectorAll(".dgrp-b").forEach(b => b.addEventListener("click", () => { const g = b.closest(".dgrp"), open = !g.classList.contains("open");
+    document.querySelectorAll(".dgrp.open").forEach(x => { x.classList.remove("open"); x.querySelector(".dgrp-b").setAttribute("aria-expanded", "false"); });
+    g.classList.toggle("open", open); b.setAttribute("aria-expanded", String(open)); if (open) g.querySelector(".dfly .nav-i:not([hidden])")?.focus(); }));
+  document.addEventListener("click", e => { if (!e.target.closest(".dgrp-b")) document.querySelectorAll(".dgrp.open").forEach(x => { x.classList.remove("open"); x.querySelector(".dgrp-b").setAttribute("aria-expanded", "false"); }); });
+  $("#detail").addEventListener("click", e => { if (!S.setOn) return;
+    if (e.target.closest("[data-setclose]")) { closeSettingsPage(); renderDetail(); return; }
+    if (e.target.closest("[data-setlist]")) { S.setPicked = false; paintSettings(true); return; }
+    const b = e.target.closest("[data-setsec]"); if (!b) return;
+    if (b.dataset.setsec === "signout") return document.querySelector(".me [data-signout]")?.click();
+    S.setSec = b.dataset.setsec; S.setPicked = true; paintSettings(true); $("#detail .setpage")?.scrollTo(0, 0); });
   $("#calBtn").addEventListener("click", openWeekCal);
   wireXf();
   addEventListener("keydown", onKeys);
@@ -2682,6 +2760,7 @@ function bindEvents(){
 
 }
 function select(id){
+  closeSettingsPage();
   if (!S.apps.has(id)) return;
   if (S.chatOn) closeChat();
   flushAll(); const same = S.sel === id; S.sel = id;
@@ -3625,6 +3704,7 @@ function chatChanged(){
 
 // The screen. Lives in #detail like the Overview; the composer is built once per conversation so typing isn't interrupted.
 function openChat(key){
+  closeSettingsPage();
   if (key) { if (chatReady(key)) { C.key = key; C.pendingKey = null; } else C.pendingKey = key; }
   if (S.sel) { if (S.ivMode) exitIvMode(); flushAll(); S.sel = null; watchFiles(null); watchHistory(null); watchRecords(null); renderList(); }
   S.chatOn = true; S.mOv = false;
@@ -4790,11 +4870,12 @@ export function startDesk({ email, role, owner, full = false, assistant = false,
         const n = S.requests.length, sb = $("#teamBtn");
         let badge = sb.querySelector(".navbadge"); if (!badge) { badge = document.createElement("b"); badge.className = "navbadge"; sb.appendChild(badge); }
         badge.textContent = n || ""; badge.hidden = !n; sb.title = n ? `Team · ${n} access request${n===1?"":"s"}` : "Team";
-        if (S._teamPaint && !$("#modal").hidden) S._teamPaint();
+        { const pb = $("#setPageBtn"); if (pb) { let b2 = pb.querySelector(".navbadge"); if (!b2) { b2 = document.createElement("b"); b2.className = "navbadge"; pb.appendChild(b2); } b2.textContent = n || ""; b2.hidden = !n; } }
+        if (S._teamPaint && (!$("#modal").hidden || S.setOn)) S._teamPaint();
         if (!S.sel) renderOverview();
       }, e => console.error(e));
     }
     onSnapshot(doc(db, "settings", "main"), s => { S.settings = s.exists() ? s.data() : {}; paintAi(); addNewOnbLines(); }, () => {});
-    onSnapshot(collection(db, "staff"), snap => { S.staff = new Map(snap.docs.map(d => [d.id, d.data()])); if (S._teamPaint && !$("#modal").hidden) S._teamPaint(); if (S.sel) syncDetail(); }, () => {});
+    onSnapshot(collection(db, "staff"), snap => { S.staff = new Map(snap.docs.map(d => [d.id, d.data()])); if (S._teamPaint && (!$("#modal").hidden || S.setOn)) S._teamPaint(); if (S.sel) syncDetail(); }, () => {});
   }
 }
