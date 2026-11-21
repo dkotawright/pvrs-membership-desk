@@ -194,12 +194,6 @@ service cloud.firestore {
 
     // Application + interview: admins see all; interviewers only the applicants assigned to them (works for
     // "where interviewers array-contains me" queries); members none.
-    // Calendar feed switch (Nov 20): the owner turns it on and makes the secret link; the cal-feed function reads it
-    // with the Admin SDK. Nobody else can read the token.
-    match /calFeed/{doc} {
-      allow read, create, update: if isOwner() && doc == 'main';
-    }
-
     match /applicants/{id} {
       allow read: if isAdmin() || assignedTo(resource.data);
       allow create: if isEditor();

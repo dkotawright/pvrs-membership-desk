@@ -94,8 +94,3 @@ jobs:
           echo "Med Control secrets: $SECRETS"
       - name: Deploy server functions (notifications and Med Control)
         run: npx -y firebase-tools@15 deploy --only functions:push,functions:ai --project pvrs-membership --non-interactive --force
-      # Calendar feed (Nov 20). A public web link needs a one-time permission the deploy account may not have; if this
-      # step fails, the website, rules and other functions are already live. See docs/calendar-feed.md.
-      - name: Deploy calendar feed
-        continue-on-error: true
-        run: npx -y firebase-tools@15 deploy --only functions:cal --project pvrs-membership --non-interactive --force

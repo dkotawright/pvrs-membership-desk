@@ -106,6 +106,6 @@ New saved fields (approved):
 
 Free server pieces:
 - [x] Morning push: follow-ups due (you), documents still needed on Mondays (applicants)
-- [x] Calendar feed, initials only (Settings → Calendar feed; see docs/calendar-feed.md)
+- [ ] Calendar feed: saved for later, not deployed (docs/later/calendar-feed/)
 
 Skipped: duty schedule (waiting on shifts), Med Control weekly summary and text messages (cost money).

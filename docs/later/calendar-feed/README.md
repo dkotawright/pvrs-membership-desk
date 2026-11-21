@@ -1,3 +1,18 @@
+# Saved for later: calendar feed (not deployed)
+
+Built Nov 20 and taken out before deploy (Dkota: "too much more work, save for later"). To bring it back:
+1. Move `cal.js` back to `functions/cal.js` and add to `functions/index.js`:
+   `exports.cal = { feed: require("./cal").feed };`
+2. firestore.rules, before `match /applicants/{id}`:
+   ```
+   match /calFeed/{doc} {
+     allow read, create, update: if isOwner() && doc == 'main';
+   }
+   ```
+3. Settings → "Calendar feed" group (`paintCalFeed`, `setCalFeed`, `CAL_FN` in desk.js) and its tests (browser,
+   push `buildFeed`, 7 rules tests): see commit 30c3ed7 for the exact code.
+4. deploy.yml: a separate `continue-on-error` step `deploy --only functions:cal`.
+
 # Calendar feed
 
 A private link that Apple Calendar or Google Calendar checks for booked interview and orientation times.

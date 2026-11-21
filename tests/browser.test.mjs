@@ -2072,14 +2072,6 @@ try {
     await page.locator("#palQ").fill("orientation deadlines"); await page.keyboard.press("Enter"); await wait(page, 400);
     if (!/Orientation deadlines/.test(await page.locator("#modal").textContent())) fail("deadlines window"); else ok("Orientation deadlines opens from ⌘K");
     await page.locator("#modal [data-x]").click(); await wait(page, 200);
-    // calendar feed switch in Settings
-    await page.locator("#settingsBtn").click(); await wait(page, 600);
-    await page.locator("#sCalOn").click(); await wait(page, 600);
-    const cf = await page.evaluate(() => window.__mock.docs.get("calFeed/main"));
-    if (!cf || !cf.on || !/^[0-9a-f]{48}$/.test(cf.token || "") || !/cal-feed\?k=/.test(await page.locator("#sCal").textContent())) fail("calendar feed on: " + JSON.stringify(cf)); else ok("Settings makes a private calendar link");
-    await page.locator("#sCalOff").click(); await wait(page, 600);
-    const cf2 = await page.evaluate(() => window.__mock.docs.get("calFeed/main"));
-    if (cf2.on || cf2.token) fail("calendar feed off: " + JSON.stringify(cf2)); else ok("Settings turns the calendar link off");
     await ctx.close();
   }
   // phones: the command bar stays out of the way (the bottom menu is there), filters still reachable

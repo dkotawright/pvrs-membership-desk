@@ -1863,24 +1863,6 @@ function openPreview(id){
 }
 
 /* ---------- settings (owner only; the button is hidden for everyone else and the rules block their writes) ---------- */
-/* ---------- calendar feed (Nov 20): calFeed/main {token, on}; the cal-feed function serves it (functions/cal.js) ---------- */
-const CAL_FN = "https://us-central1-pvrs-membership.cloudfunctions.net/cal-feed";
-const calFeedURL = t => `${CAL_FN}?k=${encodeURIComponent(t)}`;
-async function paintCalFeed(){
-  const el = $("#sCal"); if (!el) return;
-  let t = ""; try { const d = await getDoc(doc(db, "calFeed", "main")); t = d.exists() && d.data().on ? d.data().token || "" : ""; } catch {}
-  S.calToken = t; if (!$("#sCal")) return;
-  el.innerHTML = t ? `<div class="row"><span class="lbl">Feed is on<small class="mono" style="word-break:break-all">${esc(calFeedURL(t))}</small></span><button class="btn small primary" type="button" id="sCalCopy">Copy link</button></div>
-      <div class="row"><span class="lbl"><small>In Apple Calendar: File → New Calendar Subscription. In Google Calendar: Other calendars → From URL.</small></span><a class="btn small" href="${esc(calFeedURL(t).replace(/^https:/, "webcal:"))}">Subscribe on this device</a></div>
-      <div class="row"><span class="lbl">Lost the link or shared it by mistake?</span><button class="btn small" type="button" id="sCalOn">Make a new link</button><button class="btn small" type="button" id="sCalOff">Turn off</button></div>`
-    : `<div class="row"><span class="lbl">Feed is off</span><button class="btn small primary" type="button" id="sCalOn">Make a link</button></div>`;
-}
-async function setCalFeed(on){
-  const token = on ? [...crypto.getRandomValues(new Uint8Array(24))].map(b => b.toString(16).padStart(2, "0")).join("") : "";
-  try { await setDoc(doc(db, "calFeed", "main"), { token, on, at: Date.now(), by: S.me }); toast(on ? "New calendar link made; the old one stopped working" : "Calendar feed turned off"); }
-  catch { toast("Couldn't change the calendar feed."); }
-  paintCalFeed();
-}
 function gateSettings(){ if (S.owner && !S.assistant) openSettings(); }
 function requestsHTML(){
   if (!S.requests.length) return "";
@@ -1943,8 +1925,6 @@ function openSettings(){
     <div class="group"><h3><span>Online application</span></h3><div class="ios">
       <div class="row"><span class="lbl">Application link for the squad website<small>${esc(location.origin)}/apply</small></span><button class="btn small" type="button" id="sCopyApply">Copy link</button><a class="btn small" href="/apply" target="_blank" rel="noopener">Open</a></div></div>
       <p class="help" style="margin:4px 4px 0">New applications appear in your list automatically (marked Online) the next time your desk is open, with the full form under Application → Online application.</p></div>
-    <div class="group"><h3><span>Calendar feed</span></h3><div class="ios" id="sCal"><div class="row"><span class="lbl">Loading…</span></div></div>
-      <p class="help" style="margin:4px 4px 0">A private link Apple or Google Calendar checks for booked interview and orientation times. It shows initials only (e.g. "Interview: G.T."), never names, emails or results. Anyone with the link can see those times, so keep it to yourself; making a new link turns the old one off.</p></div>
     <div class="group"><h3><span>Applicant view</span></h3><div class="ios">
       <div class="row"><span class="lbl">See what applicants see<small>Their portal, for any applicant on the roster</small></span><button class="btn small" type="button" id="sPreview">Preview</button></div></div></div>
     <div class="group"><h3><span>Backups</span></h3><div class="ios">
@@ -1953,7 +1933,6 @@ function openSettings(){
       <div class="row"><span class="lbl">Import records<small>The migration file from the old Claude version</small></span><label class="btn small" for="sImport">Choose file</label><input type="file" id="sImport" accept="application/json,.json" hidden></div></div></div>
     <div class="acts"><button class="btn" type="button" id="sCancel">Cancel</button><button class="btn primary" type="button" id="sSave">Save</button></div>`, true);
   $("#sImport").addEventListener("change", e => importFile(e.target.files && e.target.files[0]));
-  paintCalFeed();
   $("#sAi").querySelectorAll("button").forEach(b => { const on = b.dataset.v === (s.ai ? "on" : "off"); b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
   M.onclick = async e => {
     const id = e.target.id;
@@ -1961,8 +1940,6 @@ function openSettings(){
     if (id === "sPreview") openPreview(S.sel);
     if (id === "sTeam") return openTeam();
     if (id === "sRetReview") return openRetention();
-    if (id === "sCalOn" || id === "sCalOff") return setCalFeed(id === "sCalOn");
-    if (id === "sCalCopy") { const u = calFeedURL(S.calToken); toast((await copyText(u)) ? "Copied the calendar link" : u); return; }
     const sa = e.target.closest("#sAi button"); if (sa) { $("#sAi").querySelectorAll("button").forEach(b => { b.classList.toggle("on", b === sa); b.setAttribute("aria-pressed", b === sa); }); return; }
     if (id === "qrAdd") { $("#qrList").insertAdjacentHTML("beforeend", replyRowHTML()); $("#qrList .qredit:last-child .qrTitle").focus(); return; }
     const qrm = e.target.closest("[data-qrrm]"); if (qrm) { qrm.closest(".qredit").remove(); return; }
