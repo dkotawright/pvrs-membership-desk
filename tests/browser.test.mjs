@@ -848,10 +848,11 @@ try {
       if (!(await page.locator(".starthere").isVisible()) || (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1))) fail("phone Overview: Start here hidden or page too wide"); else ok("phones get Start here and a board that swipes sideways without widening the page");
       await page.screenshot({ path: path.join(OUT, "63-lanes-phone.png") });
       await ctx.close(); }
-    { const { ctx, page } = await open(browser, { url: "/signin", user: null }); await wait(page, 700);
-      const steps = await page.locator(".lanesteps span b").allTextContents();
-      if (steps.join() !== "Screening,Interview,Approval,Onboard") fail("sign-in lane steps: " + steps); else ok("the sign-in page shows the four lanes of the journey");
-      await page.screenshot({ path: path.join(OUT, "64-lanes-signin.png") });
+    { const { ctx, page } = await open(browser, { user: null });
+      const journey = page.locator("#home .public-journey");
+      const steps = await journey.locator(".homepath li span").evaluateAll(labels => labels.map(label => label.firstChild.textContent.trim()));
+      if (!(await journey.isVisible()) || steps.join() !== "Apply online,Application review,Interview,Orientation") fail("homepage application steps: " + steps); else ok("the homepage shows the four application steps in order");
+      await page.screenshot({ path: path.join(OUT, "64-lanes-home.png") });
       await ctx.close(); }
     { const { ctx, page } = await open(browser, { user: { email: "marcus.bell@example.com", displayName: "" }, w: 390, h: 844 }); await wait(page, 900);
       if (!(await page.locator(".portal .phead").count())) fail("portal header has no lane colour"); else ok("the applicant portal's header is in their lane's colour");

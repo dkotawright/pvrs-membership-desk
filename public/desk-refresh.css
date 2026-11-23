@@ -44,10 +44,10 @@ body:has(#app:not([hidden])) {
 #app .ovhead { padding: 14px 4px 8px; }
 #app .ovhead h2 { font-size: clamp(29px, 3.2vw, 42px); }
 #app .ovhead .eyebrow { color: color-mix(in srgb, var(--red) 76%, var(--fg)); }
-#app .newbtn, #app .newbtn.btn.primary {
+#app .newbtn { border-radius: 999px; }
+:root:not([data-accent]) #app .newbtn {
   background: #b92350;
   color: #fff;
-  border-radius: 999px;
 }
 #app .desk-phone-brand { display: none; }
 #app .side .brand {
