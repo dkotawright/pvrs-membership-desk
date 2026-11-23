@@ -276,24 +276,67 @@ await t("a new member lists documents meant for them", getDocs(query(collection(
 await t("a stranger can't", getDocs(query(collection(stranger, "library"), where("newMembers", "==", true))), false);
 await t("only the owner adds documents", setDoc(doc(admin, "library/d3"), { name: "x" }), false);
 
-// Storage rules look up portal/{id} in Firestore. firebase-tools sends that emulator-to-emulator call through
-// HTTPS_PROXY and ignores NO_PROXY, so behind a proxy (e.g. a cloud sandbox) the lookup fails and the upload test
-// below fails too. Run without a proxy (a Mac, GitHub Actions) or let localhost bypass it.
-console.log("Storage");
+console.log("Pending interview requests");
+const pendAt = now() + 5 * DAY, nextAt = now() + 6 * DAY;
+await env.withSecurityRulesDisabled(async c => {
+  const db = c.firestore();
+  await setDoc(doc(db, "staff/iv-review@pvrs.org"), { role: "assistant" });
+  await setDoc(doc(db, "staff/iv-admin@pvrs.org"), { role: "admin" });
+  await setDoc(doc(db, "staff/iv-full@pvrs.org"), { role: "full" });
+  await setDoc(doc(db, "staff/iv-coord@pvrs.org"), { role: "coordinator" });
+  await setDoc(doc(db, "portal/ir2"), { email: "other@app.example", bookingOpen: true, interview: null });
+  for (const [id, start] of [["rq1", pendAt], ["rq2", nextAt], ["rqsoon", now() + 1000]]) await setDoc(doc(db, "slots", id), { start, bookedBy: null });
+});
+const ivReviewer = fsOf("iv-review@pvrs.org"), ivFull = fsOf("iv-full@pvrs.org"), ivAdmin = fsOf("iv-admin@pvrs.org"), ivCoord = fsOf("iv-coord@pvrs.org"), ivOther = fsOf("other@app.example");
+const requestIv = (db, appId, slotId, start) => { const b = writeBatch(db); b.update(doc(db, "slots", slotId), { requestedBy: appId }); b.update(doc(db, "portal", appId), { interviewRequest: { slotId, start } }); return b.commit(); };
+const decideIv = (db, { appId = "a1", slotId = "rq1", start = pendAt, confirm = true, old } = {}) => {
+  const b = writeBatch(db); b.update(doc(db, "slots", slotId), confirm ? { requestedBy: null, bookedBy: appId } : { requestedBy: null });
+  if (old) b.update(doc(db, "slots", old), { bookedBy: null });
+  b.update(doc(db, "portal", appId), confirm ? { interviewRequest: null, interview: { slotId, start } } : { interviewRequest: null });
+  return b.commit();
+};
+const legacySelf = writeBatch(applicant);
+legacySelf.update(doc(applicant, "slots/rq1"), { bookedBy: "a1" });
+legacySelf.update(doc(applicant, "portal/a1"), { interview: { slotId: "rq1", start: pendAt } });
+await t("applicant cannot immediately book an open interview", legacySelf.commit(), false);
+await t("applicant cannot reserve a slot without a matching portal request", updateDoc(doc(applicant, "slots/rq1"), { requestedBy: "a1" }), false);
+await t("applicant cannot forge a request date", requestIv(applicant, "a1", "rq1", pendAt + DAY), false);
+await t("applicant cannot request inside 24 hours", requestIv(applicant, "a1", "rqsoon", now() + 1000), false);
+await t("applicant reserves a time without confirming it", requestIv(applicant, "a1", "rq1", pendAt), true);
+await t("another applicant cannot claim the same slot", requestIv(ivOther, "ir2", "rq1", pendAt), false);
+await t("same applicant cannot take a second pending slot", requestIv(applicant, "a1", "rq2", nextAt), false);
+await t("applicant cannot confirm their own request", decideIv(applicant), false);
+await t("Admin cannot confirm it", decideIv(ivAdmin), false);
+await t("Coordinator cannot confirm it", decideIv(ivCoord), false);
+await t("Full access cannot confirm it", decideIv(ivFull), false);
+await t("Full access cannot decline it", decideIv(ivFull, { confirm: false }), false);
+await t("Coordinator cannot delete a pending reservation", deleteDoc(doc(ivCoord, "slots/rq1")), false);
+await t("owner can decline a request", decideIv(owner, { confirm: false }), true);
+await t("applicant can retry after it is declined", requestIv(applicant, "a1", "rq1", pendAt), true);
+await t("applicant can withdraw their request", decideIv(applicant, { confirm: false }), true);
+await t("another applicant can reserve a released slot", requestIv(ivOther, "ir2", "rq1", pendAt), true);
+await t("owner can confirm a request", decideIv(owner, { appId: "ir2" }), true);
+await t("applicant with confirmed interview can request reschedule without releasing it", requestIv(ivOther, "ir2", "rq2", nextAt), true);
+await t("Assistant can't confirm a reschedule without releasing the old slot atomically", decideIv(ivReviewer, { appId: "ir2", slotId: "rq2", start: nextAt }), false);
+await t("Assistant can confirm the reschedule and free old slot in same write", decideIv(ivReviewer, { appId: "ir2", slotId: "rq2", start: nextAt, old: "rq1" }), true);
+await t("applicant can use the reopened first time", requestIv(applicant, "a1", "rq1", pendAt), true);
+await t("Assistant can decline a request", decideIv(ivReviewer, { confirm: false }), true);
+
 console.log("Interview coordinator");
+const coordSlotStart = now() + 3 * DAY;
 await env.withSecurityRulesDisabled(async c => { const db = c.firestore();
   await setDoc(doc(db, "staff/cory@pvrs.org"), { role: "coordinator" });
   await setDoc(doc(db, "applicants/c1"), { name: "Coord Test", sched: {}, updatedBy: "dkota@pvrs.org" });
   await setDoc(doc(db, "applicants/c1/private/main"), { notes: "private", portal: { invited: "2026-11-01" } });
   await setDoc(doc(db, "portal/c1"), { email: "c1@example.com", bookingOpen: false, interview: null, steps: [] });
-  await setDoc(doc(db, "slots/cs0"), { start: now() + 3 * DAY, duration: 30, location: "Station", bookedBy: null }); });
+  await setDoc(doc(db, "slots/cs0"), { start: coordSlotStart, duration: 30, location: "Station", bookedBy: null }); });
 const cory = fsOf("cory@pvrs.org");
 await t("a coordinator reads every file", getDocs(collection(cory, "applicants")), true);
 await t("a coordinator can't open confidential paperwork", getDocs(collection(cory, "vault")), false);
 await t("and private records", getDoc(doc(cory, "applicants/c1/private/main")), true);
 await t("a coordinator posts a time for someone else", setDoc(doc(cory, "slots/cs1"), { start: now() + 3 * DAY, duration: 30, location: "Station", bookedBy: null, createdAt: now(), host: "admin@pvrs.org", hostName: "Casey" }), true);
 await t("an admin still can't", setDoc(doc(admin, "slots/cs2"), { start: now() + 3 * DAY, duration: 30, location: "Station", bookedBy: null, createdAt: now(), host: "cory@pvrs.org", hostName: "Cory" }), false);
-await t("a coordinator books an applicant into a time", (() => { const b = writeBatch(cory); b.update(doc(cory, "slots/cs0"), { bookedBy: "c1" }); b.set(doc(cory, "portal/c1"), { interview: { slotId: "cs0", start: 1 } }, { merge: true }); return b.commit(); })(), true);
+await t("a coordinator books an applicant into a time", (() => { const b = writeBatch(cory); b.update(doc(cory, "slots/cs0"), { bookedBy: "c1" }); b.set(doc(cory, "portal/c1"), { interview: { slotId: "cs0", start: coordSlotStart } }, { merge: true }); return b.commit(); })(), true);
 await t("and releases it", (() => { const b = writeBatch(cory); b.update(doc(cory, "slots/cs0"), { bookedBy: null }); b.set(doc(cory, "portal/c1"), { interview: null }, { merge: true }); return b.commit(); })(), true);
 await t("a coordinator sets scheduling dates", updateDoc(doc(cory, "applicants/c1"), { "sched.contacted": "2026-11-10", updatedAt: now(), updatedBy: "cory@pvrs.org" }), true);
 await t("an admin can't set scheduling dates", updateDoc(doc(admin, "applicants/c1"), { "sched.contacted": "2026-11-11", updatedAt: now(), updatedBy: "admin@pvrs.org" }), false);
@@ -324,6 +367,10 @@ await t("a coordinator can't change roles", setDoc(doc(cory, "staff/cory@pvrs.or
 await t("or settings", setDoc(doc(cory, "settings/main"), { signature: "x" }, { merge: true }), false);
 
 const st = email => ctx(email).storage(), pdf = new Uint8Array([37, 80, 68, 70]), meta = { contentType: "application/pdf" };
+// Storage rules look up portal/{id} in Firestore. firebase-tools sends that emulator-to-emulator call through
+// HTTPS_PROXY and ignores NO_PROXY, so behind a proxy (e.g. a cloud sandbox) the lookup fails and the upload test
+// below fails too. Run without a proxy (a Mac, GitHub Actions) or let localhost bypass it.
+console.log("Storage");
 await t("an applicant uploads private paperwork to their folder", uploadBytes(ref(st("app@example.com"), "confidential/a1/1.pdf"), pdf, meta), true);
 await t("a stranger can't add files to someone else's folder", uploadBytes(ref(st("x@example.com"), "confidential/a1/2.pdf"), pdf, meta), false);
 await t("the owner can add paperwork", uploadBytes(ref(st("dkota@pvrs.org"), "confidential/a1/3.pdf"), pdf, meta), true);

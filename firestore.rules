@@ -288,19 +288,57 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
-    // What the applicant sees. Written by admins; the applicant may only book or cancel an interview.
+    // A pending interview request and its reserved slot must agree in the same atomic write.
+    function canDecideInterview() { return isMainOwner() || (verified() && exists(staffPath()) && get(staffPath()).data.role == 'assistant'); }
+    function slotPath(sid) { return /databases/$(database)/documents/slots/$(sid); }
+    function portalPath(pid) { return /databases/$(database)/documents/portal/$(pid); }
+    function afterPortalField(pid, field) { return getAfter(portalPath(pid)).data.get(field, null); }
+    function afterPortalPoints(pid, field, sid) {
+      let value = afterPortalField(pid, field);
+      return value != null && value.get('slotId', '') == sid;
+    }
+    function afterPortalDoesNotPoint(pid, field, sid) {
+      return !existsAfter(portalPath(pid)) || !afterPortalPoints(pid, field, sid);
+    }
+    function releasedPriorInterview(iv, next) {
+      return iv == null || (next != null && next.slotId == iv.slotId)
+        || !existsAfter(slotPath(iv.slotId)) || getAfter(slotPath(iv.slotId)).data.bookedBy == null;
+    }
+    function confirmedInterviewMatches(pid, iv) {
+      return iv != null && iv.slotId is string
+        && getAfter(slotPath(iv.slotId)).data.bookedBy == pid
+        && getAfter(slotPath(iv.slotId)).data.start == iv.start
+        && getAfter(slotPath(iv.slotId)).data.get('requestedBy', null) == null;
+    }
+    // What the applicant sees. A self-selected interview is a request, never a confirmed booking.
     match /portal/{id} {
+      function pending() { return resource.data.get('interviewRequest', null); }
+      function nextPending() { return request.resource.data.get('interviewRequest', null); }
+      function priorInterview() { return resource.data.get('interview', null); }
+      function nextInterview() { return request.resource.data.get('interview', null); }
+      function portalInterviewChange() {
+        return (nextInterview() == priorInterview() || (
+          (nextInterview() == null || confirmedInterviewMatches(id, nextInterview()))
+          && releasedPriorInterview(priorInterview(), nextInterview())
+          && (pending() == null || nextInterview() == null
+            || (canDecideInterview() && nextPending() == null && pending().slotId == nextInterview().slotId))
+        )) && (nextPending() == pending() || (
+          canDecideInterview() && pending() != null && nextPending() == null
+          && getAfter(slotPath(pending().slotId)).data.get('requestedBy', null) == null
+        ));
+      }
       allow read: if isAdmin() || (verified() && resource.data.email == myEmail());
-      allow delete: if isOwner();
+      allow delete: if isOwner() && pending() == null;
       // A time the coordinator books for someone with no portal yet: a page holding only that interview.
-      allow create: if isEditor() || (isCoord() && request.resource.data.keys().hasOnly(['interview']));
-      allow update: if isEditor() || (
-        // the coordinator books or releases a time for an applicant, and opens or closes their booking
-        isCoord() && onlyChanged(['interview', 'bookingOpen', 'steps', 'updatedAt'])
+      allow create: if request.resource.data.get('interviewRequest', null) == null
+        && (request.resource.data.get('interview', null) == null || confirmedInterviewMatches(id, nextInterview()))
+        && (isEditor() || (isCoord() && request.resource.data.keys().hasOnly(['interview'])));
+      allow update: if (isEditor() && portalInterviewChange()) || (
+        isCoord() && onlyChanged(['interview', 'bookingOpen', 'steps', 'updatedAt']) && portalInterviewChange()
         && request.resource.data.get('bookingOpen', false) is bool
         && request.resource.data.get('steps', []) is list && request.resource.data.get('steps', []).size() <= 20
       ) || (
-        // orientation booking: only once the owner's desk has opened orientation (Sterling complete and clear)
+        // orientation booking stays unchanged
         verified() && resource.data.email == myEmail()
         && onlyChanged(['orient'])
         && resource.data.get('orientation', null) != null
@@ -314,18 +352,24 @@ service cloud.firestore {
         )
       ) || (
         verified() && resource.data.email == myEmail()
-        && onlyChanged(['interview'])
+        && onlyChanged(['interviewRequest'])
         && (
-          // booking (only while you've opened booking for them): the slot must now be held by this applicant
-          (request.resource.data.interview != null
+          (pending() == null && nextPending() != null
             && resource.data.get('bookingOpen', false) == true
-            && getAfter(/databases/$(database)/documents/slots/$(request.resource.data.interview.slotId)).data.bookedBy == id
-            && request.resource.data.interview.start == getAfter(/databases/$(database)/documents/slots/$(request.resource.data.interview.slotId)).data.start)
+            && (priorInterview() == null || priorInterview().start > nowMs() + DAY())
+            && nextPending() is map && nextPending().keys().hasOnly(['slotId', 'start'])
+            && nextPending().slotId is string && nextPending().start is int
+            && getAfter(slotPath(nextPending().slotId)).data.get('requestedBy', null) == id
+            && getAfter(slotPath(nextPending().slotId)).data.start == nextPending().start)
           ||
-          // cancelling: the old slot must be released
-          (request.resource.data.interview == null && resource.data.interview != null
-            && getAfter(/databases/$(database)/documents/slots/$(resource.data.interview.slotId)).data.bookedBy == null)
+          (pending() != null && nextPending() == null
+            && getAfter(slotPath(pending().slotId)).data.get('requestedBy', null) == null)
         )
+      ) || (
+        verified() && resource.data.email == myEmail() && onlyChanged(['interview'])
+        && priorInterview() != null && nextInterview() == null
+        && priorInterview().start > nowMs() + DAY()
+        && releasedPriorInterview(priorInterview(), nextInterview())
       );
 
       // Messages between the applicant and the squad. The applicant writes as themselves; the owner and the squad members
@@ -452,31 +496,54 @@ service cloud.firestore {
       }
     }
 
-    // Interview times you post. Applicants can only claim or release a slot for themselves, 24h+ ahead.
+    // Open → requested → confirmed. Requests reserve the slot, but confirmed-booking effects
+    // (calendar, reminders and interviewer assignment) only use bookedBy.
     match /slots/{slotId} {
+      function requested() { return resource.data.get('requestedBy', null); }
+      function nextRequested() { return request.resource.data.get('requestedBy', null); }
+      function booked() { return resource.data.get('bookedBy', null); }
+      function nextBooked() { return request.resource.data.get('bookedBy', null); }
+      function pointsToBooked(pid) { return afterPortalPoints(pid, 'interview', slotId); }
+      function pointsToPending(pid) { return afterPortalPoints(pid, 'interviewRequest', slotId); }
       allow read: if isStaff() || isInvitedApplicant();
-      // The owner manages every time. Admins and interviewers offer their own (host = themselves) and can delete their own
-      // while nobody has booked it; they can't change who booked what.
-      allow create: if isCoord() || (canHost()
+      allow create: if nextRequested() == null && nextBooked() == null && (isCoord() || (canHost()
         && request.resource.data.keys().hasOnly(['start', 'duration', 'location', 'bookedBy', 'createdAt', 'host', 'hostName'])
-        && request.resource.data.host == myEmail() && request.resource.data.bookedBy == null
+        && request.resource.data.host == myEmail()
         && request.resource.data.start is int && request.resource.data.duration is int
         && request.resource.data.location is string && request.resource.data.location.size() <= 200
-        && request.resource.data.hostName is string && request.resource.data.hostName.size() <= 100);
-      allow delete: if isCoord() || (canHost() && resource.data.get('host', '') == myEmail() && resource.data.bookedBy == null);
-      allow update: if isCoord() || (
-        verified() && onlyChanged(['bookedBy']) && resource.data.start > nowMs() + DAY()
-        && (
-          (resource.data.bookedBy == null && request.resource.data.bookedBy is string
-            && ownsPortal(request.resource.data.bookedBy)
-            && portalOf(request.resource.data.bookedBy).data.get('bookingOpen', false) == true
-            && getAfter(/databases/$(database)/documents/portal/$(request.resource.data.bookedBy)).data.interview.slotId == slotId)
-          ||
-          (resource.data.bookedBy != null && request.resource.data.bookedBy == null
-            && ownsPortal(resource.data.bookedBy)
-            && (getAfter(/databases/$(database)/documents/portal/$(resource.data.bookedBy)).data.interview == null
-                || getAfter(/databases/$(database)/documents/portal/$(resource.data.bookedBy)).data.interview.slotId != slotId))
+        && request.resource.data.hostName is string && request.resource.data.hostName.size() <= 100));
+      allow delete: if requested() == null && booked() == null
+        && (isCoord() || (canHost() && resource.data.get('host', '') == myEmail()));
+      allow update: if (
+        // Existing staff-initiated bookings still work, but cannot take or alter another request.
+        isCoord() && requested() == null && nextRequested() == null && (
+          (nextBooked() == booked() && (booked() == null || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['start', 'duration', 'location', 'host'])))
+          || (booked() == null && nextBooked() is string && onlyChanged(['bookedBy'])
+            && resource.data.start > nowMs() && pointsToBooked(nextBooked()))
+          || (booked() is string && nextBooked() == null && onlyChanged(['bookedBy'])
+            && afterPortalDoesNotPoint(booked(), 'interview', slotId))
         )
+      ) || (
+        onlyChanged(['requestedBy']) && booked() == null && nextBooked() == null && (
+          (requested() == null && nextRequested() is string && ownsPortal(nextRequested())
+            && resource.data.start > nowMs() + DAY()
+            && portalOf(nextRequested()).data.get('bookingOpen', false) == true
+            && pointsToPending(nextRequested()))
+          || (requested() is string && nextRequested() == null
+            && (canDecideInterview() || ownsPortal(requested()))
+            && afterPortalDoesNotPoint(requested(), 'interviewRequest', slotId))
+        )
+      ) || (
+        // Only Owner-equivalent/Assistant staff may accept; the applicant cannot write bookedBy.
+        canDecideInterview() && onlyChanged(['requestedBy', 'bookedBy'])
+        && requested() is string && booked() == null && nextRequested() == null && nextBooked() == requested()
+        && resource.data.start > nowMs() && pointsToBooked(requested())
+        && afterPortalDoesNotPoint(requested(), 'interviewRequest', slotId)
+      ) || (
+        onlyChanged(['bookedBy']) && requested() == null && nextRequested() == null
+        && booked() is string && nextBooked() == null && ownsPortal(booked())
+        && resource.data.start > nowMs() + DAY()
+        && afterPortalDoesNotPoint(booked(), 'interview', slotId)
       );
     }
 

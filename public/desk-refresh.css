@@ -1,0 +1,156 @@
+/* PVRS glass: visual only. Existing app structure, role visibility and navigation stay in place. */
+#app {
+  --pvrs-glass: color-mix(in srgb, var(--pane) 77%, transparent);
+  --pvrs-glass-strong: color-mix(in srgb, var(--pane) 90%, transparent);
+  --pvrs-edge: color-mix(in srgb, var(--pane) 57%, var(--border));
+  --pvrs-card-shadow: 0 1px 2px #26346414, 0 17px 36px -24px #26346465;
+  --pvrs-radius: 30px;
+}
+body:has(#app:not([hidden])) {
+  background:
+    radial-gradient(ellipse at 7% 9%, color-mix(in srgb, #776ee3 25%, transparent), transparent 53%),
+    radial-gradient(ellipse at 85% -12%, color-mix(in srgb, #6fbfff 28%, transparent), transparent 54%),
+    radial-gradient(ellipse at 105% 79%, color-mix(in srgb, #ec7fb8 25%, transparent), transparent 47%),
+    radial-gradient(ellipse at 25% 108%, color-mix(in srgb, #a682f1 21%, transparent), transparent 50%),
+    var(--bg);
+  background-attachment: fixed;
+}
+#app .ovcard, #app .detail .group, #app .ovroster .roster,
+#app .setnav, #app .setbody .sheet.embedded, #app .lane {
+  background: var(--pvrs-glass);
+  border: 1px solid var(--pvrs-edge);
+  border-radius: var(--pvrs-radius);
+  box-shadow: var(--pvrs-card-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
+}
+#app .lane { background: color-mix(in srgb, var(--stage-c, var(--accent)) 11%, var(--pvrs-glass)); }
+#app .starthere {
+  color: #f8f9ff;
+  background: linear-gradient(145deg, #202e59ed, #414676e3 70%, #59446ce8);
+  border: 1px solid #ffffffa6;
+  border-radius: var(--pvrs-radius);
+  box-shadow: var(--pvrs-card-shadow);
+  -webkit-backdrop-filter: blur(20px) saturate(145%);
+  backdrop-filter: blur(20px) saturate(145%);
+}
+#app .starthere p, #app .starthere .sh-ghost { color: #e4e8f8; }
+#app .starthere .sh-next { border-radius: 23px; }
+#app .starthere .sh-item { border-radius: 16px; }
+
+#app .dhead, #app .mnav, #app .tabdock {
+  border-radius: 24px;
+}
+#app .ovhead { padding: 14px 4px 8px; }
+#app .ovhead h2 { font-size: clamp(29px, 3.2vw, 42px); }
+#app .ovhead .eyebrow { color: color-mix(in srgb, var(--red) 76%, var(--fg)); }
+#app .newbtn, #app .newbtn.btn.primary {
+  background: #b92350;
+  color: #fff;
+  border-radius: 999px;
+}
+#app .desk-phone-brand { display: none; }
+#app .side .brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 40px;
+  flex: none;
+  padding: 0;
+  margin: 0 0 5px;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+#app .side .brand img, #app .desk-phone-brand img {
+  width: 38px;
+  height: 38px;
+  max-height: none;
+  object-fit: contain;
+  border-radius: 50%;
+  padding: 3px;
+  background: #fbfcff;
+  border: 1px solid #e6eafb;
+  flex: none;
+}
+#app .desk-brand-name { display: none; }
+#app .desk-brand-name strong { display: block; font-size: 23px; line-height: 1; letter-spacing: -.02em; }
+#app .desk-brand-name small {
+  display: block;
+  margin-top: 5px;
+  font-size: 9px;
+  letter-spacing: .12em;
+  color: #e8eefc;
+}
+@media screen and (min-width:861px) {
+  #app .side {
+    background: linear-gradient(150deg, rgba(28,43,86,.88), rgba(37,39,83,.85));
+    color: #fff;
+    border: 1px solid #a0acd17a;
+    border-radius: 32px;
+    box-shadow: 0 21px 44px -23px #1b224f;
+  }
+  #app .side .nav-i { border-radius: 999px; }
+  #app .side .tools > .nav-i,
+  #app .side .tools > .dgrp > .nav-i,
+  #app .side .me { color: #eef1ff; }
+  #app .side .tools > .nav-i:is(:hover,.on,[aria-current="true"],[aria-pressed="true"]),
+  #app .side .tools > .dgrp > .nav-i:is(:hover,.on) {
+    background: #7386b86b;
+    color: #fff;
+  }
+  #app .side:is(:hover,:focus-within) .brand { justify-content: flex-start; padding-inline: 5px; }
+  #app .side:is(:hover,:focus-within) .desk-brand-name { display: block; }
+}
+@media screen and (min-width:1340px) and (min-height:920px) {
+  #app { grid-template-columns: 224px minmax(0,1fr); gap: 22px; padding: 20px; }
+  #app .side { align-self: stretch; width: 224px; padding: 16px 13px; }
+  #app .side .brand { justify-content: flex-start; padding-inline: 6px; min-height: 56px; }
+  #app .side .brand img { width: 53px; height: 53px; padding: 4px; }
+  #app .desk-brand-name { display: block; }
+  #app .side .nav-i { width: 100%; justify-content: flex-start; padding-inline: 12px; }
+  #app .side .nav-i .nl, #app .side .dgrp-ch, #app .side .newbtn .tl { display: inline; }
+  #app .side .nav-i .nl { flex: 1; text-align: left; white-space: nowrap; }
+  #app .side .newbtn { width: 100%; padding-inline: 15px; gap: 8px; }
+  #app .side .me { margin-top: auto; flex-direction: row; padding: 10px 4px 0; }
+  #app .side .me .who { display: flex; flex: 1; min-width: 0; }
+}
+@media screen and (max-width:860px) {
+  #app { --pvrs-radius: 24px; }
+  #app:not(.open) { grid-template-rows: auto minmax(0,1fr); }
+  #app:not(.open) .desk-phone-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 50px;
+    padding: 5px 12px;
+    background: var(--pvrs-glass-strong);
+    border: 1px solid var(--pvrs-edge);
+    border-radius: 24px;
+    box-shadow: var(--pvrs-card-shadow);
+    font-size: 19px;
+    color: var(--fg);
+  }
+  #app .desk-phone-brand img { width: 34px; height: 34px; }
+}
+body:has(#app:not([hidden])) .modal .sheet {
+  background: color-mix(in srgb, var(--pane) 94%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pane) 60%, var(--border));
+  border-radius: 30px;
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+  backdrop-filter: blur(24px) saturate(145%);
+}
+@media (prefers-reduced-transparency: reduce) {
+  #app { --pvrs-glass: var(--pane); --pvrs-glass-strong: var(--pane); }
+  #app .ovcard, #app .detail .group, #app .ovroster .roster, #app .setnav,
+  #app .setbody .sheet.embedded, #app .lane, body:has(#app:not([hidden])) .modal .sheet {
+    background: var(--pane);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  #app .side, #app .starthere { background: #26365b; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media print {
+  body:has(#app:not([hidden])) { background: #fff; }
+}
