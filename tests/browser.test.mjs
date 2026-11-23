@@ -1548,6 +1548,36 @@ try {
     if (!/Your interview is (today|tomorrow) at/.test(iv) || !/Add to calendar/.test(iv)) fail("interview reminder: " + iv); else ok("the portal reminds applicants the day before their interview");
     await ctx.close();
   }
+  // ---- Applicant requests reserve a time but do not confirm it; staff decisions use existing roles.
+  {
+    const start = Date.now() + 4 * 864e5;
+    const seed = [["applicants/req1", { name: "Jamie Request", email: "jamie@example.com", type: "Regular", updatedAt: Date.now() }],
+      ["portal/req1", { email: "jamie@example.com", name: "Jamie Request", firstName: "Jamie", docs: [], refs: [], steps: [], bookingOpen: true }],
+      ["portalEmails/jamie@example.com", { id: "req1" }], ["slots/rs1", { start, duration: 30, location: "Station", bookedBy: null }],
+      ["staff/assistant@pvrs.org", { role: "assistant", name: "Avery Assistant" }],
+      ["staff/member@pvrs.org", { role: "member", name: "Only Member" }]];
+    { const { ctx, page } = await open(browser, { seed, user: { email: "jamie@example.com", displayName: "Jamie" }, w: 390, h: 844 });
+      await page.locator('#moveCard [data-slot="rs1"]').click();
+      await page.locator("#moveCard [data-book]").click();
+      await page.locator("#ivCard [data-withdraw-request]").waitFor();
+      const state = await page.evaluate(() => { const d = window.__mock.docs; return [d.get("slots/rs1").requestedBy, d.get("slots/rs1").bookedBy, d.get("portal/req1").interview?.slotId || null]; });
+      if (state.join("|") !== "req1||" || await page.locator("#ivCard [data-ics]").count() || await page.locator(".ivsoon").count()) fail("pending applicant had confirmed data or calendar controls"); else ok("applicant selection is pending and has no booked/calendar state");
+      await page.locator("#ivCard [data-withdraw-request]").click();
+      await page.locator('#moveCard [data-slot="rs1"]').waitFor();
+      if (await page.evaluate(() => !!window.__mock.docs.get("slots/rs1").requestedBy)) fail("slot stayed reserved after withdrawal"); else ok("withdraw releases the pending slot for retry");
+      await ctx.close(); }
+    const staffSeed = seed.map(([k, v]) => [k, k === "portal/req1" ? { ...v, interviewRequest: { slotId: "rs1", start } } : k === "slots/rs1" ? { ...v, requestedBy: "req1" } : v]);
+    { const { ctx, page } = await open(browser, { seed: staffSeed, user: { email: "assistant@pvrs.org", displayName: "Avery Assistant" } });
+      await pickApplicant(page, "Jamie Request");
+      await page.locator('.tabdock [data-tab="iv"]').click();
+      await page.locator('#ivPending [data-ivdecision="confirm"]').click();
+      await page.waitForFunction(() => window.__mock.docs.get("slots/rs1").bookedBy === "req1");
+      const confirmed = await page.evaluate(() => { const d = window.__mock.docs; return d.get("portal/req1").interview?.slotId === "rs1" && d.get("portal/req1").interviewRequest === null && d.get("slots/rs1").requestedBy === null; });
+      if (!confirmed) fail("Assistant confirmation did not pair portal and slot"); else ok("Assistant confirms pending interview in staff Interview tab");
+      await page.locator('#dbody [data-act="assigniv"]').click();
+      if (!(await page.locator('.cv-pick input[value="assistant@pvrs.org"]').count()) || await page.locator('.cv-pick input[value="member@pvrs.org"]').count()) fail("Assistant assignment picker role eligibility"); else ok("Assistant appears in the assigned interviewer picker; Member stays excluded");
+      await ctx.close(); }
+  }
   // ---- Orientation forms signed on the phone, only while the chair has signing open; uploads any time (Nov 11)
   {
     const d = n => localDay(Date.now() - n * 864e5), key = l => l.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 40);

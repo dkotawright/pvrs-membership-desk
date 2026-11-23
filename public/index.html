@@ -17,6 +17,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap">
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/public-refresh.css">
+<link rel="stylesheet" href="/desk-refresh.css">
 <script>/* Light / dark / follow the device (Nov 20): chosen per device, saved in this browser only. */
 (function(){ try { var t = localStorage.getItem("pvrsTheme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
   var a = localStorage.getItem("pvrsAccent"); if (a && /^[a-z]{2,12}$/.test(a)) document.documentElement.setAttribute("data-accent", a); } catch (e) {} })();</script>
@@ -35,45 +37,58 @@
   </svg>
 </div>
 
-<!-- Public top bar: Apply / Sign in -->
+<!-- Public navigation -->
 <nav class="pubnav" id="pubnav" aria-label="PVRS Membership" hidden>
-  <a class="pubbrand" href="/" data-nav="/"><svg viewBox="-120 -120 240 240" aria-hidden="true"><g fill="#fff"><rect x="-24" y="-100" width="48" height="200" rx="7"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(60)"/><rect x="-24" y="-100" width="48" height="200" rx="7" transform="rotate(-60)"/></g><rect x="-5" y="-78" width="10" height="156" rx="5" fill="#c8102e"/></svg><span>PVRS <b>Membership</b></span></a>
-  <span class="publinks"><a href="/apply" data-nav="/apply" id="navApply">Apply</a><a href="/signin" data-nav="/signin" id="navSignin">Sign in</a></span>
+  <a class="pubbrand" href="/" data-nav="/"><span class="public-mark"><img src="/img/pvrs-squad-mark.png" alt="" width="40" height="40"></span><span>PVRS Membership<small>Potsdam Volunteer Rescue Squad</small></span></a>
+  <span class="publinks"><a href="/apply" data-nav="/apply" id="navApply">Apply</a><a href="/signin" data-nav="/signin" id="navSignin">Sign in <svg class="public-nav-arrow" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4 12 12 4M6 4h6v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></span>
 </nav>
 
 <!-- Public home: apply or sign in -->
-<div class="gate home" id="home" hidden>
-  <div class="hero">
-    <div class="eyebrow light">Potsdam Volunteer Rescue Squad · Est. 1955</div>
-    <h1>Be part of Potsdam's volunteer EMS.</h1>
-    <p class="lead">Volunteer EMTs, drivers and members serving Potsdam around the clock. Apply online in about 15 minutes, then follow your application from your own portal.</p>
-    <ol class="homepath" aria-label="How joining works">
-      <li><b>1</b><span>Apply<small>About 15 minutes</small></span></li>
-      <li><b>2</b><span>We review<small>References and checks</small></span></li>
-      <li><b>3</b><span>Interview<small>Meet the committee</small></span></li>
-      <li><b>4</b><span>Welcome<small>Orientation</small></span></li>
-    </ol>
-    <div class="homecards">
-      <a class="homecard glass featured" href="/apply" data-nav="/apply">
-        <span class="hc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M14 3v5h5 M9 13h7 M9 17h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
-        <span class="jc-pill"><i aria-hidden="true"></i>New members welcome</span>
-        <b>Apply to join PVRS</b>
-        <span>Contact details, education, work history, your driver's license and 3–4 references. Your progress saves on this device as you go.</span>
-        <em>Start application →</em></a>
-      <a class="homecard glass" href="/signin" data-nav="/signin">
-        <span class="hc-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 21c.8-4 4-6 8-6s7.2 2 8 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-        <b>Sign in</b>
-        <span>Applicants: check your status, upload documents and book your interview. PVRS members: open the desk.</span>
-        <em>Sign in →</em></a>
+<main class="gate home" id="home" hidden>
+  <div class="public-home">
+    <div class="public-hero">
+      <div class="public-intro">
+        <p class="public-kicker">Potsdam Volunteer Rescue Squad · Est. 1955</p>
+        <h1>Join Potsdam’s <span>volunteer EMS.</span></h1>
+        <p class="public-lead">Serve your community as a volunteer EMT, driver, or squad member. Apply online and follow your application in the membership portal.</p>
+        <div class="public-actions">
+          <a class="public-action public-action-main" href="/apply" data-nav="/apply">Start application <span aria-hidden="true">→</span></a>
+          <a class="public-action" href="/signin" data-nav="/signin">Sign in</a>
+        </div>
+        <p class="public-meta">About 15 minutes. Saves as you go on this device.</p>
+      </div>
+      <figure class="public-photo">
+        <img src="/img/pvrs-response.webp" alt="Two Potsdam Volunteer Rescue Squad emergency vehicles" width="1440" height="1080" fetchpriority="high">
+        <figcaption><span>Potsdam Volunteer Rescue Squad</span><span>Potsdam, NY</span></figcaption>
+      </figure>
     </div>
+    <section class="public-journey" aria-labelledby="public-journey-heading">
+      <p class="public-kicker">The path to membership</p>
+      <h2 id="public-journey-heading">How joining works</h2>
+      <ol class="homepath">
+        <li><b>1</b><span>Apply online<small>Save and finish when ready</small></span></li>
+        <li><b>2</b><span>Application review<small>References and checks</small></span></li>
+        <li><b>3</b><span>Interview<small>Meet the committee</small></span></li>
+        <li><b>4</b><span>Orientation<small>Get ready to serve</small></span></li>
+      </ol>
+    </section>
+    <footer class="public-footer"><span>PVRS Membership</span><a href="mailto:membership@pvrs.org">membership@pvrs.org</a></footer>
   </div>
-</div>
+</main>
 
 <!-- Public application form -->
 <div class="gate apply" id="apply" hidden><div class="applywrap" id="applyRoot"></div></div>
 
 <!-- Reference form (private link per reference: /ref/{code}) -->
-<div class="gate apply" id="reference" hidden><div class="applywrap" id="refRoot"></div></div>
+<div class="gate apply" id="reference" hidden>
+  <div class="public-reference-wrap">
+    <header class="public-refhead">
+      <span class="public-mark"><img src="/img/pvrs-squad-mark.png" alt="" width="40" height="40"></span>
+      <strong>PVRS Membership</strong><span class="public-ref-tag">Private reference form</span>
+    </header>
+    <div class="applywrap" id="refRoot"></div>
+  </div>
+</div>
 
 <!-- Loading -->
 <div class="gate" id="loading"><div class="empty"><span class="spin" aria-hidden="true"></span><h3>Loading…</h3></div></div>
@@ -81,26 +96,8 @@
 <!-- Sign in: a welcome panel (greeting, Potsdam weather) beside the sign-in card -->
 <div class="gate signin" id="signin" hidden>
   <div class="signwrap">
-    <section class="welcome" aria-label="Welcome">
-      <div class="eyebrow light">Potsdam Volunteer Rescue Squad · Est. 1955</div>
-      <h1 class="greet" id="greet">Welcome</h1>
-      <p class="today" id="todayLine">Potsdam, New York</p>
-      <div class="lanesteps" aria-label="The path to the squad"><span style="--stage-c:var(--s-screen)"><b>Screening</b><i>Application and checks</i></span><span style="--stage-c:var(--s-int)"><b>Interview</b><i>Meet the committee</i></span><span style="--stage-c:var(--s-appr)"><b>Approval</b><i>Board vote</i></span><span style="--stage-c:var(--s-onb)"><b>Onboard</b><i>Welcome to the squad</i></span></div>
-      <a class="joincta" href="/apply" data-nav="/apply">
-        <span class="jc-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 4h6M9 4a1 1 0 0 0-1 1v1h8V5a1 1 0 0 0-1-1M8 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 17.2s-3.6-2.1-3.6-4.6a1.9 1.9 0 0 1 3.6-.9 1.9 1.9 0 0 1 3.6.9c0 2.5-3.6 4.6-3.6 4.6z" fill="currentColor"/></svg></span>
-        <span class="jc-body"><span class="jc-pill"><i aria-hidden="true"></i>New members welcome</span>
-          <b>Apply to join PVRS</b>
-          <span class="jc-sub">EMTs, drivers and support members. About 15 minutes, and it saves as you go.</span></span>
-        <span class="jc-go" aria-hidden="true">Start <svg viewBox="0 0 16 16"><path d="M3 8h9M8.5 4.5 12 8l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-      </a>
-      <div class="wx" id="wx" hidden aria-label="Weather in Potsdam"></div>
-      <ul class="welcome-links">
-        <li>Questions about membership? <a href="mailto:membership@pvrs.org">membership@pvrs.org</a></li>
-      </ul>
-    </section>
     <div class="sheet glass">
-      <div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
-      <div><div class="eyebrow">Membership Portal</div><h2 class="signh">Sign in</h2></div>
+      <div><div class="eyebrow">Membership Portal</div><h1 class="signh">Sign in</h1></div>
       <div id="appSignin">
         <p class="help">Applicants, new members and squad members all sign in here. Enter your email and we'll send you a secure sign-in link. No password needed.</p>
         <form id="linkForm" class="field" novalidate>
@@ -151,6 +148,19 @@
         <p class="help reqacc">Every new account is reviewed by the membership coordinator before it can see anything.</p>
       </div>
     </div>
+    <aside class="public-signaside" aria-label="About the squad">
+      <figure class="public-photo public-signphoto">
+        <img src="/img/pvrs-response.webp" alt="Two Potsdam Volunteer Rescue Squad emergency vehicles" width="1440" height="1080" loading="lazy">
+        <figcaption><span>Potsdam Volunteer Rescue Squad</span><span>Potsdam, NY</span></figcaption>
+      </figure>
+      <div class="public-signinfo">
+        <p class="public-kicker">Est. 1955 · Potsdam, New York</p>
+        <p class="public-aside-title" id="greet">Welcome</p>
+        <p class="public-meta" id="todayLine">Potsdam, New York</p>
+        <div class="wx" id="wx" hidden aria-label="Weather in Potsdam"></div>
+        <p class="public-meta">Questions? <a href="mailto:membership@pvrs.org">membership@pvrs.org</a></p>
+      </div>
+    </aside>
   </div>
 </div>
 
@@ -194,7 +204,7 @@
 <!-- Staff desk -->
 <div class="app" id="app" hidden>
   <aside class="side" aria-label="Desk navigation">
-    <div class="brand"><img id="logo" alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
+    <div class="brand"><img id="logo" alt="" src="/img/pvrs-squad-mark.png"><span class="desk-brand-name"><strong>PVRS</strong><small>MEMBERSHIP</small></span></div>
     <button class="btn primary newbtn" id="newBtn" type="button" title="New applicant (N)"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1.5v11M1.5 7h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg><span class="tl">New applicant</span></button>
     <nav class="navsec" aria-label="Filter applicants">
       <div class="navh">Applicants</div>
@@ -238,13 +248,14 @@
     </div>
   </aside>
   <!-- Phones and narrow windows: floating glass menu at the bottom (replaces the sidebar) -->
-  <nav class="mnav glass" id="mnav" aria-label="Desk">
+  <nav class="mnav glass" id="mnav" aria-label="PVRS">
     <button type="button" data-m="list" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5M16 5.5a3.2 3.2 0 0 1 0 6.2M18 14.3c1.6.7 2.6 2.3 3 4.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Applicants</span></button>
     <button type="button" data-m="orient" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 2.5 9 12 14l9.5-5L12 4zM6.5 11.5V16c1.4 1.6 3.3 2.4 5.5 2.4s4.1-.8 5.5-2.4v-4.5M21.5 9v5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Onboard</span><b class="navbadge soft" hidden></b></button>
     <button type="button" data-m="ov"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span>Overview</span></button>
     <button type="button" data-m="msgs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 5h15a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17h-1A1.5 1.5 0 0 1 3 15.5v-9A1.5 1.5 0 0 1 4.5 5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>Messages</span><b class="navbadge" hidden></b></button>
     <button type="button" data-m="more"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="18.5" cy="12" r="1.8" fill="currentColor"/></svg><span>More</span></button>
   </nav>
+  <div class="desk-phone-brand" aria-hidden="true"><img src="/img/pvrs-squad-mark.png" alt="" width="34" height="34"><strong>PVRS</strong></div>
   <div class="main">
     <section class="pane roster" aria-label="Applicants">
       <div class="top">

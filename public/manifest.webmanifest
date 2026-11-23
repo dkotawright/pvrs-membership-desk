@@ -1,6 +1,6 @@
 {
   "name": "PVRS Membership Desk",
-  "short_name": "PVRS Desk",
+  "short_name": "PVRS",
   "description": "Potsdam Volunteer Rescue Squad membership applications",
   "start_url": "/",
   "scope": "/",

@@ -8,6 +8,7 @@ const snap = (p) => ({ exists: docs.has(p), data: () => docs.get(p), id: p.split
 const fakeDb = { doc: p => ({ get: async () => snap(p), delete: async () => docs.delete(p), set: async (d, o) => docs.set(p, o && o.merge ? { ...(docs.get(p) || {}), ...d } : d) }),
   collection: c => { const all = () => [...docs.keys()].filter(k => k.startsWith(c + "/") && k.split("/").length === 2).map(snap);
     return { get: async () => ({ docs: all() }), where: (f, op, v) => ({ get: async () => ({ docs: all().filter(x => op === "in" ? v.includes(x.data()[f]) : x.data()[f] === v) }) }) }; } };
+fakeDb.runTransaction = fn => fn({ get: r => r.get(), set: (r, ...a) => r.set(...a) });
 const stubs = {
   "firebase-admin/app": { initializeApp(){}, getApps: () => [1] },
   "firebase-admin/firestore": { getFirestore: () => fakeDb },
@@ -100,6 +101,25 @@ const last = () => sent[sent.length - 1];
   const stepsA = [{ label: "Review", state: "done" }, { label: "Board review", state: "current", detail: "with the membership committee" }];
   await P.portalChanged(upd({ bookingOpen: true, steps: stepsA, docs: [] }, { bookingOpen: false, steps: stepsA.map(x => ({ ...x, detail: "you'll receive a letter" })), docs: [] }, { id: "a1" }));
   check(sent.length === k, "a decline must not send the applicant anything");
+  // Pending requests alert only the Owner/Assistant; they neither assign an interviewer nor notify the applicant.
+  docs.set("staff/assistant@pvrs.org", { role: "assistant" });
+  docs.set("pushTokens/assistantTok", { email: "assistant@pvrs.org" });
+  docs.set("applicants/a4", { name: "Pending Test", interviewers: [] });
+  docs.set("applicantTokens/a4Tok", { appId: "a4" });
+  const p4 = { start: 2e12, host: "iv@pvrs.org", hostName: "Ivy" };
+  await P.interviewBooking(upd(p4, { ...p4, requestedBy: "a4" }, { id: "slot4" }));
+  check(last().notification.title === "Interview request pending" && last().tokens.sort().join() === "assistantTok,ownerTok" && !docs.get("applicants/a4").interviewers.length, "pending requests only alert approvers");
+  docs.set("portal/a4", { interview: { slotId: "slot4" } });
+  const oldCount = sent.length;
+  await P.interviewBooking(upd({ ...p4, requestedBy: "a4" }, { ...p4, bookedBy: "a4" }, { id: "slot4" }));
+  check(sent.slice(oldCount).some(m => m.notification.title === "Interview confirmed" && m.tokens.join() === "a4Tok") && docs.get("applicants/a4").interviewers.join() === "iv@pvrs.org", "confirmation alerts applicant and assigns host");
+  docs.set("portal/a4", { interview: { slotId: "slot5" } });
+  await P.interviewBooking(upd(p4, { ...p4, bookedBy: "a4", host: "assistant@pvrs.org", hostName: "Al" }, { id: "slot5" }));
+  await P.interviewBooking(upd({ ...p4, bookedBy: "a4" }, p4, { id: "slot4" }));
+  check(docs.get("applicants/a4").interviewers.join() === "assistant@pvrs.org" && docs.get("convos/a4").members.join() === "assistant@pvrs.org", "late release cannot remove new host or leave old auto-assignment");
+  docs.delete("staff/assistant@pvrs.org");
+  docs.delete("pushTokens/assistantTok");
+
   // a time an interviewer offered: booking assigns them, cancelling un-assigns
   docs.set("applicants/a3", { name: "Sam Host", interviewers: [] }); docs.delete("convos/a3");
   await P.interviewBooking(upd({ start: 2e12, host: "iv@pvrs.org", hostName: "Ivy" }, { start: 2e12, bookedBy: "a3", host: "iv@pvrs.org", hostName: "Ivy" }));

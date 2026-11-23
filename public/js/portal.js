@@ -85,7 +85,7 @@ function orientHTML(o, { pd, files, oslots, opick, obusy, lib, checkinDone, dis,
 function moveHTML({ pd, files, slots, oslots, nm, dis, now, forms = [], lane = "screen", pick = null, busy = false }){
   const has = k => files.some(f => f.docKey === k), o = pd.orientation, iv = pd.interview;
   const ivDone = (pd.steps || []).some(s => s.label === "Interview" && s.state === "done");
-  const openIv = slots.some(s => !s.bookedBy && s.start > now + DAY), openOr = oslots.some(s => !s.bookedBy && s.start > now + DAY);
+  const openIv = slots.some(s => !s.bookedBy && !s.requestedBy && s.start > now + DAY), openOr = oslots.some(s => !s.bookedBy && s.start > now + DAY);
   const doc = (pd.docs || []).find(d => !d.received && !has(d.key)), req = o ? (o.items || []).find(i => i.req && !i.date && !has("onb:" + i.key)) : null;
   const up = (key, label) => ({ head: `Upload: ${label}`, sub: "A PDF or a clear photo is fine.", btn: `<button class="btn primary" type="button" data-upload="${esc(key)}" ${dis}>${isConfidential(label) ? "Secure upload" : "Upload"}</button>` });
   const go = (to, text) => `<button class="btn primary" type="button" data-goto="${to}" ${dis}>${text}</button>`;
@@ -95,14 +95,15 @@ function moveHTML({ pd, files, slots, oslots, nm, dis, now, forms = [], lane = "
   else if (nm && !pd.orient && openOr) m = { head: "Pick your orientation time", sub: "A one-on-one with our orientation chair.", btn: go("orientCard", "See times") };
   else if (req) m = up("onb:" + req.key, req.label);
   else if (doc) m = up(doc.key, doc.label);
-  else if (!nm && !ivDone && !iv && pd.bookingOpen && openIv) {
+  else if (!nm && !ivDone && !iv && !pd.interviewRequest && pd.bookingOpen && openIv) {
     // the soonest three open times sit right on the card; the full list stays in the Interview card
-    const all = slots.filter(s => !s.bookedBy && s.start > now + DAY).sort((a, b) => a.start - b.start), top = all.slice(0, 3), ps = all.find(s => s.id === pick);
+    const all = slots.filter(s => !s.bookedBy && !s.requestedBy && s.start > now + DAY).sort((a, b) => a.start - b.start), top = all.slice(0, 3), ps = all.find(s => s.id === pick);
     const short = ms => new Date(ms).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-    m = { head: "Pick your interview time", sub: "Choose whichever open time works best for you.", wide: true,
+    m = { head: "Pick your interview time", sub: "Choose a time and wait for the squad to confirm it.", wide: true,
       btn: `<div class="mv-times">${top.map(s => `<button class="mv-time" type="button" data-slot="${esc(s.id)}" aria-pressed="${pick === s.id}" ${dis}><span>${esc(short(s.start))}${s.hostName ? `<small> with ${esc(s.hostName)}</small>` : ""}</span><b>${esc(slotTime(s.start))}</b></button>`).join("")}</div>
-        ${ps ? `<button class="btn primary" type="button" data-book ${busy ? "disabled" : ""}>Book ${esc(short(ps.start))}, ${esc(slotTime(ps.start))}</button>` : ""}<button class="btn mv-all" type="button" data-goto="ivCard" ${dis}>${all.length > top.length ? `See all ${all.length} times` : "See times"}</button>` };
+        ${ps ? `<button class="btn primary" type="button" data-book ${busy ? "disabled" : dis}>Request ${esc(short(ps.start))}, ${esc(slotTime(ps.start))}</button>` : ""}<button class="btn mv-all" type="button" data-goto="ivCard" ${dis}>${all.length > top.length ? `See all ${all.length} times` : "See times"}</button>` };
   }
+  else if (!nm && pd.interviewRequest && !ivDone) m = { head: "Interview request pending", sub: `Requested ${slotLong(pd.interviewRequest.start)}. This time is not confirmed yet.`, btn: go("ivCard", "View request") };
   else if (!nm && iv && !ivDone && iv.start > now) m = { head: `Your interview is ${slotLong(iv.start)}`, sub: iv.location || "", btn: `<button class="btn primary" type="button" data-ics ${dis}>Add to my calendar</button>` };
   else if (nm && pd.orient && pd.orient.start > now) m = { head: `Your orientation is ${slotLong(pd.orient.start)}`, sub: pd.orient.location || "", btn: `<button class="btn primary" type="button" data-oics ${dis}>Add to my calendar</button>` };
   return m ? `<section class="card glass movecard" id="moveCard" aria-label="Your move" style="--stage-c:var(--s-${lane})"><div class="mv-eye"><span class="ping" aria-hidden="true"><i></i><i></i></span>Your move</div>
@@ -167,7 +168,7 @@ export function portalHTML({ back = false, pd, files = [], slots = [], msgs = []
   const other = files.filter(f => !f.docKey || !docs.some(d => d.key === f.docKey));
   const iv = pd.interview;
   const ivDone = (pd.steps || []).some(s => s.label === "Interview" && s.state === "done");
-  const open = slots.filter(s => !s.bookedBy && s.start > now + DAY).sort((a,b) => a.start - b.start);
+  const open = slots.filter(s => !s.bookedBy && !s.requestedBy && s.start > now + DAY).sort((a,b) => a.start - b.start);
   const days = {}; open.forEach(s => { const k = slotDay(s.start); (days[k] = days[k] || []).push(s); });
   const dis = preview ? "disabled" : "";
   const canChange = iv && iv.start > now + DAY;
@@ -186,13 +187,17 @@ export function portalHTML({ back = false, pd, files = [], slots = [], msgs = []
     const d = new Date(iv.start);
     ivBody = `<div class="booked"><div class="cal"><b>${esc(d.toLocaleDateString(undefined,{month:"short"}))}</b><span>${d.getDate()}</span></div>
       <div class="dt" style="min-width:0"><strong>${esc(slotDay(iv.start))}</strong><div class="info">${esc(slotTime(iv.start))}${iv.duration?` · ${iv.duration} min`:""}${iv.location?`<br>${esc(iv.location)}`:""}</div></div></div>
-      ${canChange ? `<div class="acts" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn small" type="button" data-ics ${dis}>Add to my calendar</button><button class="btn small" type="button" data-cancel ${dis}>Cancel interview</button>${pd.bookingOpen && open.length?`<button class="btn small" type="button" data-change ${dis}>Change time</button>`:""}</div>`
+      ${canChange ? `<div class="acts" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn small" type="button" data-ics ${dis}>Add to my calendar</button><button class="btn small" type="button" data-cancel ${dis}>Cancel interview</button>${pd.bookingOpen && !pd.interviewRequest && open.length?`<button class="btn small" type="button" data-change ${dis}>Change time</button>`:""}</div>`
         : `<div class="acts" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn small" type="button" data-ics ${dis}>Add to my calendar</button>${iv.start > now ? `<button class="btn small" type="button" data-resched ${dis}>I need to reschedule</button>` : ""}</div><p class="info">It's less than 24 hours away, so it can't be changed here. Tap <b>I need to reschedule</b> and we'll get your message right away.</p>`}
       ${pd.bring ? `<p class="info bring"><b>What to bring:</b> ${esc(pd.bring)}</p>` : ""}`;
   }
   else if (!pd.bookingOpen) ivBody = `<p class="info">Interview times will open here once your application review is underway. We'll let you know.</p>`;
   else if (!open.length) ivBody = `<p class="info">No interview times are open right now. Check back soon, or email <b>${esc(CONTACT_EMAIL)}</b>.</p>`;
   else ivBody = slotPicker(days, pick, dis, busy);
+  if (pd.interviewRequest && !ivDone) {
+    const req = pd.interviewRequest;
+    ivBody = `<p class="info"><span class="badge wait">Pending confirmation</span> <strong>${esc(slotLong(req.start))}</strong></p><p class="info">The squad needs to confirm this time before it is booked.${iv ? " Your current interview stays booked unless the new time is confirmed." : ""}</p><button class="btn small" type="button" data-withdraw-request ${dis}>Withdraw request</button>${iv ? ivBody : ""}`;
+  }
 
   return `<div class="wrap">
     <section class="phead" style="--stage-c:var(--s-${lane})"><div class="pbar"><div class="plate"><img alt="Potsdam Volunteer Rescue Squad, est. 1955" src="/img/logo.png"></div>
@@ -298,7 +303,7 @@ function refFormHTML(d, sending){
 function slotPicker(days, pick, dis, busy){
   return `<p class="info" style="margin:0">Pick a time that works for you. Interviews are with the Membership Committee.</p><div class="slots">${Object.entries(days).map(([day, list]) => `<div class="slotday"><h4>${esc(day)}</h4><div class="slotrow">${list.map(s =>
     `<button class="slotbtn" type="button" data-slot="${esc(s.id)}" aria-pressed="${pick===s.id}" ${dis}>${esc(slotTime(s.start))}${s.hostName ? `<small> with ${esc(s.hostName)}</small>` : ""}</button>`).join("")}</div></div>`).join("")}</div>
-    ${pick ? `<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn" type="button" data-unpick>Back</button><button class="btn primary" type="button" data-book ${busy?"disabled":""}>Book ${esc(slotTime((Object.values(days).flat().find(s => s.id === pick) || {}).start || 0))}</button></div>` : ""}`;
+    ${pick ? `<div style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap"><button class="btn" type="button" data-unpick>Back</button><button class="btn primary" type="button" data-book ${busy?"disabled":dis}>Request ${esc(slotTime((Object.values(days).flat().find(s => s.id === pick) || {}).start || 0))}</button></div>` : ""}`;
 }
 
 export function startPortal(id, email, { backToDesk = false } = {}){
@@ -428,7 +433,7 @@ export function startPortal(id, email, { backToDesk = false } = {}){
   root.addEventListener("keydown", e => { if (e.target.dataset && e.target.dataset.rf && e.key === "Enter") { e.preventDefault(); sendRef(); } });
   root.addEventListener("keydown", e => { if (e.target.id === "msgText" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } });
   onSnapshot(collection(db, "portal", id, "files"), s => { P.files = s.docs.map(d => ({ id: d.id, ...d.data() })); render(); }, () => {});
-  onSnapshot(collection(db, "slots"), s => { P.slots = s.docs.map(d => ({ id: d.id, ...d.data() })); if (P.pick && !P.slots.some(x => x.id === P.pick && !x.bookedBy)) P.pick = null; render(); }, () => {});
+  onSnapshot(collection(db, "slots"), s => { P.slots = s.docs.map(d => ({ id: d.id, ...d.data() })); if (P.pick && !P.slots.some(x => x.id === P.pick && !x.bookedBy && !x.requestedBy)) P.pick = null; render(); }, () => {});
 
   const picker = document.createElement("input"); picker.type = "file"; picker.accept = "application/pdf,image/*,.heic,.heif,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"; picker.multiple = true; picker.hidden = true; document.body.appendChild(picker);
   let uploadKey = "";
@@ -538,13 +543,18 @@ export function startPortal(id, email, { backToDesk = false } = {}){
       P.busy = true; render();
       try {
         const b = writeBatch(db);
-        if (P.pd.interview && P.pd.interview.slotId !== s.id) b.update(doc(db, "slots", P.pd.interview.slotId), { bookedBy: null });
-        b.update(doc(db, "slots", s.id), { bookedBy: id });
-        b.update(doc(db, "portal", id), { interview: { slotId: s.id, start: s.start, duration: s.duration || null, location: s.location || "", bookedAt: Date.now() } });
+        b.update(doc(db, "slots", s.id), { requestedBy: id });
+        b.update(doc(db, "portal", id), { interviewRequest: { slotId: s.id, start: s.start } });
         await b.commit();
-        P.pick = null; P.changing = false; toast("Interview booked for " + slotLong(s.start));
+        P.pick = null; P.changing = false; toast("Interview time requested. The squad will confirm it.");
       } catch (err) { console.error(err); toast("That time was just taken or is too soon. Pick another."); }
       finally { P.busy = false; render(); }
+      return;
+    }
+    if (t.closest("[data-withdraw-request]")) {
+      const req = P.pd.interviewRequest; if (!req) return;
+      try { const b = writeBatch(db); b.update(doc(db, "slots", req.slotId), { requestedBy: null }); b.update(doc(db, "portal", id), { interviewRequest: null }); await b.commit(); toast("Request withdrawn."); }
+      catch (err) { console.error(err); toast("Couldn't withdraw. Refresh to check your request."); }
       return;
     }
     if (t.closest("[data-cancel]")) {

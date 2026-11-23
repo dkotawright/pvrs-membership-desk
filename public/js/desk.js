@@ -91,6 +91,7 @@ function tabHTML(tab){
     ${admin ? `<section class="group noiv"><h3><span>Interviewers</span>${S.sched ? `<button class="btn small" type="button" data-act="assigniv">Assign</button>` : ""}</h3><div class="ios" id="ivAssign"></div></section>` : ""}
     ${group("Scheduling",[
       `<p class="note warn" id="nsCount" hidden></p>`,
+      `<div class="row" id="ivPending" hidden><span class="lbl">Pending interview request<small id="ivPendingEcho"></small></span><span id="ivPendingActs" class="acts"></span></div>`,
       `<div class="row"><span class="lbl">Booked time<small id="bookedEcho">—</small></span><span id="bookedActs" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"></span></div>`,
       F.date("sched.contacted","Applicant contacted"),F.date("sched.scheduled","Interview date (if not booked above)"),F.text("sched.time","Interview time","6:30 PM"),F.date("sched.completed","Interview completed"),F.init("sched.completedInit","Completed by (initials)")])}
     ${group("Who was at the interview",[F.note("Committee members who sat in on the interview. Matches the panel on the completed interview intake."),
@@ -207,6 +208,7 @@ let filesUnsub = null;
 
 const sig = () => { const s = S.settings.signature || "[Your name]"; return /Potsdam Volunteer Rescue/i.test(s) ? s : s + "\nPotsdam Volunteer Rescue Squad"; };
 const personName = email => { if (!email) return ""; if (email === S.me) return "you"; const st = S.staff.get(email); return (st && st.name) || email.split("@")[0]; };
+const canDecideInterview = () => S.me === OWNER_EMAIL || S.assistant;
 const slotFor = id => [...S.slots.values()].find(s => s.bookedBy === id) || null;
 const linkSettings = () => ({ url: location.origin + "/", handleCodeInApp: true });
 
@@ -506,7 +508,7 @@ function todoItems(){
 const COORD_ACTS = new Set(["book", "assigniv", "slots", "ivmail", "booking"]);
 function coordItems(){
   const out = [], now = Date.now();
-  const openTimes = [...S.slots.values()].filter(s => !s.bookedBy && s.start > now + 864e5).length;
+  const openTimes = [...S.slots.values()].filter(s => !s.bookedBy && !s.requestedBy && s.start > now + 864e5).length;
   let waiting = 0, firstWaiting = null;
   for (const a of S.apps.values()) {
     const p = progress(a); if (!IN_PROCESS.includes(p.stage) || isDeclined(a) || get(a, "sched.completed")) continue;
@@ -723,7 +725,8 @@ function renderOverview(){
   const stage = (k, label, sub) => `<button class="stg" type="button" data-filter="${k}" style="--stage-c:${stageVar(k)}"><span class="v">${c[k] || 0}</span><span class="k">${label}</span>${sub ? `<span class="s">${sub}</span>` : ""}</button>`;
   const inOrientation = rows.filter(r => inOrient(r.a) && orientOpen(r.a)).length;
   const notSched = rows.filter(r => r.p.stage === "int" && r.p.cur === 5).length;
-  const comingUp = `<section class="ovcard"><h3>Coming up${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.sched ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>`;
+  const requestCount = [...S.slots.values()].filter(s => s.requestedBy).length;
+  const comingUp = `<section class="ovcard"><h3>Coming up${requestCount ? `<small>${requestCount} pending request${requestCount === 1 ? "" : "s"}</small>` : ""}${thisWeek ? `<small>${thisWeek} this week</small>` : ""}${S.sched ? `<button class="btn small" type="button" data-cmd="slots">Interview times</button>` : ""}</h3><div class="olist">${ivList || `<div class="oempty">No interviews booked.</div>`}</div></section>`;
   const html = `<div class="ov"><div class="ovin">
     ${S.admin ? startHereHTML(greet, c) + boardHTML(rows, c, notSched, inOrientation) : `    <div class="ovhead"><div><div class="eyebrow">${esc(new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"}))}</div>
       <h2>${greet}${S.name ? ", " + esc(first(S.name)) : ""}</h2>
@@ -910,6 +913,14 @@ function syncDetail(){
   if (ee) ee.textContent = a.email || "Not entered on Application tab";
   const ps = $("#portalStatus");
   if (ps) { const inv = get(a,"portal.invited"); ps.textContent = !a.email ? "Add their email first" : inv ? `Invited ${fmtDate(inv)} · ${a.email}` : "Not invited yet"; $("#inviteBtn").textContent = inv ? "Resend link" : "Welcome"; $("#inviteBtn").disabled = !a.email; }
+  const ivPending = $("#ivPending"), req = S.portal.get(a._id)?.interviewRequest;
+  if (ivPending) {
+    ivPending.hidden = !req;
+    if (req) {
+      $("#ivPendingEcho").textContent = slotLong(req.start);
+      $("#ivPendingActs").innerHTML = canDecideInterview() ? `${req.start > Date.now() ? '<button class="btn small primary" type="button" data-ivdecision="confirm">Confirm</button>' : ""}<button class="btn small" type="button" data-ivdecision="decline">Decline</button>` : "";
+    }
+  }
   const be = $("#bookedEcho");
   if (be) {
     be.textContent = a._booked ? `${slotLong(a._booked.start)}${a._booked.location ? " · " + a._booked.location : ""}` : "Not booked";
@@ -1373,11 +1384,11 @@ function openWeekCal(){
     const days = [...Array(7)].map((_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d; });
     const end = new Date(days[6]); end.setDate(end.getDate() + 1);
     const ev = [];
-    for (const s of S.slots.values()) if (s.start >= mon.getTime() && s.start < end.getTime() && (seeAllIv || s.host === S.me)) ev.push({ kind: s.bookedBy ? "iv" : "open", s, a: s.bookedBy ? S.apps.get(s.bookedBy) : null });
+    for (const s of S.slots.values()) if (s.start >= mon.getTime() && s.start < end.getTime() && (seeAllIv || s.host === S.me)) ev.push({ kind: s.bookedBy ? "iv" : s.requestedBy ? "pending" : "open", s, a: s.bookedBy ? S.apps.get(s.bookedBy) : null });
     for (const s of (S.oslots || new Map()).values()) if (s.start >= mon.getTime() && s.start < end.getTime()) ev.push({ kind: s.bookedBy ? "or" : "oopen", s, a: s.bookedBy ? S.apps.get(s.bookedBy) : null });
     ev.sort((x, y) => x.s.start - y.s.start);
-    const label = x => x.kind === "iv" ? (x.a ? x.a.name || "Applicant" : "Booked interview") : x.kind === "or" ? (x.a ? x.a.name || "New member" : "Booked orientation") : x.kind === "open" ? "Open interview time" : "Open orientation time";
-    const kindText = { iv: "Interview", open: "Interview time", or: "Orientation", oopen: "Orientation time" };
+    const label = x => x.kind === "iv" ? (x.a ? x.a.name || "Applicant" : "Booked interview") : x.kind === "or" ? (x.a ? x.a.name || "New member" : "Booked orientation") : x.kind === "pending" ? "Pending interview request" : x.kind === "open" ? "Open interview time" : "Open orientation time";
+    const kindText = { iv: "Interview", pending: "Not confirmed", open: "Interview time", or: "Orientation", oopen: "Orientation time" };
     const fmt = d => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
     const n = k => ev.filter(x => x.kind === k).length;
     box.innerHTML = `<div class="wc-head"><h3>Week calendar<small>${esc(fmt(days[0]))} – ${esc(fmt(days[6]))}, ${days[6].getFullYear()}</small></h3>
@@ -1444,21 +1455,57 @@ let syncAllT;
 const syncAllPortals = () => { clearTimeout(syncAllT); syncAllT = setTimeout(() => { for (const id of S.apps.keys()) schedulePortal(id, 50); }, 2500); };
 
 /* ---------- interview slots ---------- */
+// The slot and portal always change together. Confirming a reschedule releases the previous
+// confirmed slot in the same transaction, while a request by itself never cancels it.
+async function decideInterview(id, slotId, decision){
+  const pr = doc(db, "portal", id), sr = doc(db, "slots", slotId);
+  return runTransaction(db, async tx => {
+    const pd = (await tx.get(pr)).data() || {};
+    const slot = (await tx.get(sr)).data();
+    if (!slot || slot.bookedBy || slot.requestedBy !== id || pd.interviewRequest?.slotId !== slotId) throw new Error("Stale interview request");
+    if (decision === "decline") {
+      tx.update(sr, { requestedBy: null });
+      tx.update(pr, { interviewRequest: null });
+      return;
+    }
+    if (slot.start <= Date.now()) throw new Error("The requested time has passed");
+    const oldId = pd.interview?.slotId;
+    const oldRef = oldId ? doc(db, "slots", oldId) : null;
+    const old = oldRef ? (await tx.get(oldRef)).data() : null;
+    if (oldId && old?.bookedBy !== id) throw new Error("Booking was changed elsewhere");
+    if (oldRef) tx.update(oldRef, { bookedBy: null });
+    tx.update(sr, { requestedBy: null, bookedBy: id });
+    tx.update(pr, { interviewRequest: null, interview: { slotId, start: slot.start, duration: slot.duration || null, location: slot.location || "", bookedAt: Date.now() } });
+  });
+}
 async function bookFor(id, slot){
-  const a = S.apps.get(id); const old = a && a._booked;
-  const b = writeBatch(db);
-  if (old && old.slotId !== slot.id) b.update(doc(db, "slots", old.slotId), { bookedBy: null });
-  b.update(doc(db, "slots", slot.id), { bookedBy: id });
+  if (!slot) throw new Error("Slot not found");
+  const pr = doc(db, "portal", id), sr = doc(db, "slots", slot.id);
   S._selfBooked = id;
-  b.set(doc(db, "portal", id), { interview: { slotId: slot.id, start: slot.start, duration: slot.duration || null, location: slot.location || "", bookedAt: Date.now() } }, { merge: true });
-  await b.commit();
+  try {
+    await runTransaction(db, async tx => {
+      const pd = (await tx.get(pr)).data() || {}, cur = (await tx.get(sr)).data();
+      if (!cur || cur.bookedBy || cur.requestedBy || pd.interviewRequest || cur.start <= Date.now()) throw new Error("Time is unavailable or a request is pending");
+      const oldId = pd.interview?.slotId || S.apps.get(id)?._booked?.slotId;
+      const oldRef = oldId ? doc(db, "slots", oldId) : null;
+      const old = oldRef ? (await tx.get(oldRef)).data() : null;
+      if (oldId && old?.bookedBy !== id) throw new Error("Booking was changed elsewhere");
+      if (oldRef) tx.update(oldRef, { bookedBy: null });
+      tx.update(sr, { bookedBy: id });
+      tx.set(pr, { interview: { slotId: slot.id, start: cur.start, duration: cur.duration || null, location: cur.location || "", bookedAt: Date.now() } }, { merge: true });
+    });
+  } catch (e) { if (S._selfBooked === id) S._selfBooked = null; throw e; }
 }
 async function releaseFor(id){
   const a = S.apps.get(id); if (!a || !a._booked) return;
-  const b = writeBatch(db);
-  b.update(doc(db, "slots", a._booked.slotId), { bookedBy: null });
-  b.set(doc(db, "portal", id), { interview: null }, { merge: true });
-  await b.commit();
+  const expected = a._booked.slotId, pr = doc(db, "portal", id), sr = doc(db, "slots", expected);
+  await runTransaction(db, async tx => {
+    const pd = (await tx.get(pr)).data() || {}, slot = (await tx.get(sr)).data();
+    if (!slot || slot.bookedBy !== id || (pd.interview && pd.interview.slotId !== expected)) throw new Error("Booking was changed elsewhere");
+    tx.update(sr, { bookedBy: null });
+    // Some old staff-created slots do not have a matching portal booking.
+    if (pd.interview) tx.set(pr, { interview: null }, { merge: true });
+  });
 }
 // They didn't come: free the time, note it, reopen booking so they can pick again, and draft the follow-up.
 async function markNoShow(id){
@@ -1474,7 +1521,8 @@ async function markNoShow(id){
 function openBook(id){
   if (!S.sched) return ownerOnlyToast();
   const a = S.apps.get(id);
-  const open = [...S.slots.values()].filter(s => !s.bookedBy && s.start > Date.now()).sort((x,y) => x.start - y.start);
+  const open = [...S.slots.values()].filter(s => !s.bookedBy && !s.requestedBy && s.start > Date.now()).sort((x,y) => x.start - y.start);
+  if (S.portal.get(id)?.interviewRequest) { openSlots(); return toast("This applicant has a pending request. Review it in Interview times."); }
   const M = openModal(`<h3>Book a time</h3><p class="help">For ${esc(a.name || "this applicant")}. Booking here works even inside 24 hours.</p>
     ${open.length ? `<div class="ios slotlist">${open.map(s => `<div class="row"><span class="lbl"><span class="when">${esc(slotLong(s.start))}</span><small>${esc([s.duration?s.duration+" min":"", s.location, s.hostName ? "with " + s.hostName : ""].filter(Boolean).join(" · "))}</small></span><button class="btn small primary" type="button" data-bk="${esc(s.id)}">Book</button></div>`).join("")}</div>`
       : `<p class="help">No open interview times. Add some under <b>Interview times</b>.</p>`}
@@ -1492,7 +1540,7 @@ function openSlots(){
   const def = S.settings.defaultLocation || "";
   const hosts = S.sched ? [...S.staff.entries()].filter(([, s]) => canInterview(s)) : [];
   const d0 = new Date(Date.now() + 3*864e5), dStr = `${d0.getFullYear()}-${String(d0.getMonth()+1).padStart(2,"0")}-${String(d0.getDate()).padStart(2,"0")}`;
-  const M = openModal(`<h3>${S.sched ? "Interview times" : "My interview times"}</h3><p class="help">${S.sched ? "Applicants with booking turned on can pick any open time at least 24 hours out." : "Add the times you're free to interview. When an applicant books one, they're assigned to you automatically."}</p>
+  const M = openModal(`<h3>${S.sched ? "Interview times" : "My interview times"}</h3><p class="help">${S.sched ? "Applicants can request open times at least 24 hours out. Requests are not booked until confirmed." : "Add the times you're free to interview. When the request is confirmed, the applicant is assigned to you automatically."}</p>
     <form id="slotForm" class="ios" style="padding:14px"><div class="addslot">
       <div class="field"><label for="slDate">Date</label><input id="slDate" type="date" value="${dStr}" required></div>
       <div class="field"><label for="slTime">First start time</label><input id="slTime" type="time" value="18:00" required></div>
@@ -1505,12 +1553,13 @@ function openSlots(){
     <div class="acts"><button class="btn" type="button" id="slIcs" title="Every booked interview as one calendar file">Add booked interviews to Calendar</button><button class="btn" type="button" data-x>Done</button></div>`, true);
   const paint = () => {
     if (!$("#slotList")) return;
-    const up = [...S.slots.values()].filter(s => s.start > Date.now() - 864e5 && (S.sched || s.host === S.me)).sort((x,y) => x.start - y.start);
+    const up = [...S.slots.values()].filter(s => (s.requestedBy || s.start > Date.now() - 864e5) && (S.sched || s.host === S.me)).sort((x,y) => x.start - y.start);
     const days = {}; up.forEach(s => { const k = slotDay(s.start); (days[k] = days[k] || []).push(s); });
     $("#slotList").innerHTML = up.length ? Object.entries(days).map(([day, list]) => `<div class="group"><h3><span>${esc(day)}</span></h3><div class="ios slotlist">${list.map(s => {
       const who = s.bookedBy ? (S.apps.get(s.bookedBy)?.name || "Applicant") : "";
+      const pending = s.requestedBy && (S.apps.get(s.requestedBy)?.name || "Applicant");
       return `<div class="row"><span class="lbl"><span class="when">${esc(slotTime(s.start))}</span><small>${esc([s.duration?s.duration+" min":"", s.location, S.sched && s.hostName ? "with " + s.hostName : ""].filter(Boolean).join(" · "))}</small></span>
-        ${who ? `<span class="badge ok">${esc(who)}</span>${S.sched ? `<button class="btn small" type="button" data-rel="${esc(s.id)}">Release</button>` : ""}` : `<span class="badge wait">Open</span><button class="btn small danger" type="button" data-del="${esc(s.id)}">Delete</button>`}</div>`; }).join("")}</div></div>`).join("")
+        ${pending ? `<span class="badge wait">${esc(pending)} · Pending</span>${canDecideInterview() ? `${s.start > Date.now() ? `<button class="btn small primary" type="button" data-ivaccept="${esc(s.id)}">Confirm</button>` : ""}<button class="btn small" type="button" data-ivdecline="${esc(s.id)}">Decline</button>` : ""}` : who ? `<span class="badge ok">${esc(who)}</span>${S.sched ? `<button class="btn small" type="button" data-rel="${esc(s.id)}">Release</button>` : ""}` : `<span class="badge wait">Open</span><button class="btn small danger" type="button" data-del="${esc(s.id)}">Delete</button>`}</div>`; }).join("")}</div></div>`).join("")
       : `<p class="help">No upcoming interview times yet.</p>`;
   };
   paint(); S._slotPaint = paint;
@@ -1536,6 +1585,14 @@ function openSlots(){
       download(`PVRS-interviews-${today()}.ics`, icsFile(ev), "text/calendar"); toast(`Calendar file with ${ev.length} interview${ev.length===1?"":"s"} downloaded. Open it to add them.`); return;
     }
     const del = e.target.closest("[data-del]"); if (del) { try { await deleteDoc(doc(db, "slots", del.dataset.del)); } catch { toast("Couldn't delete that time."); } return; }
+    const decision = e.target.closest("[data-ivaccept], [data-ivdecline]");
+    if (decision && canDecideInterview()) {
+      const s = S.slots.get(decision.dataset.ivaccept || decision.dataset.ivdecline); if (!s?.requestedBy) return;
+      decision.disabled = true;
+      try { await decideInterview(s.requestedBy, s.id, decision.dataset.ivaccept ? "confirm" : "decline"); toast(decision.dataset.ivaccept ? "Interview confirmed" : "Request declined; the applicant can pick another time."); }
+      catch (err) { console.error(err); decision.disabled = false; toast("Couldn't update the request. It may have changed."); }
+      return;
+    }
     const rel = e.target.closest("[data-rel]"); if (rel) { const s = S.slots.get(rel.dataset.rel); try { await releaseFor(s.bookedBy); toast("Time released"); } catch (err) { console.error(err); toast("Couldn't release that time."); } }
   };
 }
@@ -1602,7 +1659,7 @@ function renderMessages(){
 const DEFAULT_REPLIES = [
   { title: "Got it", text: "Thanks, {first}! We got it and we'll be in touch soon." },
   { title: "Documents received", text: "Thanks, {first}. We received your documents and they're under review." },
-  { title: "Interview times open", text: "Hi {first}, interview times are open in your portal now. Pick whichever one works best for you." },
+  { title: "Interview times open", text: "Hi {first}, interview times are open in your portal now. Request the time that works best for you, and we’ll confirm it." },
   { title: "References", text: "Hi {first}, we're still waiting to hear from some of your references. A quick reminder from you can help move things along." },
   { title: "When's the board?", text: "Hi {first}, your application goes to the next board meeting once your references, interview and the other checks are complete. You'll hear from us within about a week of that meeting." },
 ];
@@ -1915,7 +1972,7 @@ const TEMPLATES = {
   noshow: (a, was) => ({ subject: "PVRS interview: let's find a new time",
     body: `Hi ${first(a.name)},\n\nWe missed you at your interview${was ? " on " + was : ""}. Things come up, so no worries.\n\nIf you'd still like to join the squad, sign in to your applicant portal and pick a new time:\n\n${location.origin}\n\nIf none of the times work, reply to this email and we'll find another.\n\nThank you,\n${sig()}` }),
   interview: a => ({ subject: "PVRS interview: pick a time",
-    body: `Hi ${first(a.name)},\n\nThe next step in your application is an interview with the Membership Committee. Interview times are now open in your applicant portal. Sign in and pick the one that works best for you:\n\n${location.origin}\n\nIf none of the times work, reply to this email and we'll find another.\n\nThank you,\n${sig()}` }),
+    body: `Hi ${first(a.name)},\n\nThe next step in your application is an interview with the Membership Committee. Interview times are now open in your applicant portal. Sign in and request the time that works best for you. We’ll confirm it before it’s booked:\n\n${location.origin}\n\nIf none of the times work, reply to this email and we'll find another.\n\nThank you,\n${sig()}` }),
 };
 function openEmail(kind, extra, id = S.sel){
   const a = S.apps.get(id); if (!a) return;
@@ -2033,7 +2090,7 @@ async function decideRequest(email, role){
 }
 const ROLE_LABEL = { full: "Full access", assistant: "Assistant", admin: "Admin", coordinator: "Interview coordinator", interviewer: "Interviewer", member: "Member" };
 // Who can be put on an interview or host a time.
-const canInterview = s => ["interviewer", "admin", "coordinator"].includes(s.role);
+const canInterview = s => ["interviewer", "admin", "coordinator", "assistant"].includes(s.role);
 const roleLabel = r => ROLE_LABEL[r] || "Member";
 function teamHTML(){
   const rows = [...S.staff.entries()].sort((x,y) => x[0].localeCompare(y[0])).map(([email, s]) => `<div class="row"><span class="lbl">${esc(s.name || email)}<small>${esc(email)}</small></span>
@@ -2231,7 +2288,9 @@ async function deleteApplicant(id, quiet = false, { keepRecordFiles = false } = 
   if (!S.canEdit) return ownerOnlyToast();
   const a = S.apps.get(id);
   try {
-    if (a && a._booked) await releaseFor(id).catch(() => {});
+    const pd = (await getDoc(doc(db, "portal", id))).data();
+    if (pd?.interviewRequest) await decideInterview(id, pd.interviewRequest.slotId, "decline");
+    if (a && a._booked) await releaseFor(id);
     const files = await getDocs(collection(db, "portal", id, "files")).catch(() => null);
     if (files) for (const f of files.docs) { if (f.data().path) await deleteObject(ref(storage, f.data().path)).catch(() => {}); await deleteDoc(f.ref).catch(() => {}); }
     const pe = S.portal.get(id)?.email; if (pe) await deleteDoc(doc(db, "portalEmails", pe)).catch(() => {});
@@ -2664,6 +2723,14 @@ function bindEvents(){
     const step = t.closest("[data-step]");
     if (step) { const tb = STEP_TAB[+step.dataset.step]; if (tb && tb !== S.tab && (S.admin ? TABS_ADMIN : TABS_MEMBER).some(x => x[0] === tb)) switchTab(tb); return; }
     if (!S.canEdit && t.closest(OWNER_ONLY) && !(S.sched && t.closest(SCHED_OK))) return ownerOnlyToast();
+    const ivDecision = t.closest("[data-ivdecision]");
+    if (ivDecision && canDecideInterview()) {
+      const id = S.sel, req = S.portal.get(id)?.interviewRequest; if (!req) return;
+      ivDecision.disabled = true;
+      try { await decideInterview(id, req.slotId, ivDecision.dataset.ivdecision); toast(ivDecision.dataset.ivdecision === "confirm" ? "Interview confirmed" : "Request declined; the applicant can pick another time."); }
+      catch (err) { console.error(err); ivDecision.disabled = false; toast("Couldn't update the request. It may have changed."); }
+      return;
+    }
     const act = t.closest("[data-act]");
     if (act) {
       const k = act.dataset.act;
@@ -3610,7 +3677,7 @@ function openAssignInterviewers(id){
   const M = openModal(`<h3>Who interviews ${esc(first(a.name) || "this applicant")}?</h3>
     <p class="help">They can open ${esc(first(a.name) || "the")}'s Application and Interview tabs, fill in the interview, and message ${esc(first(a.name) || "them")}. Nothing else.</p>
     <div class="ios cv-pick">${team.length ? team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"${cur.includes(e) ? " checked" : ""}><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${roleLabel(s.role)}</small></span></label>`).join("")
-      : `<div class="row"><span class="lbl" style="color:var(--fg2)">No interviewers yet. In Settings → Team, set someone's role to <b>Interviewer</b>.</span></div>`}</div>
+      : `<div class="row"><span class="lbl" style="color:var(--fg2)">No eligible staff are listed yet. Check roles in Settings → Team.</span></div>`}</div>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="ivaSave">Save</button></div>`);
   M.onclick = async e => {
     if (e.target.closest("[data-x]")) return closeModal();
@@ -3922,7 +3989,7 @@ function renderMyInterviews(D){
   const done = mine.filter(a => get(a, "sched.completed"));
   const up = mine.filter(a => !get(a, "sched.completed") && whenOf(a)).sort((x, y) => whenOf(x) - whenOf(y));
   const toSet = mine.filter(a => !get(a, "sched.completed") && !whenOf(a));
-  const openTimes = [...S.slots.values()].filter(s => s.host === S.me && !s.bookedBy && s.start > now).length;
+  const openTimes = [...S.slots.values()].filter(s => s.host === S.me && !s.bookedBy && !s.requestedBy && s.start > now).length;
   const av = a => `<span class="av" style="--stage-c:${stageVar(view(a).stage)}" aria-hidden="true">${esc(initials(a.name))}</span>`;
   const whenText = a => a._booked ? `${slotLong(a._booked.start)}${a._booked.location ? " · " + a._booked.location : ""}` : `${longDate(get(a, "sched.scheduled"))}${get(a, "sched.time") ? " at " + get(a, "sched.time") : ""}`;
   const row = (a, sub, btn) => `<div class="oitem" style="cursor:default">${av(a)}<span class="ot"><b>${esc(a.name || "Applicant")}</b><small>${esc(sub)}</small></span>
@@ -4032,7 +4099,7 @@ function bulkAssign(){
   const list = bulkApps();
   const team = [...S.staff.entries()].filter(([, s]) => canInterview(s)).sort((x, y) => (x[1].name || x[0]).localeCompare(y[1].name || y[0]));
   const M = openModal(`<h3>Assign to ${list.length} applicant${list.length === 1 ? "" : "s"}</h3><p class="help">Adds them alongside anyone already assigned. To take someone off, use that applicant's Interview tab.</p>
-    <div class="ios cv-pick">${team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${roleLabel(s.role)}</small></span></label>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">No interviewers yet. In Settings → Team, set someone's role to <b>Interviewer</b>.</span></div>`}</div>
+    <div class="ios cv-pick">${team.map(([e, s]) => `<label class="row"><input type="checkbox" value="${esc(e)}"><span class="lbl">${esc(s.name || e)}<small>${esc(e)} · ${roleLabel(s.role)}</small></span></label>`).join("") || `<div class="row"><span class="lbl" style="color:var(--fg2)">No eligible staff are listed yet. Check roles in Settings → Team.</span></div>`}</div>
     <div class="acts"><button class="btn" type="button" data-x>Cancel</button><button class="btn primary" type="button" id="bkaSave">Assign</button></div>`);
   M.onclick = async e => {
     if (e.target.closest("[data-x]")) return closeModal();
@@ -4853,7 +4920,7 @@ export function startDesk({ email, role, owner, full = false, assistant = false,
       const before = S.portal; S.portal = new Map(snap.docs.map(d => [d.id, d.data()]));
       if (before.size) for (const [id, pd] of S.portal) { const iv = pd.interview, old = before.get(id)?.interview;
         if (iv && iv.bookedAt && iv.bookedAt !== old?.bookedAt && Date.now() - iv.bookedAt < 6e4 && S.apps.get(id) && S._selfBooked !== id) toast(`${S.apps.get(id).name} booked ${slotLong(iv.start)}`); }
-      if (!S.sel) renderOverview();
+      if (!S.sel) renderOverview(); else syncDetail();
       reconcilePortalEmails();
     }, () => {});
     watchActivity(); watchUploadErrors(); watchForms(); watchVault();

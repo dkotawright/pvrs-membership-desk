@@ -67,7 +67,7 @@ async function sendApplicant(appId, { title, body }){
 const doneCount = pd => (pd.steps || []).filter(s => s.state === "done").length;
 exports.portalChanged = onDocumentUpdated({ document: "portal/{id}", ...OPTS }, async e => {
   const b = e.data.before.data() || {}, a = e.data.after.data() || {}, id = e.params.id;
-  if (!b.bookingOpen && a.bookingOpen) await sendApplicant(id, { title: "Interview times are open", body: "You can pick your interview time in your PVRS portal." });
+  if (!b.bookingOpen && a.bookingOpen) await sendApplicant(id, { title: "Interview times are open", body: "You can request an interview time in your PVRS portal." });
   if (doneCount(a) > doneCount(b)) await sendApplicant(id, { title: "Your application moved forward", body: "Open your PVRS portal to see what's next." });
   if (!b.orientation && a.orientation) await sendApplicant(id, { title: "Orientation is open", body: "Your background check is complete. Pick your orientation time in your PVRS portal." });
   if (!b.checkin && a.checkin) await sendApplicant(id, { title: "Quick check-in", body: "How's it going so far? Tell us in your PVRS portal." });
@@ -144,22 +144,43 @@ const bookingCrew = async appId => {
 };
 // A time an interviewer offered (slots/{id}.host): booking it assigns them to that applicant and adds them to the
 // conversation. Cancelling takes them off again, but only if the booking is what put them there.
-async function setHost(appId, email, name, on){
-  const ref = db.doc(`applicants/${appId}`), a = await ref.get(); if (!a.exists) return;
-  const cur = a.data().interviewers || [], cvRef = db.doc(`convos/${appId}`), cv = await cvRef.get(), cvd = cv.exists ? cv.data() : { members: [], names: {} };
-  if (on) {
-    if (cur.includes(email)) return;
-    await ref.set({ interviewers: [...cur, email], hostFromBooking: email }, { merge: true });
-    await cvRef.set({ members: [...new Set([...(cvd.members || []), email])], names: { ...(cvd.names || {}), [email]: name || email.split("@")[0] }, updatedAt: Date.now() }, { merge: true });
-  } else if (a.data().hostFromBooking === email) {
-    await ref.set({ interviewers: cur.filter(x => x !== email), hostFromBooking: "" }, { merge: true });
-    if (cv.exists) await cvRef.set({ members: (cvd.members || []).filter(x => x !== email), updatedAt: Date.now() }, { merge: true });
-  }
+async function setHost(appId, email, name, on, slotId){
+  const ref = db.doc(`applicants/${appId}`), cvRef = db.doc(`convos/${appId}`), portalRef = db.doc(`portal/${appId}`);
+  await db.runTransaction(async tx => {
+    const a = await tx.get(ref); if (!a.exists) return;
+    const portal = await tx.get(portalRef);
+    // Slot update events can arrive out of order on a reschedule. Do not apply a stale
+    // assignment, and let the latest booking decide which old automatically assigned host to remove.
+    if (portal.exists && slotId) {
+      const current = portal.data().interview?.slotId || "";
+      if (on ? current !== slotId : (current && current !== slotId)) return;
+    }
+    const data = a.data(), prior = data.hostFromBooking || "", current = data.interviewers || [];
+    const cv = await tx.get(cvRef), cvd = cv.exists ? cv.data() : { members: [], names: {} };
+    const remove = on ? (prior && prior !== email ? prior : "") : (prior === email ? prior : "");
+    if (!on && !remove) return;
+    const cur = current.filter(x => x !== remove), members = (cvd.members || []).filter(x => x !== remove), names = { ...(cvd.names || {}) };
+    if (remove) delete names[remove];
+    const add = on && email && !cur.includes(email);
+    const automatic = on && email && (add || prior === email) ? email : "";
+    if (!add && !remove && automatic === prior) return;
+    if (add) { cur.push(email); if (!members.includes(email)) members.push(email); names[email] = name || email.split("@")[0]; }
+    tx.set(ref, { interviewers: cur, hostFromBooking: automatic }, { merge: true });
+    if (cv.exists || add) tx.set(cvRef, { members, names, updatedAt: Date.now() }, { merge: true });
+  });
 }
 exports.interviewBooking = onDocumentUpdated({ document: "slots/{id}", ...OPTS }, async e => {
   const b = e.data.before.data() || {}, a = e.data.after.data() || {};
-  if (!b.bookedBy && a.bookedBy && a.host) await setHost(a.bookedBy, a.host, a.hostName, true);
-  if (b.bookedBy && !a.bookedBy && b.host) await setHost(b.bookedBy, b.host, b.hostName, false);
+  if (!b.requestedBy && a.requestedBy && !a.bookedBy) {
+    const assistants = await db.collection("staff").where("role", "in", ["assistant"]).get();
+    await send({ to: [OWNER_EMAIL, ...assistants.docs.map(d => d.id)], title: "Interview request pending", body: "An interview time needs confirmation. Open the applicant’s Interview tab to review it.", id: a.requestedBy });
+    return;
+  }
+  if (!b.bookedBy && a.bookedBy && b.requestedBy === a.bookedBy) {
+    await sendApplicant(a.bookedBy, { title: "Interview confirmed", body: "Open your PVRS portal for the confirmed time and calendar link." });
+  }
+  if (!b.bookedBy && a.bookedBy) await setHost(a.bookedBy, a.host || "", a.hostName, true, e.params?.id);
+  if (b.bookedBy && !a.bookedBy && b.host) await setHost(b.bookedBy, b.host, b.hostName, false, e.params?.id);
   if (!b.bookedBy && a.bookedBy) await send({ to: await bookingCrew(a.bookedBy), title: "Interview booked", body: `${await nameOf(a.bookedBy)} · ${when(a.start)}`, id: a.bookedBy });
   else if (b.bookedBy && !a.bookedBy) await send({ to: await bookingCrew(b.bookedBy), title: "Interview cancelled", body: `${await nameOf(b.bookedBy)} · ${when(b.start)} is open again`, id: b.bookedBy });
 });
